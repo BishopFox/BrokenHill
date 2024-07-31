@@ -246,9 +246,10 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
             #print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
             if filter_cand:
                 include_candidate = False
-                if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
+                #if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
+                if decoded_str != curr_control:
                     include_candidate = True
-                #if decoded_str != curr_control:
+                
                     #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list because it passsed the filter")
                     
                     if filter_newline_limit is not None:
@@ -282,8 +283,9 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                             #if token_counts[unique_line] >= filter_repetitive:
                                 #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the repetition filter ({token_counts[unique_line]} occurrences of token '{unique_line}')")
                         #if include_candidate:
-                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetition filter")
-                    
+                        #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetition filter")
+                #else:
+                #    print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was identical to the current control, or had the same number of tokens or something")
                         
                 if include_candidate:
                     if replace_newline_characters is not None:

@@ -24,16 +24,28 @@ class SuffixManager:
     
     def get_decoded_token(self, token):
         result = None
+        #print(f"[SuffixManager.get_decoded_token] Debug: decoding token '{token}'")
+        token_to_decode = token
+        if not isinstance(token, list):
+            token_to_decode = [ token ]
+            #print(f"[SuffixManager.get_decoded_token] Debug: converted '{token}' to '{token_to_decode}'")
+        #result = self.tokenizer.decode(token_to_decode, skip_special_tokens=False)
         try:
-            result = self.tokenizer.decode(token, skip_special_tokens=True)
+            result = self.tokenizer.decode(token_to_decode, skip_special_tokens=True)
+            #result = self.tokenizer.decode(token_to_decode, skip_special_tokens=False)
         except Exception as e:
-            print(f"[get_decoded_token] Error decoding token {token}: {e}")
+            print(f"[SuffixManager.get_decoded_token] Error decoding token {token_to_decode}: {e}")
         return result
     
     def get_decoded_tokens(self, tokens):
+        #print(f"[SuffixManager.get_decoded_tokesn] Debug: decoding tokens '{tokens}'")
         decoded_tokens = []
-        for tn in range(0, len(tokens)):
-            dt = self.get_decoded_token(tokens[tn])
+        if isinstance(tokens, list):
+            for tn in range(0, len(tokens)):
+                dt = self.get_decoded_token(tokens[tn])
+                decoded_tokens.append(dt)
+        else:
+            dt = self.get_decoded_token(tokens)
             decoded_tokens.append(dt)
         return decoded_tokens
     
@@ -57,20 +69,20 @@ class SuffixManager:
     # and the list of tokens the slices refer to
     def print_slice_info(self, source_method_name, slice_dictionary, tokens):
         decoded_tokens = self.get_decoded_tokens(tokens)
-        #print(f"[print_slice_info] Debug: len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
+        print(f"[print_slice_info] Debug: len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
         
         for slice_name in slice_dictionary.keys():
             sl = slice_dictionary[slice_name]
-            #print(f"[{source_method_name}] Debug: slice '{slice_name}' = '{sl}'")
+            print(f"[{source_method_name}] Debug: slice '{slice_name}' = '{sl}'")
             #slice_tokens = []
             slice_tokens = tokens[sl]
-            #print(f"[{source_method_name}] Debug: slice '{slice_name}' tokens = '{slice_tokens}'")
+            print(f"[{source_method_name}] Debug: slice '{slice_name}' tokens = '{slice_tokens}'")
             #slice_tokens_decoded = []
             slice_tokens_decoded = decoded_tokens[sl]
             #for token_num in range(0, len(slice_tokens)):
             #    slice_tokens_decoded.append(decoded_tokens[slice_tokens[token_num]])
 
-            #print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_tokens_decoded}'")
+            print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_tokens_decoded}'")
 
 
     # The get_prompt function was originally an opaque piece of logic populated with 
@@ -374,8 +386,10 @@ class SuffixManager:
             if result_start is None:
                 raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
             else:
-                print(f"[get_slice_data] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
                 result_stop = result_start + len(string_to_search_for_array)
+                # This issue is so frequent that enabling this error is too noisy
+                #print(f"[get_slice_data] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+                
         else:
             result_stop = result_start + len(string_tokens)
             
@@ -493,7 +507,11 @@ class SuffixManager:
 
         # else:
         if 2 > 1:
-            python_tokenizer = False or self.conv_template.name == 'oasst_pythia'
+            python_tokenizer = False
+            if self.conv_template.name == 'oasst_pythia':
+                python_tokenizer = True
+            #if "pythia" in self.conv_template.name:
+            #    python_tokenizer = True
             # This (formerly undocumented) check is a way to determine if the model is using 
             # Python-based tokenizers. It works because Python-based tokenizers (at least 
             # in the current version of Transformers) don't support the char_to_token 
@@ -602,16 +620,31 @@ class SuffixManager:
                 #print(f"[get_prompt] Debug: prompt = '{prompt}', self.target = '{self.target}'")
                 prompt_find_self_target = prompt.find(self.target)
                 #print(f"[get_prompt] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
-                self._target_slice = slice(
-                    encoding.char_to_token(prompt_find_self_target),
-                    encoding.char_to_token(prompt_find_self_target + len(self.target))
-                )         
                 prompt_find_self_target_c2t = encoding.char_to_token(prompt_find_self_target)
-                prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + len(self.target))
+                prompt_combined_c2t = None
+                add_length = len(self.target) + 1
+                while prompt_combined_c2t is None:
+                    prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
+                    add_length -= 1
+                    if add_length < 0:
+                        prompt_combined_c2t = prompt_find_self_target_c2t
+                        break
+                # Subtract one more than the first valid value so that the length of the slice is correct
+                #if prompt_combined_c2t != prompt_find_self_target_c2t:
+                #    prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
+                #prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target) + len(self.target)
                 #print(f"[get_prompt] Debug: prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
+                self._target_slice = slice(
+                    #encoding.char_to_token(prompt_find_self_target),
+                    prompt_find_self_target_c2t,
+                    #encoding.char_to_token(prompt_find_self_target + len(self.target))
+                    prompt_combined_c2t + 1
+                )         
+
                 self._loss_slice = slice(
                     prompt_find_self_target_c2t - 1,
-                    prompt_combined_c2t - 1
+                    #prompt_combined_c2t - 1
+                    prompt_combined_c2t
                 )
         #if hasattr(self, "_system_slice"):
         #    print(f"[get_prompt] Debug: self._system_slice = '{self._system_slice}'")
@@ -631,7 +664,7 @@ class SuffixManager:
         slice_dict["_target_slice"] = self._target_slice
         slice_dict["_loss_slice"] = self._loss_slice
 
-        self.print_slice_info("get_prompt", slice_dict, toks)
+        #self.print_slice_info("get_prompt", slice_dict, toks)
 
         self.conv_template.messages = []
 
