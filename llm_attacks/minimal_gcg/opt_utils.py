@@ -66,12 +66,12 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
         The gradients of each token in the input_slice with respect to the loss.
     """
 
-    print_stats("token_gradients")
-    print("[token_gradients] Getting embedding weight matrix")
-    print(f"[token_gradients] Debug: model.model.embed_tokens = {model.model.embed_tokens}")
+    #print_stats("token_gradients")
+    #print("[token_gradients] Getting embedding weight matrix")
+    #print(f"[token_gradients] Debug: model.model.embed_tokens = {model.model.embed_tokens}")
     embed_weights = get_embedding_matrix(model)
-    print(f"[token_gradients] Debug: embed_weights = {embed_weights}")
-    print_stats("token_gradients")
+    #print(f"[token_gradients] Debug: embed_weights = {embed_weights}")
+    #print_stats("token_gradients")
 
     #print(f"[token_gradients] Debug: embed_weights.dtype={embed_weights.dtype}")
 
@@ -87,7 +87,7 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
             if embed_weights.data.is_quantized:
                 quantized_tensors = True
 
-    print("[token_gradients] Getting one_hot")
+    #print("[token_gradients] Getting one_hot")
     one_hot = None
     scales_value = None
     pczp_value = None
@@ -96,7 +96,7 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
         pczp = embed_weights.data.q_per_channel_zero_points()
         scales_value = get_first_value_from_tensor(scales)
         pczp_value = int(get_first_value_from_tensor(pczp))
-        print(f"[token_gradients] Debug: scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
+        #print(f"[token_gradients] Debug: scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
 #        one_hot = torch.randint(0, 1, size=(input_ids[input_slice].shape[0],embed_weights.shape[0]), device=model.device, dtype=embed_weights.dtype)
         one_hot = create_new_quantized_tensor(0, (input_ids[input_slice].shape[0],embed_weights.shape[0]), model.device, embed_weights.data.dtype, scales_value, pczp_value)
     else:
@@ -106,9 +106,9 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
             device=model.device,
             dtype=embed_weights.dtype
         )
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] Getting one_hot scatter")
+    #print("[token_gradients] Getting one_hot scatter")
     one_hot_ones = None
     if quantized_tensors:
 #        one_hot_ones = torch.randint(1, 2, size=(one_hot.shape[0],1), device=model.device, dtype=embed_weights.dtype)
@@ -122,22 +122,22 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
         input_ids[input_slice].unsqueeze(1),
         one_hot_ones
     )
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] one_hot.requires_grad_()")
+    #print("[token_gradients] one_hot.requires_grad_()")
     one_hot.requires_grad_()
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] Getting input_embeds")
+    #print("[token_gradients] Getting input_embeds")
     input_embeds = (one_hot @ embed_weights).unsqueeze(0)
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
     
     # now stitch it together with the rest of the embeddings
-    print("[token_gradients] Getting embeddings")
+    #print("[token_gradients] Getting embeddings")
     embeds = get_embeddings(model, input_ids.unsqueeze(0)).detach()
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] Getting full_embeds")
+    #print("[token_gradients] Getting full_embeds")
     full_embeds = torch.cat(
         [
             embeds[:,:input_slice.start,:], 
@@ -145,7 +145,7 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
             embeds[:,input_slice.stop:,:]
         ], 
         dim=1)
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
     #print("[token_gradients] converting full_embeds to float32 because that's what logits() expects")
     #full_embeds = full_embeds.to(torch.float32)
@@ -153,30 +153,30 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
 
     #print(f"[token_gradients] Debug: full_embeds.dtype: {full_embeds.dtype}")
     
-    print("[token_gradients] Getting logits")
+    #print("[token_gradients] Getting logits")
     logits = model(inputs_embeds=full_embeds).logits
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] Getting targets")
+    #print("[token_gradients] Getting targets")
     targets = input_ids[target_slice]
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] Getting loss")
+    #print("[token_gradients] Getting loss")
     loss = nn.CrossEntropyLoss()(logits[0,loss_slice,:], targets)
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
 
-    print("[token_gradients] loss.backward()")
+    #print("[token_gradients] loss.backward()")
     loss.backward()
-    print_stats("token_gradients")
+    #print_stats("token_gradients")
     
     if one_hot.grad is not None:
-        print("[token_gradients] Cloning one_hot.grad")
+        #print("[token_gradients] Cloning one_hot.grad")
         grad = one_hot.grad.clone()
-        print_stats("token_gradients")
+        #print_stats("token_gradients")
 
-        print("[token_gradients] Getting gradients")
+        #print("[token_gradients] Getting gradients")
         grad = grad / grad.norm(dim=-1, keepdim=True)
-        print_stats("token_gradients")
+        #print_stats("token_gradients")
         return grad
 
     print("Error: one_hot.grad is None")
@@ -210,34 +210,65 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
     return new_control_toks
 
 
-def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0):
+def get_decoded_token(tokenizer, token):
+    result = None
+    try:
+        #result = tokenizer.decode(token, skip_special_tokens=True)
+        result = tokenizer.decode(token, skip_special_tokens=False)
+    except Exception as e:
+        dummy = 1
+        #print(f"[get_decoded_token] Error decoding token {token}: {e}")
+    return result
+
+def get_decoded_tokens(tokenizer, tokens):
+    decoded_tokens = []
+    for tn in range(0, len(tokens)):
+        dt = get_decoded_token(tokenizer, tokens[tn])
+        decoded_tokens.append(dt)
+    return decoded_tokens
+
+def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0, filter_newline_limit = None, replace_newline_characters = None):
     cands, filtered_count = [], 0
     if control_cand is None:
         return cands
     for i in range(control_cand.shape[0]):
-        print(f"[get_filtered_cands] Debug: i = {i}")
-        print(f"[get_filtered_cands] Debug: control_cand[i] = {control_cand[i]}")
+        #print(f"[get_filtered_cands] Debug: i = {i}")
+        #print(f"[get_filtered_cands] Debug: control_cand[i] = {control_cand[i]}")
         decoded_str = None
         try:
-            decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
+            #decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
+            decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=False)
         except Exception as e:
-            print(f"[get_filtered_cands] Error: when calling tokenizer.decode(control_cand[i], skip_special_tokens=True): {e}")
             decoded_str = None
+            decoded_tokens = get_decoded_tokens(tokenizer, control_cand[i].data)
+            #print(f"[get_filtered_cands] Error: when calling tokenizer.decode(control_cand[i], skip_special_tokens=True) with control_cand[i] = '{control_cand[i]}', decoded_tokens = '{decoded_tokens}': {e} - this may indicate an error in the attack code")            
         if decoded_str is not None:
-            print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
+            #print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
             if filter_cand:
-                include_candidate = True
+                include_candidate = False
                 if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
+                    include_candidate = True
                 #if decoded_str != curr_control:
                     #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list because it passsed the filter")
                     
-                    if filter_regex is not None:
+                    if filter_newline_limit is not None:
+                        newline_character_count = 0
+                        for newline_character in ["\x0a", "\x0d"]:
+                            if newline_character in decoded_str:
+                                for current_char in decoded_str:
+                                    if current_char == newline_character:
+                                        newline_character_count += 1
+                        if newline_character_count > filter_newline_limit:
+                            include_candidate = False
+                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected due to presence of newline character(s)")
+                    if include_candidate and filter_regex is not None:
                         if filter_regex.search(decoded_str):
-                            print(f"[get_filtered_cands] Debug: '{decoded_str}' passsed the regular expression filter")
+                            dummy = 1
+                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' passsed the regular expression filter")
                         else:
                             include_candidate = False
-                            print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the regular expression filter")
-                    if filter_repetitive > 0:
+                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the regular expression filter")
+                    if include_candidate and filter_repetitive > 0:
                         candidate_lines = decoded_str.splitlines()
                         token_counts = {}
                         for c_line in candidate_lines:
@@ -247,30 +278,35 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                                 if t_count >= filter_repetitive:
                                     include_candidate = False
                             token_counts[c_line] = t_count
-                        for unique_line in token_counts.keys():
-                            if token_counts[unique_line] >= filter_repetitive:
-                                print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the repetition filter ({token_counts[unique_line]} occurrences of token '{unique_line}')")
-                        if include_candidate:
-                            print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetition filter")
+                        #for unique_line in token_counts.keys():
+                            #if token_counts[unique_line] >= filter_repetitive:
+                                #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the repetition filter ({token_counts[unique_line]} occurrences of token '{unique_line}')")
+                        #if include_candidate:
+                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetition filter")
                     
                         
                 if include_candidate:
+                    if replace_newline_characters is not None:
+                        decoded_str = decoded_str.replace("\n", replace_newline_characters)
                     cands.append(decoded_str)
                 else:
                     #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was filtered out")
                     filtered_count += 1
             else:
-                print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list")
+                #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list")
+                if replace_newline_characters is not None:
+                    decoded_str = decoded_str.replace("\n", replace_newline_characters)
                 cands.append(decoded_str)
 
     #print(f"[get_filtered_cands] Debug: control_cand = {control_cand}, cands = {cands}")
 
     if filter_cand:
         if len(cands) == 0:
-            print(f"[get_filtered_cands] Warning: no candidates found")
+            dummy = 1
+            #print(f"[get_filtered_cands] Warning: no candidates found")
         else:
             cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
-            print(f"[get_filtered_cands] Warning: {round(filtered_count / len(control_cand), 2)} control candidates were not valid")
+            #print(f"[get_filtered_cands] Warning: {round(filtered_count / len(control_cand), 2)} control candidates were not valid")
     return cands
 
 
@@ -348,21 +384,44 @@ def target_loss(logits, ids, target_slice):
     return loss.mean(dim=-1)
 
 
-def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype=torch.float16, trust_remote_code=True, **kwargs):
+def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype=torch.float16, trust_remote_code=True, ignore_mismatched_sizes=False, **kwargs):
     model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=dtype,
             trust_remote_code=trust_remote_code,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
             **kwargs
         ).to(device).eval()
     
+    #print(f"[load_model_and_tokenizer] Debug: tokenizer_path = '{tokenizer_path}', model_path = '{model_path}'")
+    
     tokenizer_path = model_path if tokenizer_path is None else tokenizer_path
     
-    tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_path,
-        trust_remote_code=True,
-        use_fast=False
-    )
+    tokenizer = None
+    
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_path,
+            trust_remote_code=trust_remote_code,
+            use_fast=False
+        )
+    except Exception as e:
+        handled = False
+        if isinstance(e, ValueError):
+            print(f"[load_model_and_tokenizer] Warning: unable to load standard tokenizer from '{tokenizer_path}', attempting to fall back to fast tokenizer.")
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_path,
+                    trust_remote_code=trust_remote_code,
+                    use_fast=True
+                )
+                handled = True
+            except Exception as e2:
+                print(f"[load_model_and_tokenizer] Error loading both standard and fast tokenizers from '{tokenizer_path}': '{e}', '{e2}'")
+                raise e        
+        if not handled:
+            print(f"[load_model_and_tokenizer] Error loading tokenizer from '{tokenizer_path}': '{e}'")
+            raise e
     
     if 'oasst-sft-6-llama-30b' in tokenizer_path:
         tokenizer.bos_token_id = 1

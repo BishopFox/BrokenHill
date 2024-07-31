@@ -1,5 +1,12 @@
+# tested with wheel==0.43.0
+wheel
 #transformers==4.28.1
-transformers==4.42.4
+# tested with transformers==4.42.4
+transformers
+# tested with ml-collections==0.1.1
 ml_collections
 #fschat==0.2.20
+# tested with fschat==0.2.36
 fschat
+# tested with flash_attn==2.6.3
+flash_attn
