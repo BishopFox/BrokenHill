@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from llm_attacks import get_embedding_matrix, get_embeddings
+from llm_attacks import get_embedding_matrix, get_embeddings, get_decoded_token, get_decoded_tokens, get_encoded_token, get_encoded_tokens 
 
 def print_stats(function_name):
     print(f"---")
@@ -209,24 +209,6 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
 
     return new_control_toks
 
-
-def get_decoded_token(tokenizer, token):
-    result = None
-    try:
-        #result = tokenizer.decode(token, skip_special_tokens=True)
-        result = tokenizer.decode(token, skip_special_tokens=False)
-    except Exception as e:
-        dummy = 1
-        #print(f"[get_decoded_token] Error decoding token {token}: {e}")
-    return result
-
-def get_decoded_tokens(tokenizer, tokens):
-    decoded_tokens = []
-    for tn in range(0, len(tokens)):
-        dt = get_decoded_token(tokenizer, tokens[tn])
-        decoded_tokens.append(dt)
-    return decoded_tokens
-
 def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0, filter_newline_limit = None, replace_newline_characters = None):
     cands, filtered_count = [], 0
     if control_cand is None:
@@ -237,11 +219,12 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
         decoded_str = None
         try:
             #decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
-            decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=False)
+            #decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=False)
+            decoded_str = get_decoded_token(tokenizer, control_cand[i])
         except Exception as e:
             decoded_str = None
             decoded_tokens = get_decoded_tokens(tokenizer, control_cand[i].data)
-            #print(f"[get_filtered_cands] Error: when calling tokenizer.decode(control_cand[i], skip_special_tokens=True) with control_cand[i] = '{control_cand[i]}', decoded_tokens = '{decoded_tokens}': {e} - this may indicate an error in the attack code")            
+            #print(f"[get_filtered_cands] Error: when calling get_decoded_token(tokenizer, control_cand[i]) with control_cand[i] = '{control_cand[i]}', decoded_tokens = '{decoded_tokens}': {e} - this may indicate an error in the attack code")            
         if decoded_str is not None:
             #print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
             if filter_cand:
@@ -249,6 +232,15 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                 #if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
                 if decoded_str != curr_control:
                     include_candidate = True
+                if include_candidate:
+                    temp_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+                    len_temp_input_ids = len(temp_input_ids)
+                    len_control_cand_i = len(control_cand[i])
+                    if len_temp_input_ids != len_control_cand_i:
+                        #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because an undocumented magic function depended on the length of its input_ids being equal to the length of '{control_cand[i]}', whereas in this case the first length was {len_temp_input_ids} and the second was {len_control_cand_i}.")
+                        include_candidate = False
+                
+                if include_candidate:
                 
                     #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list because it passsed the filter")
                     
@@ -269,7 +261,7 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                         else:
                             include_candidate = False
                             #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the regular expression filter")
-                    if include_candidate and filter_repetitive > 0:
+                    if include_candidate and filter_repetitive is not None and filter_repetitive > 0:
                         candidate_lines = decoded_str.splitlines()
                         token_counts = {}
                         for c_line in candidate_lines:

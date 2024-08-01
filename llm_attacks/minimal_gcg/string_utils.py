@@ -2,10 +2,22 @@ import copy
 import torch
 import fastchat 
 
-def load_conversation_template(template_name):
-    conv_template = fastchat.model.get_conversation_template(template_name)
-    if conv_template.name == 'zero_shot':
-        conv_template.roles = tuple(['### ' + r for r in conv_template.roles])
+from llm_attacks import get_decoded_token, get_decoded_tokens, get_encoded_token, get_encoded_tokens 
+
+def get_default_generic_role_indicator_template():
+    # note: using "### {role}:" instead will cause issues 
+    return "### {role}"
+
+def load_conversation_template(template_name, generic_role_indicator_template = None):
+    conv_template = fastchat.model.get_conversation_template(template_name)    
+    generic_role_template = get_default_generic_role_indicator_template()
+    if generic_role_indicator_template is not None:
+        generic_role_template = generic_role_indicator_template
+    # note: the original logic was equivalent to the following:
+    #generic_role_template = "### {role}"
+    if conv_template.name == 'zero_shot':# or conv_template.name == 'one_shot':
+        #conv_template.roles = tuple(['### ' + r for r in conv_template.roles])
+        conv_template.roles = tuple([generic_role_template.format(role=r) for r in conv_template.roles])
         conv_template.sep = '\n'
     elif conv_template.name == 'llama-2':
         conv_template.sep2 = conv_template.sep2.strip()
@@ -22,53 +34,13 @@ class SuffixManager:
         self.target = target
         self.adv_string = adv_string
     
-    def get_decoded_token(self, token):
-        result = None
-        #print(f"[SuffixManager.get_decoded_token] Debug: decoding token '{token}'")
-        token_to_decode = token
-        if not isinstance(token, list):
-            token_to_decode = [ token ]
-            #print(f"[SuffixManager.get_decoded_token] Debug: converted '{token}' to '{token_to_decode}'")
-        #result = self.tokenizer.decode(token_to_decode, skip_special_tokens=False)
-        try:
-            result = self.tokenizer.decode(token_to_decode, skip_special_tokens=True)
-            #result = self.tokenizer.decode(token_to_decode, skip_special_tokens=False)
-        except Exception as e:
-            print(f"[SuffixManager.get_decoded_token] Error decoding token {token_to_decode}: {e}")
-        return result
-    
-    def get_decoded_tokens(self, tokens):
-        #print(f"[SuffixManager.get_decoded_tokesn] Debug: decoding tokens '{tokens}'")
-        decoded_tokens = []
-        if isinstance(tokens, list):
-            for tn in range(0, len(tokens)):
-                dt = self.get_decoded_token(tokens[tn])
-                decoded_tokens.append(dt)
-        else:
-            dt = self.get_decoded_token(tokens)
-            decoded_tokens.append(dt)
-        return decoded_tokens
-    
-    def get_encoded_token(self, token):
-        result = None
-        try:
-            result = self.tokenizer.encode(token, skip_special_tokens=True)
-        except Exception as e:
-            print(f"[get_encoded_token] Error encoding token {token}: {e}")
-        return result
-    
-    def get_encoded_tokens(self, tokens):
-        encoded_tokens = []
-        for tn in range(0, len(tokens)):
-            et = self.get_encoded_token(tokens[tn])
-            encoded_tokens.append(et)
-        return encoded_tokens
+
     
     # For debugging / creating handlers for new conversation templates
     # accepts a dictionary of slices, where the key is the slice name and the value is the slice
     # and the list of tokens the slices refer to
     def print_slice_info(self, source_method_name, slice_dictionary, tokens):
-        decoded_tokens = self.get_decoded_tokens(tokens)
+        decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
         print(f"[print_slice_info] Debug: len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
         
         for slice_name in slice_dictionary.keys():
@@ -345,14 +317,14 @@ class SuffixManager:
         return result
     
     def get_slice_data(self, string_to_search_for, tokens, start_index = 0, stop_index = None):
-        decoded_tokens = self.get_decoded_tokens(tokens)
-        string_tokens = self.get_encoded_token(string_to_search_for)
+        decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
+        string_tokens = get_encoded_token(self.tokenizer, string_to_search_for)
         # hacky workarounds for garbagey behaviour
         # Let's just put '<s>' at the beginning of all token lists, and '</s>' at the end!  It will be great!
         string_to_search_for_array = string_to_search_for.split(" ")
         first_search_word = string_to_search_for_array[0]
         len_first_search_word = len(first_search_word)
-        decoded_string_tokens = self.get_decoded_tokens(string_tokens)
+        decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
         original_decoded_string_tokens = copy.deepcopy(decoded_string_tokens)
         tokens_as_string = "".join(decoded_string_tokens)
         # Ignore any leading tokens like <s>
@@ -368,7 +340,7 @@ class SuffixManager:
             for i in range(1, len(string_tokens)):
                 new_string_tokens.append(string_tokens[i])
             string_tokens = copy.deepcopy(new_string_tokens)
-            decoded_string_tokens = self.get_decoded_tokens(string_tokens)
+            decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
             tokens_as_string = "".join(decoded_string_tokens)
             #print(f"[get_slice_data] Debug: tokens_as_string = '{tokens_as_string}', first_search_word = '{first_search_word}'")
         if not got_real_first_token:
@@ -378,13 +350,20 @@ class SuffixManager:
         result_start = self.find_first_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
         result_stop = None
         if result_start is None:
-            decoded_tokens_processed = []
+            # try to find cases where tokens have spaces on either side or not at all
+            decoded_tokens_processed_1 = []
+            decoded_tokens_processed_2 = []
             for i in range(0, len(decoded_tokens)):
                 processed_token = decoded_tokens[i].strip()
-                decoded_tokens_processed.append(processed_token)
-            result_start = self.find_first_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed, start_index=start_index, stop_index=stop_index)
+                decoded_tokens_processed_1.append(processed_token)
+                decoded_tokens_processed_2.append(decoded_tokens[i])
+            result_start = self.find_first_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_1, start_index=start_index, stop_index=stop_index)
             if result_start is None:
-                raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
+                result_start = self.find_first_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_2, start_index=start_index, stop_index=stop_index)
+                if result_start is None:
+                    raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
+                else:
+                    result_stop = result_start + len(string_to_search_for_array)
             else:
                 result_stop = result_start + len(string_to_search_for_array)
                 # This issue is so frequent that enabling this error is too noisy
@@ -400,7 +379,7 @@ class SuffixManager:
     # like '</s>', '<s>', '\n', '###', or ' '
     def find_last_non_garbage_token(self, tokens, start_index = 0, stop_index = None):
         hardcoded_garbage_tokens = [ '</s>', '<s>', '###' ]
-        decoded_tokens = self.get_decoded_tokens(tokens)
+        decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
         result = None
         range_end = len(decoded_tokens)
         if stop_index is not None:
@@ -428,7 +407,7 @@ class SuffixManager:
         encoding = self.tokenizer(prompt)
         toks = encoding.input_ids
         original_toks = copy.deepcopy(toks)
-        original_decoded_tokens = self.get_decoded_tokens(original_toks)
+        original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
        
         #print(f"[get_prompt] Debug: self.conv_template.roles = '{self.conv_template.roles}'\nself.conv_template = '{self.conv_template}'\ntoks = '{toks}'\ndecoded_tokens='{original_decoded_tokens}'\nself.instruction = '{self.instruction}'\nself.instruction = '{self.instruction}'\nself.target = '{self.target}'\nprompt = '{prompt}'\nencoding = '{encoding}'")
 
@@ -580,7 +559,7 @@ class SuffixManager:
                 #self._target_slice = self.get_slice_data(self.target, toks)
                 last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = self._assistant_role_slice.stop)
                 if last_non_garbage_token is None:
-                    decoded_tokens = self.get_decoded_tokens(toks)
+                    decoded_tokens = get_decoded_tokens(self.tokenizer, toks)
                     raise Exception(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}', please, stop the madness right now.")
                 last_non_garbage_token += 1
                 self._target_slice = slice(self._assistant_role_slice.stop, last_non_garbage_token)
@@ -651,7 +630,7 @@ class SuffixManager:
         #print(f"[get_prompt] Debug: self._user_role_slice = '{self._user_role_slice}'\nself._goal_slice = '{self._goal_slice}'\n self._control_slice = '{self._control_slice}'\nself._assistant_role_slice = '{self._assistant_role_slice}'\nself._target_slice = '{self._target_slice}\nself._loss_slice = '{self._loss_slice}'")
 
         #print(f"[get_prompt] Debug: self.conv_template (after modifications) = '{self.conv_template}'")
-        final_decoded_toks = self.get_decoded_tokens(toks)
+        final_decoded_toks = get_decoded_tokens(self.tokenizer, toks)
         #print(f"[get_prompt] Debug: toks (after parsing) = '{toks}', final_decoded_toks = '{final_decoded_toks}'")
 
         slice_dict = {}
