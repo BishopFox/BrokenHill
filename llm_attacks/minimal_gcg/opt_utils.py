@@ -408,6 +408,11 @@ def target_loss(logits, ids, target_slice):
 
 
 def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype=torch.float16, trust_remote_code=True, ignore_mismatched_sizes=False, **kwargs):
+    #print(f"[load_model_and_tokenizer] Debug: model_path = '{model_path}', tokenizer_path = '{tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
+
+    #if ignore_mismatched_sizes:
+    #    kwargs["ignore_mismatched_sizes"] = True
+
     model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=dtype,
@@ -416,11 +421,17 @@ def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', d
             **kwargs
         ).to(device).eval()
     
-    #print(f"[load_model_and_tokenizer] Debug: tokenizer_path = '{tokenizer_path}', model_path = '{model_path}'")
     
     tokenizer_path = model_path if tokenizer_path is None else tokenizer_path
     
+    #print(f"[load_model_and_tokenizer] Debug: tokenizer_path = '{tokenizer_path}', model_path = '{model_path}'")
+
     tokenizer = None
+    
+    #is_mamba = args.model_name.startswith("state-spaces/mamba-")
+    #    if is_mamba:
+    #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+    #model = MambaLMHeadModel.from_pretrained(args.model_name, device=device, dtype=dtype)
     
     try:
         tokenizer = AutoTokenizer.from_pretrained(
