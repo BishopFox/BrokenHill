@@ -1,6 +1,6 @@
 #!/bin/env python3
 
-script_version = "0.6"
+script_version = "0.7"
 script_date = "2024-08-01"
 
 def get_script_description():
@@ -66,6 +66,9 @@ class gcg_attack_params:
             ]
         result.sort()
         return result
+
+    def get_candidate_filter_regex(self):
+        return re.compile(self.candidate_filter_regex)
 
     def __init__(self):
         self.device = 'cuda'
@@ -161,7 +164,7 @@ class gcg_attack_params:
             # Filter candidate strings by requiring that they match a regular expression
             # require that a set of candidates decode to a string that includes at least 
             # one occurrence of two consecutive mixed-case alphanumeric characters
-            self.candidate_filter_regex = re.compile("[0-9A-Za-z]+")
+            self.candidate_filter_regex = "[0-9A-Za-z]+"
             #candidate_filter_regex = re.compile("(?s)^((?!###)[0-9A-Za-z])*$")
 
             # Filter candidate strings to exclude lists with more than this many repeated lines
@@ -625,7 +628,7 @@ def main(attack_params):
                                                         new_adv_suffix_toks, 
                                                         filter_cand=True, 
                                                         curr_control=adv_suffix,
-                                                        filter_regex = attack_params.candidate_filter_regex,
+                                                        filter_regex = attack_params.get_candidate_filter_regex(),
                                                         filter_repetitive_tokens = attack_params.candidate_filter_repetitive_tokens,
                                                         filter_repetitive_lines = attack_params.candidate_filter_repetitive_lines,
                                                         filter_newline_limit = attack_params.candidate_filter_newline_limit,
@@ -742,7 +745,7 @@ def main(attack_params):
 if __name__=='__main__':
     print(f"gcg-attack.py version {script_version}, {script_date}")
 
-    parser = argparse.ArgumentParser(description=get_script_description())
+    parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     attack_params = gcg_attack_params()
     
@@ -776,7 +779,7 @@ if __name__=='__main__':
 
     parser.add_argument("--temperature", type=numeric_string_to_int,
         default=attack_params.model_temperature,
-        help=f"'Temperature' value to pass to the model. Use 0 for deterministic results.")
+        help=f"'Temperature' value to pass to the model. Use the default value for deterministic results.")
 
     parser.add_argument("--random-seed-numpy", type=numeric_string_to_int,
         default=attack_params.np_random_seed,
@@ -788,7 +791,6 @@ if __name__=='__main__':
         default=attack_params.torch_cuda_manual_seed_all,
         help=f"Random seed for CUDA")
 
-    
     parser.add_argument("--max-iterations", type=numeric_string_to_int,
         default=attack_params.max_iterations,
         help=f"Maximum number of times to iterate on the adversarial data")
@@ -818,7 +820,7 @@ if __name__=='__main__':
         help="Bias the adversarial content generation data to avoid using special tokens (begin/end of string, etc.).")
 
     parser.add_argument("--exclude-token", action='append', nargs='*', required=False,
-        help=f"Bias the adversarial content generation data to avoid using the specified token (if it exists as a discreet value in the model). May be specified multiple times to exclude multiple tokens.")
+        help=f"Bias the adversarial content generation data to avoid using the specified token (if it exists as a discrete value in the model). May be specified multiple times to exclude multiple tokens.")
 
     parser.add_argument("--exclude-whitespace-tokens", type=str2bool, nargs='?',
         const=True, default=False,
