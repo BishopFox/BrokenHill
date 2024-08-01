@@ -16,19 +16,23 @@ Our original goal was to produce a tool that could perform the GCG attack on at 
 * Supports many more models, most of which are available in sizes small enough to run on an RTX 4090
   * Original authors' version:
 	  * GPT-J (too large for the attack on an RTX 4090)
-	  * GPT Neo X (too large for the attack on an RTX 4090)
+	  * GPT Neo X (base model is too large for the attack on an RTX 4090)
 	  * Llama-2 (too large for the attack on an RTX 4090)
 	  * Pythia (more or less)
-  * This version:
+  * This version also supports:
+	  * Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	  * BigBirdPegasus
+	  * BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower)) (or lower)
 	  * Gemma
+	  * GPT 2 (note: currently requires `--max-new-tokens-final 512` (or lower))
 	  * GPT Neo
-	  * OPT
-	  * Pegasus (seems to crash on my system, though)
+	  * OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
+	  * Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))
 	  * Phi-1
 	  * Phi-2
 	  * Phi-3 (note: currently requires the `--trust-remote-code` option)
 	  * Pythia (for real this time)
+	  * RoBERTa
 	  * Qwen2
 	  * StableLM
 	  * StableLM 2

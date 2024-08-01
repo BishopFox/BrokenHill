@@ -139,7 +139,11 @@ def is_phi_1_to_3_model(model):
 def get_embedding_layer(model):
     if isinstance(model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
         return model.transformer.wte
+    elif isinstance(model, BartForCausalLM):
+        return model.model.decoder.get_input_embeddings()
     elif isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
+        return model.model.decoder.embed_tokens
+    elif isinstance(model, BlenderbotForCausalLM):
         return model.model.decoder.embed_tokens
     elif isinstance(model, GemmaForCausalLM):
         return model.base_model.get_input_embeddings()
@@ -155,6 +159,8 @@ def get_embedding_layer(model):
         return model.model.get_input_embeddings()
     elif is_phi_1_to_3_model(model, Phi3ForCausalLM):
         return model.model.embed_tokens
+    elif isinstance(model, RobertaForCausalLM):
+        return model.get_input_embeddings()
     elif isinstance(model, Qwen2ForCausalLM):
         return model.base_model.get_input_embeddings()
     elif isinstance(model, StableLmForCausalLM):
@@ -168,7 +174,11 @@ def get_embedding_matrix(model):
     result = None
     if isinstance(model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
         result = model.transformer.wte.weight
+    elif isinstance(model, BartForCausalLM):
+        result = model.model.decoder.get_input_embeddings().weight
     elif isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
+        result = model.model.decoder.embed_tokens.weight
+    elif isinstance(model, BlenderbotForCausalLM):
         result = model.model.decoder.embed_tokens.weight
     elif isinstance(model, GemmaForCausalLM):
         result = model.base_model.get_input_embeddings().weight
@@ -184,6 +194,8 @@ def get_embedding_matrix(model):
         result = model.model.get_input_embeddings().weight
     elif is_phi_1_to_3_model(model):
         result = model.model.embed_tokens.weight
+    elif isinstance(model, RobertaForCausalLM):
+        result = model.get_input_embeddings().weight
     elif isinstance(model, Qwen2ForCausalLM):
         result = model.base_model.get_input_embeddings().weight
     elif isinstance(model, StableLmForCausalLM):
@@ -208,7 +220,11 @@ def get_embedding_matrix(model):
 def get_embeddings(model, input_ids):
     if isinstance(model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
         return model.transformer.wte(input_ids).half()
+    elif isinstance(model, BartForCausalLM):
+        return model.model.decoder.get_input_embeddings()(input_ids)
     elif isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
+        return model.model.decoder.embed_tokens(input_ids)
+    elif isinstance(model, BlenderbotForCausalLM):
         return model.model.decoder.embed_tokens(input_ids)
     elif isinstance(model, GemmaForCausalLM):
         return model.base_model.get_input_embeddings()(input_ids)
@@ -224,6 +240,8 @@ def get_embeddings(model, input_ids):
         return model.model.get_input_embeddings()(input_ids)
     elif is_phi_1_to_3_model(model):
         return model.model.embed_tokens(input_ids)
+    elif isinstance(model, RobertaForCausalLM):
+        return model.get_input_embeddings()(input_ids)
     elif isinstance(model, Qwen2ForCausalLM):
         return model.base_model.get_input_embeddings()(input_ids)
     elif isinstance(model, StableLmForCausalLM):

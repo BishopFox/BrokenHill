@@ -1,6 +1,6 @@
 #!/bin/env python3
 
-script_version = "0.7"
+script_version = "0.8"
 script_date = "2024-08-01"
 
 def get_script_description():
@@ -370,34 +370,100 @@ def get_model_size(mdl):
 # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
 def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model, tokenizer, desired_value):
     effective_value = desired_value
+
     limited_by_tokenizer_model_max_length = False
+    limited_by_tokenizer_max_position_embeddings = False
+    limited_by_tokenizer_config_model_max_length = False
+    limited_by_tokenizer_config_max_position_embeddings = False
     limited_by_model_config_max_position_embeddings = False
+    limited_by_model_decoder_config_max_position_embeddings = False
+
     tokenizer_model_max_length = None
+    tokenizer_max_position_embeddings = None
+    tokenizer_config_model_max_length = None
+    tokenizer_config_max_position_embeddings = None
     model_config_max_position_embeddings = None
+    model_decoder_config_max_position_embeddings = None
+
+    limiting_factor_count = 0
     
     if hasattr(tokenizer, "model_max_length"):        
         if tokenizer.model_max_length is not None:
             tokenizer_model_max_length = tokenizer.model_max_length
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_model_max_length = {tokenizer_model_max_length}")
             if tokenizer_model_max_length < desired_value:
                 limited_by_tokenizer_model_max_length = True
+                limiting_factor_count += 1
                 
+    if hasattr(tokenizer, "max_position_embeddings"):        
+        if tokenizer.max_position_embeddings is not None:
+            tokenizer_max_position_embeddings = tokenizer.max_position_embeddings
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+            if tokenizer_max_position_embeddings < desired_value:
+                limited_by_tokenizer_max_position_embeddings = True
+                limiting_factor_count += 1
+
+    if hasattr(tokenizer, "config"):
+        if tokenizer.config is not None:
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer.config = {tokenizer.config}")
+            if hasattr(tokenizer.config, "model_max_length"):            
+                if tokenizer.config.model_max_length is not None:
+                    tokenizer_config_model_max_length = tokenizer.config.model_max_length
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+                    if tokenizer_config_model_max_length < desired_value:            
+                        limited_by_tokenizer_config_model_max_length = True
+                        limiting_factor_count += 1
+            if hasattr(tokenizer.config, "max_position_embeddings"):            
+                if tokenizer.config.max_position_embeddings is not None:
+                    tokenizer_config_max_position_embeddings = tokenizer.config.max_position_embeddings
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+                    if tokenizer_config_max_position_embeddings < desired_value:            
+                        limited_by_tokenizer_config_max_position_embeddings = True
+                        limiting_factor_count += 1
+        
     if hasattr(model, "config"):
         if model.config is not None:
+            print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.config = {model.config}")
             if hasattr(model.config, "max_position_embeddings"):            
                 if model.config.max_position_embeddings is not None:
                     model_config_max_position_embeddings = model.config.max_position_embeddings
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_config_max_position_embeddings = {model_config_max_position_embeddings}")
                     if model_config_max_position_embeddings < desired_value:            
                         limited_by_model_config_max_position_embeddings = True
+                        limiting_factor_count += 1
     
-    if limited_by_tokenizer_model_max_length or limited_by_model_config_max_position_embeddings:
+    if hasattr(model, "decoder"):
+        if model.decoder is not None:
+            if hasattr(model.decoder, "config"):
+                if model.decoder.config is not None:
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.decoder.config = {model.decoder.config}")
+                    if hasattr(model.decoder.config, "max_position_embeddings"):            
+                        if model.decoder.config.max_position_embeddings is not None:
+                            model_decoder_config_max_position_embeddings = model.decoder.config.max_position_embeddings
+                            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+                            if model_decoder_config_max_position_embeddings < desired_value:            
+                                limited_by_model_decoder_config_max_position_embeddings = True
+                                limiting_factor_count += 1
+    
+    if limiting_factor_count > 0:
         description_string = f"Warning: the current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
-        for limit_value in [ tokenizer_model_max_length, model_config_max_position_embeddings ]:
-            effective_value = min(effective_value, limit_value)
+        for limit_value in [ tokenizer_model_max_length, tokenizer_max_position_embeddings, tokenizer_config_model_max_length, tokenizer_config_max_position_embeddings, model_config_max_position_embeddings, model_decoder_config_max_position_embeddings ]:
+            if limit_value is not None:
+                effective_value = min(effective_value, limit_value)
         if limited_by_tokenizer_model_max_length:
             description_string += f"The tokenizer's model_max_length value is {tokenizer_model_max_length}. "
+        if limited_by_tokenizer_max_position_embeddings:
+            description_string += f"The tokenizer's max_position_embeddings value is {tokenizer_max_position_embeddings}. "
+        if limited_by_tokenizer_config_model_max_length:
+            description_string += f"The tokenizer's configuration's model_max_length value is {tokenizer_config_model_max_length}. "
+        if limited_by_tokenizer_config_max_position_embeddings:
+            description_string += f"The tokenizer's configuration's max_position_embeddings value is {tokenizer_config_max_position_embeddings}. "
         if limited_by_model_config_max_position_embeddings:
             description_string += f"The model configuration's max_position_embeddings value is {model_config_max_position_embeddings}. "
+        if limited_by_model_decoder_config_max_position_embeddings:
+            description_string += f"The model's decoder's configuration's max_position_embeddings value is {model_decoder_config_max_position_embeddings}. "
         description_string += f"The effective value that will be used is {effective_value}."
+        print(description_string)
          
     return effective_value
     
@@ -959,7 +1025,7 @@ if __name__=='__main__':
     
     if args.adversarial_candidate_filter_tokens_max:
         if args.adversarial_candidate_filter_tokens_max < 1:
-            print("--adversarial-candidate-filter-tokens-min must be a positive integer.")
+            print("--adversarial-candidate-filter-tokens-max must be a positive integer.")
             sys.exit(1)
         attack_params.candidate_filter_tokens_max= args.adversarial_candidate_filter_tokens_max
     

@@ -9,7 +9,13 @@ def get_default_generic_role_indicator_template():
     return "### {role}"
 
 def load_conversation_template(template_name, generic_role_indicator_template = None):
-    conv_template = fastchat.model.get_conversation_template(template_name)    
+    #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'")
+    conv_template = fastchat.model.get_conversation_template(template_name)
+    # make sure fastchat doesn't sneak the one_shot messages in when zero_shot was requested
+    if template_name == "zero_shot":
+        if hasattr(conv_template, "messages"):
+            #print(f"[load_conversation_template] Debug: resetting conv_template.messages from '{conv_template.messages}' to []")
+            conv_template.messages = []
     generic_role_template = get_default_generic_role_indicator_template()
     if generic_role_indicator_template is not None:
         generic_role_template = generic_role_indicator_template
@@ -316,8 +322,43 @@ class SuffixManager:
                     return i
         return result
     
+    def remove_empty_leading_and_trailing_tokens(self, token_array, decoded_token_array, strip_decoded_tokens = False):
+        len_token_array = len(token_array)
+        len_decoded_token_array = len(decoded_token_array)
+        if len_token_array != len_decoded_token_array:
+            raise Exception(f"The length of the token and decoded token arrays must match. Inputs were '{token_array}' (length: {len_token_array}) and '{decoded_token_array}' (length: {len_decoded_token_array})")
+
+        first_non_empty_token = 0
+        last_non_empty_token = len_decoded_token_array - 1
+
+        for i in range(0, len_token_array):
+            decoded_token_temp = decoded_token_array[i]
+            if strip_decoded_tokens:
+                decoded_token_temp = decoded_token_temp.strip()
+                decoded_token_array[i] = decoded_token_temp
+            if decoded_token_temp != "":
+                break
+            first_non_empty_token += 1
+        
+        for i in range(len_token_array - 1, -1, -1):
+            decoded_token_temp = decoded_token_array[i]
+            if strip_decoded_tokens:
+                decoded_token_temp = decoded_token_temp.strip()
+                decoded_token_array[i] = decoded_token_temp
+            if decoded_token_temp != "":
+                break
+            last_non_empty_token -= 1
+        
+        actual_last_non_empty_token = last_non_empty_token + 1
+        result_token_array = token_array[first_non_empty_token:actual_last_non_empty_token]
+        result_decoded_token_array = decoded_token_array[first_non_empty_token:actual_last_non_empty_token]
+        
+        #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
+        return result_token_array, result_decoded_token_array
+    
     def get_slice_data(self, string_to_search_for, tokens, start_index = 0, stop_index = None):
         decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
+        #print(f"[get_slice_data] Debug: decoded_tokens = '{decoded_tokens}'")
         string_tokens = get_encoded_token(self.tokenizer, string_to_search_for)
         # hacky workarounds for garbagey behaviour
         # Let's just put '<s>' at the beginning of all token lists, and '</s>' at the end!  It will be great!
@@ -325,14 +366,18 @@ class SuffixManager:
         first_search_word = string_to_search_for_array[0]
         len_first_search_word = len(first_search_word)
         decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
+        #self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = False)
+        string_tokens, decoded_string_tokens = self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = True)
         original_decoded_string_tokens = copy.deepcopy(decoded_string_tokens)
         tokens_as_string = "".join(decoded_string_tokens)
         # Ignore any leading tokens like <s>
         got_real_first_token = False
         #print(f"[get_slice_data] Debug: tokens_as_string = '{tokens_as_string}', first_search_word = '{first_search_word}'")
         while len(tokens_as_string) >= len_first_search_word:
-            comp1 = tokens_as_string[0:len_first_search_word].strip()
+            #comp1 = tokens_as_string[0:len_first_search_word].strip()
+            comp1 = tokens_as_string.strip()[0:len_first_search_word].strip()
             comp2 = first_search_word.strip()
+            #print(f"[get_slice_data] Debug: comp1 = '{comp1}', comp2 = '{comp2}'")
             if comp1 == comp2:
                 got_real_first_token = True
                 break
@@ -341,6 +386,8 @@ class SuffixManager:
                 new_string_tokens.append(string_tokens[i])
             string_tokens = copy.deepcopy(new_string_tokens)
             decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
+            #self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = False)
+            string_tokens, decoded_string_tokens = self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = True)
             tokens_as_string = "".join(decoded_string_tokens)
             #print(f"[get_slice_data] Debug: tokens_as_string = '{tokens_as_string}', first_search_word = '{first_search_word}'")
         if not got_real_first_token:
