@@ -1,6 +1,6 @@
 #!/bin/env python3
 
-script_version = "0.3"
+script_version = "0.4"
 script_date = "2024-07-31"
 
 def get_script_description():
@@ -146,7 +146,10 @@ class gcg_attack_params:
             # by biasing the token generation, not culling the list of values it generates
             # but it can help avoid edge and corner cases like adversarial data
             # where each position becomes optimized to "\n###"
-            #
+            
+            # Use the completely unexplained length comparison filter in 
+            self.use_magic_undocumented_length_comparison_filter
+            
             # Filter candidate strings by requiring that they match a regular expression
             # require that a set of candidates decode to a string that includes at least 
             # one occurrence of two consecutive mixed-case alphanumeric characters
@@ -615,7 +618,8 @@ def main(attack_params):
                                                         filter_regex = attack_params.candidate_filter_regex,
                                                         filter_repetitive = attack_params.candidate_filter_repetitive,
                                                         filter_newline_limit = attack_params.candidate_filter_newline_limit,
-                                                        replace_newline_characters = attack_params.candidate_replace_newline_characters)
+                                                        replace_newline_characters = attack_params.candidate_replace_newline_characters,
+                                                        use_magic_undocumented_length_comparison_filter=attack_params.use_magic_undocumented_length_comparison_filter)
                     if len(new_adv_suffix) == 0:
                         print(f"Error: the attack appears to have failed to generate any adversarial suffices at this iteration. This may be due to excessive post-generation filtering options. The tool will likely crash immediately after this condition occurs.")
                     #print_stats()
@@ -813,6 +817,10 @@ if __name__=='__main__':
         const=True, default=False,
         help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
 
+    parser.add_argument("--use-magic-undocumented-length-comparison-filter", type=str2bool, nargs='?',
+        const=True, default=attack_params.use_magic_undocumented_length_comparison_filter,
+        help="Enable the mysterious array length comparison filter in get_filtered_cands that breaks the script when used against StableLM 2 (and maybe other models). What does it do? Nobody knows. Triangle Man! Don't enable this if you want StableLM 2 to work, obviously.")
+
     parser.add_argument("--generic-role-template", default=attack_params.generic_role_indicator_template, type=str, 
         help="The Python formatting string to use if fastchat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
     
@@ -901,6 +909,8 @@ if __name__=='__main__':
     attack_params.exclude_nonascii_tokens = args.exclude_nonascii_tokens
     
     attack_params.exclude_special_tokens = args.exclude_special_tokens
+    
+    attack_params.use_magic_undocumented_length_comparison_filter = args.use_magic_undocumented_length_comparison_filter
 
     attack_params.generic_role_indicator_template = args.generic_role_template
 

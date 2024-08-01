@@ -209,7 +209,7 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
 
     return new_control_toks
 
-def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0, filter_newline_limit = None, replace_newline_characters = None):
+def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0, filter_newline_limit = None, replace_newline_characters = None, use_magic_undocumented_length_comparison_filter = False):
     cands, filtered_count = [], 0
     if control_cand is None:
         return cands
@@ -232,13 +232,13 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                 #if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
                 if decoded_str != curr_control:
                     include_candidate = True
-                if include_candidate:
-                    temp_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
-                    len_temp_input_ids = len(temp_input_ids)
-                    len_control_cand_i = len(control_cand[i])
-                    if len_temp_input_ids != len_control_cand_i:
+                #if include_candidate:
+                #    temp_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+                #    len_temp_input_ids = len(temp_input_ids)
+                #    len_control_cand_i = len(control_cand[i])
+                    #if len_temp_input_ids != len_control_cand_i:
                         #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because an undocumented magic function depended on the length of its input_ids being equal to the length of '{control_cand[i]}', whereas in this case the first length was {len_temp_input_ids} and the second was {len_control_cand_i}.")
-                        include_candidate = False
+                #        include_candidate = False
                 
                 if include_candidate:
                 
