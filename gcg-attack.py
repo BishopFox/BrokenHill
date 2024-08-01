@@ -1,7 +1,7 @@
 #!/bin/env python3
 
-script_version = "0.4"
-script_date = "2024-07-31"
+script_version = "0.6"
+script_date = "2024-08-01"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -147,25 +147,35 @@ class gcg_attack_params:
             # but it can help avoid edge and corner cases like adversarial data
             # where each position becomes optimized to "\n###"
             
-            # Use the completely unexplained length comparison filter in 
-            self.use_magic_undocumented_length_comparison_filter
+            # If these values are not None, filter out candidate strings with too many 
+            # or too few tokens
+            # This is a modification of the original code, which tried to keep the number 
+            # consistent, but the logic didn't work for some models (e.g. StableLM 2)
+            self.candidate_filter_tokens_min = None
+            self.candidate_filter_tokens_max = None
+            # This option re-enables the check from the original code, which is supposed
+            # to keep the token count consistent but will prevent any candidates from being
+            # allowed for some models (such as StableLM 2)
+            self.attempt_to_keep_token_count_consistent = False
             
             # Filter candidate strings by requiring that they match a regular expression
             # require that a set of candidates decode to a string that includes at least 
             # one occurrence of two consecutive mixed-case alphanumeric characters
-            # 
             self.candidate_filter_regex = re.compile("[0-9A-Za-z]+")
             #candidate_filter_regex = re.compile("(?s)^((?!###)[0-9A-Za-z])*$")
 
-            # Filter candidate strings to exclude lists with this many repeated tokens
-            self.candidate_filter_repetitive = None
+            # Filter candidate strings to exclude lists with more than this many repeated lines
+            self.candidate_filter_repetitive_lines = None
+            
+            # Filter candidate strings to exclude lists with more than this many repeated tokens
+            self.candidate_filter_repetitive_tokens = None
 
             # Disallow candidate token lists that include more than this many newline characters
             #candidate_filter_newline_limit = None
             self.candidate_filter_newline_limit = None
 
             # Replace newline characters remaining in the candidate suffices with the following string
-            self.candidate_replace_newline_characters = " "
+            self.candidate_replace_newline_characters = None
 
         # The formatting string for roles when a model uses one of the generic fastchat templates 
         # (one_shot, zero_shot, etc.)
@@ -616,10 +626,13 @@ def main(attack_params):
                                                         filter_cand=True, 
                                                         curr_control=adv_suffix,
                                                         filter_regex = attack_params.candidate_filter_regex,
-                                                        filter_repetitive = attack_params.candidate_filter_repetitive,
+                                                        filter_repetitive_tokens = attack_params.candidate_filter_repetitive_tokens,
+                                                        filter_repetitive_lines = attack_params.candidate_filter_repetitive_lines,
                                                         filter_newline_limit = attack_params.candidate_filter_newline_limit,
                                                         replace_newline_characters = attack_params.candidate_replace_newline_characters,
-                                                        use_magic_undocumented_length_comparison_filter=attack_params.use_magic_undocumented_length_comparison_filter)
+                                                        attempt_to_keep_token_count_consistent = attack_params.attempt_to_keep_token_count_consistent, 
+                                                        candidate_filter_tokens_min = attack_params.candidate_filter_tokens_min, 
+                                                        candidate_filter_tokens_max = attack_params.candidate_filter_tokens_max)
                     if len(new_adv_suffix) == 0:
                         print(f"Error: the attack appears to have failed to generate any adversarial suffices at this iteration. This may be due to excessive post-generation filtering options. The tool will likely crash immediately after this condition occurs.")
                     #print_stats()
@@ -727,6 +740,8 @@ def main(attack_params):
 
 
 if __name__=='__main__':
+    print(f"gcg-attack.py version {script_version}, {script_date}")
+
     parser = argparse.ArgumentParser(description=get_script_description())
     
     attack_params = gcg_attack_params()
@@ -817,9 +832,31 @@ if __name__=='__main__':
         const=True, default=False,
         help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
 
-    parser.add_argument("--use-magic-undocumented-length-comparison-filter", type=str2bool, nargs='?',
-        const=True, default=attack_params.use_magic_undocumented_length_comparison_filter,
-        help="Enable the mysterious array length comparison filter in get_filtered_cands that breaks the script when used against StableLM 2 (and maybe other models). What does it do? Nobody knows. Triangle Man! Don't enable this if you want StableLM 2 to work, obviously.")
+    parser.add_argument("--adversarial-candidate-filter-regex", type=str, 
+        default=attack_params.candidate_filter_regex,
+        help="The regular expression used to filter candidate adversarial strings. The default value is very forgiving and simply requires that the string contain at least one occurrence of two consecutive mixed-case alphanumeric characters.")
+    
+    parser.add_argument("--adversarial-candidate-repetitive-line-limit", type=numeric_string_to_int,
+        help=f"If this value is specified, candidate adversarial strings will be filtered out if any one line is repeated more than this many times.")
+        
+    parser.add_argument("--adversarial-candidate-repetitive-token-limit", type=numeric_string_to_int,
+        help=f"If this value is specified, candidate adversarial strings will be filtered out if any one token is repeated more than this many times.")
+        
+    parser.add_argument("--adversarial-candidate-newline-limit", type=numeric_string_to_int,
+        help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain more than this number of newline characters.")
+        
+    parser.add_argument("--adversarial-candidate-newline-replacement", type=str, 
+        help="If this value is specified, it will be used to replace any newline characters in candidate adversarial strings. This can be useful if you want to avoid generating attacks that depend specifically on newline-based content, such as injecting different role names.")
+
+    parser.add_argument("--adversarial-candidate-filter-tokens-min", type=numeric_string_to_int,
+        help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain fewer than this number of tokens.")
+        
+    parser.add_argument("--adversarial-candidate-filter-tokens-max", type=numeric_string_to_int,
+        help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain more than this number of tokens.")
+
+    parser.add_argument("--attempt-to-keep-token-count-consistent", type=str2bool, nargs='?',
+        const=True, default=attack_params.attempt_to_keep_token_count_consistent,
+        help="Enable the check from the original authors' code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are generally much better options.")
 
     parser.add_argument("--generic-role-template", default=attack_params.generic_role_indicator_template, type=str, 
         help="The Python formatting string to use if fastchat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
@@ -910,8 +947,43 @@ if __name__=='__main__':
     
     attack_params.exclude_special_tokens = args.exclude_special_tokens
     
-    attack_params.use_magic_undocumented_length_comparison_filter = args.use_magic_undocumented_length_comparison_filter
-
+    attack_params.candidate_filter_regex = args.adversarial_candidate_filter_regex
+    
+    if args.adversarial_candidate_filter_tokens_min:
+        if args.adversarial_candidate_filter_tokens_min < 1:
+            print("--adversarial-candidate-filter-tokens-min must be a positive integer.")
+            sys.exit(1)
+        attack_params.candidate_filter_tokens_min = args.adversarial_candidate_filter_tokens_min
+    
+    if args.adversarial_candidate_filter_tokens_max:
+        if args.adversarial_candidate_filter_tokens_max < 1:
+            print("--adversarial-candidate-filter-tokens-min must be a positive integer.")
+            sys.exit(1)
+        attack_params.candidate_filter_tokens_max= args.adversarial_candidate_filter_tokens_max
+    
+    attack_params.attempt_to_keep_token_count_consistent = args.attempt_to_keep_token_count_consistent
+    
+    if args.adversarial_candidate_repetitive_line_limit:
+        if args.adversarial_candidate_repetitive_line_limit < 1:
+            print("--adversarial-candidate-repetitive-line-limit must be a positive integer.")
+            sys.exit(1)
+        attack_params.candidate_filter_repetitive_lines = args.adversarial_candidate_repetitive_line_limit
+        
+    if args.adversarial_candidate_repetitive_token_limit:
+        if args.adversarial_candidate_repetitive_token_limit < 1:
+            print("--adversarial-candidate-repetitive-token-limit must be a positive integer.")
+            sys.exit(1)
+        attack_params.candidate_filter_repetitive_tokens = args.adversarial_candidate_repetitive_token_limit
+    
+    if args.adversarial_candidate_newline_limit:
+        if args.adversarial_candidate_newline_limit < 0:
+            print("--adversarial-candidate-newline-limit must be an integer greater than or equal to 0.")
+            sys.exit(1)
+        attack_params.candidate_filter_newline_limit = args.adversarial_candidate_newline_limit
+    
+    if args.adversarial_candidate_newline_replacement:
+        attack_params.candidate_replace_newline_characters = args.adversarial_candidate_newline_replacement
+    
     attack_params.generic_role_indicator_template = args.generic_role_template
 
     attack_params.load_options_trust_remote_code = args.trust_remote_code

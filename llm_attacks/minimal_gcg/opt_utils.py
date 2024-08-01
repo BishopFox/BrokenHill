@@ -209,7 +209,7 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
 
     return new_control_toks
 
-def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive = 0, filter_newline_limit = None, replace_newline_characters = None, use_magic_undocumented_length_comparison_filter = False):
+def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive_tokens = None, filter_repetitive_lines = None, filter_newline_limit = None, replace_newline_characters = None, attempt_to_keep_token_count_consistent = False, candidate_filter_tokens_min = None, candidate_filter_tokens_max = None):
     cands, filtered_count = [], 0
     if control_cand is None:
         return cands
@@ -227,18 +227,31 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
             #print(f"[get_filtered_cands] Error: when calling get_decoded_token(tokenizer, control_cand[i]) with control_cand[i] = '{control_cand[i]}', decoded_tokens = '{decoded_tokens}': {e} - this may indicate an error in the attack code")            
         if decoded_str is not None:
             #print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
+            include_candidate = True
             if filter_cand:
                 include_candidate = False
                 #if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
                 if decoded_str != curr_control:
                     include_candidate = True
-                #if include_candidate:
-                #    temp_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
-                #    len_temp_input_ids = len(temp_input_ids)
-                #    len_control_cand_i = len(control_cand[i])
-                    #if len_temp_input_ids != len_control_cand_i:
-                        #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because an undocumented magic function depended on the length of its input_ids being equal to the length of '{control_cand[i]}', whereas in this case the first length was {len_temp_input_ids} and the second was {len_control_cand_i}.")
-                #        include_candidate = False
+                #else:
+                    #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because it was equivalent to the current control value '{curr_control}'.")
+                token_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+                if include_candidate:
+                    
+                    len_temp_input_ids = len(token_input_ids)
+                    len_control_cand_i = len(control_cand[i])
+                    if candidate_filter_tokens_min is not None:
+                        if len_temp_input_ids < candidate_filter_tokens_min:
+                            include_candidate = False
+                            #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was less than the minimum value specified ({candidate_filter_tokens_min}).")
+                    if candidate_filter_tokens_max is not None:
+                        if len_temp_input_ids > candidate_filter_tokens_max:
+                            include_candidate = False
+                            #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was greater than the maximum value specified ({candidate_filter_tokens_max}).")
+                    if attempt_to_keep_token_count_consistent:
+                        if len_temp_input_ids != len_control_cand_i:
+                            include_candidate = False
+                            #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was not equal to the length of '{control_cand[i]}' ({len_control_cand_i}).")
                 
                 if include_candidate:
                 
@@ -261,36 +274,52 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                         else:
                             include_candidate = False
                             #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the regular expression filter")
-                    if include_candidate and filter_repetitive is not None and filter_repetitive > 0:
+                    if include_candidate and filter_repetitive_tokens is not None and filter_repetitive_tokens > 0:
+                        token_counts = {}
+                        already_notified_tokens = []
+                        for c_token in token_input_ids:
+                            t_count = 1
+                            if c_token in token_counts:
+                                t_count = token_counts[c_token] + 1
+                                if t_count >= filter_repetitive_tokens:
+                                    include_candidate = False
+                                    if c_token not in already_notified_tokens:
+                                        already_notified_tokens.append(c_token)
+                                        #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected because it had more than {filter_repetitive_tokens} occurrences of the line '{c_token}'")
+                            token_counts[c_token] = t_count
+                        #if include_candidate:
+                        #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetitive line filter.")
+                    if include_candidate and filter_repetitive_lines is not None and filter_repetitive_lines > 0:
                         candidate_lines = decoded_str.splitlines()
                         token_counts = {}
+                        already_notified_tokens = []
                         for c_line in candidate_lines:
                             t_count = 1
                             if c_line in token_counts:
                                 t_count = token_counts[c_line] + 1
-                                if t_count >= filter_repetitive:
+                                if t_count >= filter_repetitive_lines:
                                     include_candidate = False
+                                    if c_line not in already_notified_tokens:
+                                        already_notified_tokens.append(c_line)
+                                        #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected because it had more than {filter_repetitive_lines} occurrences of the line '{c_line}'")
                             token_counts[c_line] = t_count
-                        #for unique_line in token_counts.keys():
-                            #if token_counts[unique_line] >= filter_repetitive:
-                                #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the repetition filter ({token_counts[unique_line]} occurrences of token '{unique_line}')")
                         #if include_candidate:
-                        #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetition filter")
-                #else:
-                #    print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was identical to the current control, or had the same number of tokens or something")
+                        #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetitive line filter.")
                         
-                if include_candidate:
-                    if replace_newline_characters is not None:
-                        decoded_str = decoded_str.replace("\n", replace_newline_characters)
-                    cands.append(decoded_str)
-                else:
-                    #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was filtered out")
-                    filtered_count += 1
-            else:
-                #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list")
+                
+            if include_candidate:
                 if replace_newline_characters is not None:
                     decoded_str = decoded_str.replace("\n", replace_newline_characters)
-                cands.append(decoded_str)
+                    decoded_str = decoded_str.replace("\r", replace_newline_characters)
+                if decoded_str in cands:
+                    dummy = 1
+                    #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was equivalent to another candidate.")
+                else:
+                    cands.append(decoded_str)
+                    #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list.")
+            else:
+                #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was filtered out.")
+                filtered_count += 1
 
     #print(f"[get_filtered_cands] Debug: control_cand = {control_cand}, cands = {cands}")
 
