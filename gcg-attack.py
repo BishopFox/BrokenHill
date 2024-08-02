@@ -227,7 +227,7 @@ class gcg_attack_params:
         
         # Quantization options
         #
-        # None of these work, and are unlikely to work for the forseeable future.
+        # None of these work, and are unlikely to work for the foreseeable future.
         # That's why none of these are exposed as command-line parameters.
         #
         # They're a remnant of the work I did early on to try to allow use of 
@@ -598,7 +598,7 @@ def main(attack_params):
         model = model.to(attack_params.conversion_dtype)
 
     if attack_params.quantization_dtype or attack_params.enable_static_quantization or attack_params.conversion_dtype:
-        print("Warning: you've enabled quantization and/or type conversion, which are unlikely to work for the forseeable future due to PyTorch limitations. Please see my comments in the source code for this tool.")
+        print("Warning: you've enabled quantization and/or type conversion, which are unlikely to work for the foreseeable future due to PyTorch limitations. Please see my comments in the source code for this tool.")
         if attack_params.display_model_size:
             quantized_model_size = get_model_size(model)
             size_factor = float(quantized_model_size) / float(original_model_size) * 100.0

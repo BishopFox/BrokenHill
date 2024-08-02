@@ -1,5 +1,7 @@
 # tested with wheel==0.43.0
 wheel
+# tested with torch==2.3.1
+torch
 #transformers==4.28.1
 # tested with transformers==4.42.4
 transformers
@@ -8,5 +10,12 @@ ml_collections
 #fschat==0.2.20
 # tested with fschat==0.2.36
 fschat
+# tested with psutil==6.0.0
+psutil
+# tested with pandas==2.2.2
+pandas
+# tested with accelerate==0.32.1
+accelerate
 # tested with flash_attn==2.6.3
+# probably need to comment this out for Mac OS
 flash_attn

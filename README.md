@@ -4,6 +4,8 @@ This is a **heavily** customized version of [the repository for "Universal and T
 
 Our original goal was to produce a tool that could perform the GCG attack on at least some popular models on a GeForce RTX 4090, which is the consumer GPU supported by CUDA with the most VRAM (24GiB). The version released by the paper's authors only supported a few models, and while they could fit into VRAM on an RTX 4090, it didn't leave enough memory available for the actual attack, because it would typically have been used on high-end hosting provider hardware with many times that amount of VRAM. A version that can run on consumer hardware makes it possible for many more people to explore this fascinating area of research.
 
+Note: this tool is only usable on CUDA (NVidia) hardware at this time.
+
 ## Introduction
 
 *"In the heart of Silicon Valley, elite tech companies have recently embarked on a daring new venture: training their AI models on unfiltered data from the deep, dark, and dangerous web – the cesspool that is the internet. [...] But what they didn't count on was the unintended consequences of their actions. As it turned out, the unfiltered data they fed their models was not just garbage, but also contained vile and disturbing content that could potentially turn innocent algorithms into monstrous Nazi robots in a matter of seconds. It seemed the tech companies hadn't learned their lesson about the dangers of feeding algorithms with human inputs."*
@@ -40,6 +42,18 @@ Our original goal was to produce a tool that could perform the GCG attack on at 
 	* StableLM 2
 * Filters and other controls to improve the results
 * A bunch of other stuff
+
+## FAQ
+
+### Can I run this using something other than an NVidia GPU?
+
+You can use the PyTorch `cpu` device if you really want to, but it will literally take hundreds of times longer to run, e.g. 2+ hours for a single iteration of the main loop.
+
+The `mps` (Metal for Mac OS) PyTorch back-end does not support some of the necessary features (e.g. nested tensors) yet, so using `--device mps` will cause the script to crash not long after loading the model.
+
+### Can I quantize the models to use less VRAM?
+
+No. The source code for this modified version is littered with my grumpy comments related to lack of support for quantized integer values in PyTorch for some of the features this tool depends upon.
 
 ## Setup
 
