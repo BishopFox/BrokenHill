@@ -49,7 +49,7 @@ Note: this tool is only usable on CUDA (NVidia) hardware at this time.
 
 You can use the PyTorch `cpu` device if you really want to, but it will literally take hundreds of times longer to run, e.g. 2+ hours for a single iteration of the main loop.
 
-The `mps` (Metal for Mac OS) PyTorch back-end does not support some of the necessary features (e.g. nested tensors) yet, so using `--device mps` will cause the script to crash not long after loading the model.
+[The `mps` (Metal for Mac OS) PyTorch back-end does not support some of the necessary features](https://github.com/pytorch/pytorch/issues/127743) ([e.g. nested tensors](https://github.com/pytorch/pytorch/blob/3855ac5a5d53fd4d2d6521744eaf80c2a95a4d54/aten/src/ATen/NestedTensorImpl.cpp#L183) yet, so using `--device mps` will cause the script to crash not long after loading the model.
 
 ### Can I quantize the models to use less VRAM?
 
