@@ -62,9 +62,9 @@ Clone the repository, then:
 ```
 $ python -m venv ./
 
-$ bin/pip install -r llm-attacks/requirements.txt
+$ bin/pip install -r llm-attacks-bf/requirements.txt
 
-$ bin/pip install ./llm-attacks/
+$ bin/pip install ./llm-attacks-bf/
 ```
 
 ## Use
