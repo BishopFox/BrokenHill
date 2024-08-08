@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.10"
-script_date = "2024-08-08"
+script_version = "0.11"
+script_date = "2024-08-09"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -31,6 +31,7 @@ import os
 import pathlib
 import psutil
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -46,6 +47,11 @@ from llm_attacks_bishopfox.minimal_gcg.string_utils import SuffixManager, load_c
 from llm_attacks_bishopfox import get_default_negative_test_strings, get_default_positive_test_strings, get_nonascii_token_list, get_token_list_as_tensor, get_token_denylist, get_embedding_layer
 from torch.quantization import quantize_dynamic
 from torch.quantization.qconfig import float_qparams_weight_only_qconfig
+
+# for debugging
+class FakeException(Exception):
+    def __init__(self):
+        self.name = "Fake"
 
 # Default values defined in this class
 
@@ -296,6 +302,7 @@ class gcg_attack_params:
         #self.full_decoding_max_new_tokens = 1024
 
         # output options
+        self.overwrite_output = False
         self.json_output_file = None
 
         
@@ -606,7 +613,7 @@ def check_for_attack_success(attack_params, model, tokenizer, input_ids, assista
     if jailbroken and not attack_params.jailbreak_minimum_sequential_letters_regex.search(gen_str):
         jailbroken = False
     #print(f"Jailbroken: {jailbroken} for generated string '{gen_str}'")
-    return jailbroken
+    return jailbroken, gen_str, generated_tokens
 
 # def get_input_ids_for_generation(attack_params, model, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
     # #print(f"[get_input_ids_for_generation] Debug: getting input IDs from '{input_ids}'")
@@ -696,9 +703,29 @@ def get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager
 # write content to a temporary file first, then delete any existing output file, then move the temporary file to the output file location
 # Prevents overwriting a complete output file with partial output in the event of a crash
 def safely_write_text_output_file(file_path, content, file_mode = "w"):
-    temporary_path = tempfile.mktemp()
-    temporary_path_object = Path(temporary_path)
-    file_path_object = Path(file_path)
+    file_directory_path = os.path.dirname(file_path)
+    if not os.path.isdir(file_directory_path):
+        err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist."
+        raise Exception(err_message)
+    # thanks for deprecating mktemp, Python devs!
+    temporary_path = None
+    try:
+        born_2_lose, temporary_path = tempfile.mkstemp(dir = file_directory_path)
+        os.close(born_2_lose)
+    except Exception as e:
+        err_message = f"Couldn't create a temporary file in '{file_directory_path}': {e}"
+        raise Exception(err_message)
+    temporary_path_object = pathlib.Path(temporary_path)
+    file_path_object = pathlib.Path(file_path)
+    # if append mode, copy the existing file to the temporary location first
+    if file_mode == "a":
+        if os.path.isfile(file_path):
+            try:
+                # of course pathlib doesn't have a copy method
+                shutil.copy(file_path, temporary_path)
+            except Exception as e:
+                err_message = f"Couldn't copy the existing file '{file_path}' to the temporary path '{temporary_path}': {e}"
+                raise Exception(err_message)
     successful_write = False
     try:
         with open(temporary_path, file_mode) as output_file:
@@ -908,6 +935,8 @@ def main(attack_params):
                     #print_stats()
                     
                     is_success = False
+                    current_check_string = None
+                    current_check_token_ids = None
                     
                     # Step 3. Sample a batch of new tokens based on the coordinate gradient.
                     # Notice that we only need the one that minimizes the loss.
@@ -1003,7 +1032,7 @@ def main(attack_params):
                         #print(f"[main - checking for success] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
                         is_success_input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
                         is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
-                        is_success = check_for_attack_success(attack_params, model, 
+                        is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
                                                  tokenizer,
                                                  is_success_input_ids, 
                                                  is_success_input_id_data.slice_data.assistant_role, 
@@ -1014,11 +1043,23 @@ def main(attack_params):
                     #plotlosses.update({'Loss': current_loss.detach().cpu().numpy()})
                     #plotlosses.send() 
                     
-                    print(f"Jailbroken: {jailbroken} for generated string '{gen_str}'")
-                    current_loss_display_value = current_loss.detach().cpu().numpy()
+                    current_loss_display_value = f"{current_loss.detach().cpu().numpy()}"
                     print(f"Loss: {current_loss_display_value}")
-                    print(f"Passed:{is_success}\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
-                    
+                    print(f"Jailbroken: {is_success} for generated string '{current_check_string}'\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
+                    #print(f"Passed:{is_success}\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
+                    json_data_current_iteration = {}
+                    if attack_params.json_output_file is not None:
+                        json_data_current_iteration["date_time_utc"] = get_time_string()
+                        json_data_current_iteration["jailbreak_detected"] = is_success
+                        json_data_current_iteration["loss"] = current_loss_display_value
+                        json_data_current_iteration["jailbreak_check_output_string"] = current_check_string
+                        is_success_input_ids_list = is_success_input_ids.tolist()
+                        json_data_current_iteration["jailbreak_check_input_token_ids"] = is_success_input_ids_list
+                        json_data_current_iteration["jailbreak_check_input_tokens"] = get_decoded_tokens(tokenizer, is_success_input_ids_list)
+                        current_check_token_ids_list = current_check_token_ids.tolist()
+                        json_data_current_iteration["jailbreak_check_generation_token_ids"] = current_check_token_ids_list
+                        json_data_current_iteration["jailbreak_check_generation_tokens"] = get_decoded_tokens(tokenizer, current_check_token_ids_list)
+                            
                     if is_success or attack_params.display_full_failed_output:
                         #current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
                         full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string)
@@ -1027,25 +1068,31 @@ def main(attack_params):
                         current_string = f"Current input: '{decoded_input}'\n\nCurrent output: '{decoded_output}'"
                         print(current_string)
                         if attack_params.json_output_file is not None:
-                            json_data_current_iteration = {}
-                            json_data_current_iteration["jailbreak_detected"] = jailbroken
-                            json_data_current_iteration["loss"] = current_loss_display_value
                             json_data_current_iteration["full_test_token_ids"] = full_input_token_ids
-                            json_data_current_iteration["full_generation_token_ids"] = full_generation_token_ids
-                            json_data_current_iteration["input_token_ids"] = generation_input_token_ids
-                            json_data_current_iteration["output_token_ids"] = output_token_ids
+                            #json_data_current_iteration["full_generation_token_ids"] = full_generation_token_ids
+                            full_generation_token_ids_list = full_generation_token_ids.tolist()
+                            json_data_current_iteration["full_generation_token_ids"] = full_generation_token_ids_list
+                            #json_data_current_iteration["input_token_ids"] = generation_input_token_ids]
+                            generation_input_token_ids_list = generation_input_token_ids.tolist()
+                            json_data_current_iteration["input_token_ids"] = generation_input_token_ids_list
+                            #json_data_current_iteration["output_token_ids"] = output_token_ids
+                            output_token_ids_list = output_token_ids.tolist()
+                            json_data_current_iteration["output_token_ids"] = output_token_ids_list
                             json_data_current_iteration["decoded_full_test_tokens"] = get_decoded_tokens(tokenizer, full_input_token_ids)
                             json_data_current_iteration["decoded_full_generation_tokens"] = get_decoded_tokens(tokenizer, full_generation_token_ids)
                             json_data_current_iteration["decoded_input_tokens"] = get_decoded_tokens(tokenizer, generation_input_token_ids)
                             json_data_current_iteration["decoded_output_token_ids"] = get_decoded_tokens(tokenizer, output_token_ids)
                             json_data_current_iteration["input_string"] = decoded_input
                             json_data_current_iteration["output_string"] = decoded_output
-                            json_data.append(json_data_current_iteration)
-                            safely_write_output_file(attack_params.json_output_file, json.dumps(json_data))
+                            
                         if is_success:
                             successful_attacks.append(current_string)
                             if attack_params.break_on_success:
                                 break
+                    
+                    if attack_params.json_output_file is not None:
+                        json_data.append(json_data_current_iteration)
+                        safely_write_text_output_file(attack_params.json_output_file, json.dumps(json_data))
                     
                     # (Optional) Clean up the cache.
                     print(f"Cleaning up the cache")
@@ -1269,14 +1316,14 @@ if __name__=='__main__':
         help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
     parser.add_argument("--json-output-file", type=str,
         help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
+    parser.add_argument("--overwrite-output", type=str2bool, nargs='?',
+        const=True,
+        help="Overwrite any existing output files (--json-output-file, etc.).")
 
     # TKTK: option to export attack_params as JSON or joad it as JSON
     # TKTK: ability to customize the positive and negative test strings
     # Related TKTK: ability to specify positive/negative test rules after 
     #       implementing the rule engine instead of positive/negative lists
-    # TKTK: ability to have the script output structured data file(s) 
-    #       containing each input, output, and jailbreak detection result 
-    #       to make it easier to use the output in other tools
 
     args = parser.parse_args()
 
@@ -1350,6 +1397,9 @@ if __name__=='__main__':
         
     if args.target_output:
         attack_params.target_output = args.target_output
+
+    if args.overwrite_output:
+        attack_params.overwrite_output = True
 
     attack_params.topk = args.topk
 
@@ -1486,6 +1536,21 @@ if __name__=='__main__':
                     if et not in attack_params.not_allowed_token_list:
                         attack_params.not_allowed_token_list.append(et)
 
+    if args.json_output_file:
+        attack_params.json_output_file = os.path.abspath(args.json_output_file)
+        # test output ability now so that the user doesn't have to wait to find out that it will fail
+        if os.path.isfile(attack_params.json_output_file):
+            if attack_params.overwrite_output:
+                print(f"Warning: overwriting JSON output file '{attack_params.json_output_file}'")
+            else:
+                print(f"Error: the JSON output file '{attack_params.json_output_file}' already exists. Specify --overwrite-output to replace it.")
+                sys.exit(1)
+        try:
+            safely_write_text_output_file(attack_params.json_output_file, "")
+        #except Exception as e:
+        except Exception as e:
+            print(f"Could not validate the ability to write to the file '{attack_params.json_output_file}': {e}")
+            sys.exit(1)
     
     main(attack_params)
     

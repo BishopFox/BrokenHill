@@ -43,6 +43,10 @@ Note: this tool is only usable on CUDA (NVidia) hardware at this time.
 * Filters and other controls to improve the results
 * A bunch of other stuff
 
+## Observations on using the tool
+
+[This information was getting lengthy, so it's been moved to a separate file](Observations.md). However, you should familiarize yourself with the content, because it's very easy to waste a lot of time on rabbit holes with few real-world applications.
+
 ## FAQ
 
 ### Can I run this using something other than an NVidia GPU?

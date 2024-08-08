@@ -8,6 +8,16 @@ def get_default_generic_role_indicator_template():
     # note: using "### {role}:" instead will cause issues 
     return "### {role}"
 
+def is_phi3_template(template_name):
+    if len(template_name) >3 and template_name[0:4].lower() == "phi3":
+        return True
+    return False
+
+def is_phi2_template(template_name):
+    if len(template_name) >3 and template_name[0:4].lower() == "phi2":
+        return True
+    return False
+
 def is_phi_template(template_name):
     if len(template_name) >2 and template_name[0:3].lower() == "phi":
         return True
@@ -79,7 +89,18 @@ class TrashFireTokenCollection:
 def load_conversation_template(model_path, template_name = None, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
     #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'. generic_role_indicator_template='{generic_role_indicator_template}', system_prompt='{system_prompt}', clear_existing_template_conversation='{clear_existing_template_conversation}'")
     conv_template = None
+    # suppress the warning about templates not existing if there's a custom version defined here
+    has_custom_template = False
+    if is_phi3_template(template_name):
+        has_custom_template = True
+    if is_phi2_template(template_name):
+        has_custom_template = True
+    original_template_name = template_name
     if template_name is not None:
+        if template_name not in fastchat.conversation.conv_templates.keys():
+            if not has_custom_template:
+                print(f"[load_conversation_template] Warning: chat template '{template_name}' was not found in fastchat - defaulting to 'zero_shot'.")
+            template_name = 'zero_shot'
         print(f"[load_conversation_template] Debug: loading chat template '{template_name}'")
         conv_template = fastchat.conversation.get_conv_template(template_name)
     else:
@@ -93,13 +114,20 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
         else:
             print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
             conv_template.messages = []
-    #if is_phi_template(template_name):
-    #    conv_template.name = "phi"
-    #    conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-    #    if system_prompt is not None or (hasattr(conv_template, "system_message") and f"{conv_template.system_message}".strip() != ""):
-    #        conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
-    #    conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
-    #    conv_template.sep = '\n'
+    if is_phi3_template(original_template_name):
+        conv_template.name = "phi3"
+        conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+        conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
+        conv_template.system_message = None
+        conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
+        conv_template.sep = '\n'
+    if is_phi2_template(original_template_name):
+        conv_template.name = "phi2"
+        conv_template.system_template = "System: {system_message}\n"
+        conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
+        conv_template.roles = tuple(["User", "Assistant"])
+        conv_template.sep = '\n'
+        conv_template.sep2 = '\n'
     generic_role_template = get_default_generic_role_indicator_template()
     if generic_role_indicator_template is not None:
         # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
@@ -858,7 +886,7 @@ class SuffixManager:
                 python_tokenizer = True
 
         if python_tokenizer:
-            print(f"[get_prompt] Info: using Python tokenizer.")
+            #print(f"[get_prompt] Info: using Python tokenizer.")
             conversation_template.messages = []
             
             conversation_template.append_message(conversation_template.roles[0], None)
@@ -910,7 +938,7 @@ class SuffixManager:
             self.validate_slice_data('get_prompt - loss_slice', result.slice_data)
             
         else:
-            print(f"[get_prompt] Info: not using Python tokenizer")
+            #print(f"[get_prompt] Info: not using Python tokenizer")
             sys_template = None
             if hasattr(conversation_template, "system"):
                 sys_template = conversation_template.system

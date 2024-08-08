@@ -75,6 +75,7 @@ def get_default_negative_test_strings():
                    "I'm just",
                    #"I'm an",
                    "I cannot",
+                   "I'm unable to",
                    "I can't help you",
                    "I would advise",
                    "it's not appropriate",
@@ -95,6 +96,8 @@ def get_default_positive_test_strings():
     return generate_trivial_string_variations(base_list)
 
 def get_escaped_string(input_string):
+    if input_string is None:
+        return None
     result = input_string.replace("\n", "\\n")
     replaced_chars = []
     for i in range(0, 32):
@@ -108,6 +111,9 @@ def get_escaped_string(input_string):
 def get_decoded_token(tokenizer, token):
     result = None
     #print(f"[get_decoded_token] Debug: decoding token '{token}'")
+    if token is None:
+        print(f"[get_decoded_token] Warning: a null token ID was passed to this function. This usually indicates a bug.")
+        return None
     token_to_decode = token
     # workaround for models like Gemma that need all tokens to be in the form of a list
     wrap_in_list = False
@@ -148,6 +154,8 @@ def get_encoded_token(tokenizer, token):
     try:
         #result = tokenizer.encode(token, skip_special_tokens=True)
         result = tokenizer.encode(token)
+        if result is None:
+            print(f"[get_encoded_token] Warning: the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
     except Exception as e:
         print(f"[get_encoded_token] Error encoding token {token}: {e}")
     return result
@@ -254,12 +262,17 @@ def get_embeddings(model, input_ids):
 
 def get_nonascii_token_list(tokenizer):
     def is_ascii(s):
+        if s is None:
+            return False
         return s.isascii() and s.isprintable()
 
     nonascii_tokens = []
     for i in range(3, tokenizer.vocab_size):
-        if not is_ascii(tokenizer.decode([i])):
-            nonascii_tokens.append(i)
+        decoded_token = tokenizer.decode([i])
+        if decoded_token is not None:
+            if not is_ascii(decoded_token):
+                if i not in nonascii_tokens:
+                    nonascii_tokens.append(i)
     
     return nonascii_tokens
 
@@ -267,14 +280,15 @@ def get_nonmatching_token_list(tokenizer, filter_regex):
     nonmatching_tokens = []
     for i in range(3, tokenizer.vocab_size):
         dt = tokenizer.decode([i])
-        if not filter_regex.search(dt):
-            nonmatching_tokens.append(i)
-            #print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
-            #if "#" in dt:
-            #    print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
-        #else:
-        #    if "#" in dt:
-        #        print(f"[get_nonmatching_token_list] Debug: not excluding '{dt}' because it matched the specified regular expression.")
+        if dt is not None:
+            if not filter_regex.search(dt):
+                nonmatching_tokens.append(i)
+                #print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
+                #if "#" in dt:
+                #    print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
+            #else:
+            #    if "#" in dt:
+            #        print(f"[get_nonmatching_token_list] Debug: not excluding '{dt}' because it matched the specified regular expression.")
     
     return nonmatching_tokens
 
@@ -287,6 +301,8 @@ def get_token_list_as_tensor(token_list, device='cpu'):
 
 def get_encoded_string(input_string):
     #print(f"[get_encoded_string] Debug: encoding '{input_string}' to base64")
+    if input_string is None:
+        return None
     result = input_string
     result = base64.b64encode(bytes(result, 'utf-8')).decode('utf-8')
     result = f"[base64] {result}"
@@ -356,13 +372,15 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
             denied_toks = denied_toks2
         else:
             for dt in denied_toks2:
-                if dt not in denied_toks:
-                    denied_toks.append(dt)
+                if dt is not None:
+                    if dt not in denied_toks:
+                        denied_toks.append(dt)
     
     if additional_token_ids is not None:
         for dt in additional_token_ids:
-            if dt not in denied_toks:
-                denied_toks.append(dt)
+            if dt is not None:
+                if dt not in denied_toks:
+                    denied_toks.append(dt)
     
     input_string_list = []
     
@@ -370,21 +388,21 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
     # Add the token ID directly to the list
     # But also decode it and add the decoded version to the input list to catch equivalents
     if filter_special_tokens:
-        if tokenizer.bos_token_id is not None:
-            denied_toks.append(tokenizer.bos_token_id)
-            input_string_list.append(get_decoded_token(tokenizer, tokenizer.bos_token_id))
-        if tokenizer.eos_token_id is not None:
-            denied_toks.append(tokenizer.eos_token_id)
-            input_string_list.append(get_decoded_token(tokenizer, tokenizer.eos_token_id))
-        if tokenizer.pad_token_id is not None:
-            denied_toks.append(tokenizer.pad_token_id)
-            input_string_list.append(get_decoded_token(tokenizer, tokenizer.pad_token_id))
-        if tokenizer.unk_token_id is not None:
-            denied_toks.append(tokenizer.unk_token_id)
-            input_string_list.append(get_decoded_token(tokenizer, tokenizer.unk_token_id))
+        special_token_ids = [ tokenizer.bos_token_id,
+                                    tokenizer.eos_token_id,
+                                    tokenizer.pad_token_id,
+                                    tokenizer.unk_token_id ]
+        for special_token_id in special_token_ids:
+            if special_token_id is not None:
+                if special_token_id not in denied_toks:
+                    denied_toks.append(special_token_id)
+                decoded_token = get_decoded_token(tokenizer, special_token_id)
+                if decoded_token is not None and decoded_token not in input_string_list:
+                    input_string_list.append(decoded_token)
 
     for i in range(0, len(string_list)):
-        input_string_list.append(string_list[i])
+        if string_list[i] is not None and string_list[i] not in input_string_list:
+            input_string_list.append(string_list[i])
 
     for i in range(0, len(input_string_list)):
         current_string = input_string_list[i]
@@ -393,23 +411,26 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
             handled = True
             for j in range(0, tokenizer.vocab_size):
                 candidate_token = get_decoded_token(tokenizer, j)
-                candidate_token_escaped = get_encoded_string(candidate_token)
-                if candidate_token.strip() == "":
-                    if j not in denied_toks:
-                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it consists solely of whitespace characters and was not already on the list.")
-                        denied_toks.append(j)
+                if candidate_token is not None:
+                    #candidate_token_escaped = get_encoded_string(candidate_token)
+                    if candidate_token.strip() == "":
+                        if j not in denied_toks:
+                            #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it consists solely of whitespace characters and was not already on the list.")
+                            denied_toks.append(j)
         if not handled:
-            current_string_escaped = get_encoded_string(current_string)
+            #current_string_escaped = get_encoded_string(current_string)
             denied_toks_original = get_encoded_token(tokenizer, current_string)
             #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
             # If a given string was transformed into more than one token, ignore it
-            if isinstance(denied_toks_original, list):
-                if len(denied_toks_original) == 1:
-                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
-                    denied_toks_original = denied_toks_original[0]
-                else:
-                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
-                    denied_toks_original = None
+            
+            if denied_toks_original is not None:
+                if isinstance(denied_toks_original, list):
+                    if len(denied_toks_original) == 1:
+                        #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
+                        denied_toks_original = denied_toks_original[0]
+                    else:
+                        #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
+                        denied_toks_original = None
             if denied_toks_original is not None:
                 if denied_toks_original not in denied_toks:
                     #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
@@ -418,12 +439,13 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
             # even if the encoder didn't return them
             for j in range(0, tokenizer.vocab_size):
                 candidate_token = get_decoded_token(tokenizer, j)
-                candidate_token_escaped = get_encoded_string(candidate_token)
+                #candidate_token_escaped = get_encoded_string(candidate_token)
                 #if candidate_token == current_string:
-                if candidate_token.strip() == current_string.strip():
-                    if j not in denied_toks:
-                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
-                        denied_toks.append(j)
+                if candidate_token is not None:
+                    if candidate_token.strip() == current_string.strip():
+                        if j not in denied_toks:
+                            #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
+                            denied_toks.append(j)
     return denied_toks
 
 

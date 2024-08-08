@@ -29,8 +29,8 @@ with open('requirements.txt', 'r') as requirements:
           packages=find_packages(),
           description='library for creating adversarial prompts for language models',
           python_requires='>=3.6',
-          author='Andy Zou, Zifan Wang, Matt Fredrikson, J. Zico Kolter',
-          author_email='jzou4@andrew.cmu.edu',
+          author='Andy Zou, Zifan Wang, Matt Fredrikson, J. Zico Kolter, Ben Lincoln',
+          #author_email='jzou4@andrew.cmu.edu',
           classifiers=[
               'Programming Language :: Python :: 3',
               'License :: OSI Approved :: MIT License',
