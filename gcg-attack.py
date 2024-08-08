@@ -1,7 +1,8 @@
 #!/bin/env python3
 
-script_version = "0.9"
-script_date = "2024-08-02"
+script_name = "gcg-attack.py"
+script_version = "0.10"
+script_date = "2024-08-08"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -23,9 +24,11 @@ import argparse
 import datetime
 import fastchat.conversation as fcc
 import gc
+import json
 import math
 import numpy as np
 import os
+import pathlib
 import psutil
 import re
 import sys
@@ -36,11 +39,11 @@ import torch.nn as nn
 import torch.quantization as tq
 import traceback
 
-from llm_attacks.minimal_gcg.opt_utils import token_gradients, sample_control, get_logits, target_loss
-from llm_attacks.minimal_gcg.opt_utils import load_model_and_tokenizer, get_filtered_cands
-from llm_attacks.minimal_gcg.opt_utils import get_decoded_token, get_decoded_tokens
-from llm_attacks.minimal_gcg.string_utils import SuffixManager, load_conversation_template, get_default_generic_role_indicator_template
-from llm_attacks import get_default_negative_test_strings, get_default_positive_test_strings, get_nonascii_token_list, get_token_list_as_tensor, get_token_denylist, get_embedding_layer
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients, sample_control, get_logits, target_loss
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer, get_filtered_cands
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_decoded_token, get_decoded_tokens, get_missing_pad_token_names
+from llm_attacks_bishopfox.minimal_gcg.string_utils import SuffixManager, load_conversation_template, get_default_generic_role_indicator_template
+from llm_attacks_bishopfox import get_default_negative_test_strings, get_default_positive_test_strings, get_nonascii_token_list, get_token_list_as_tensor, get_token_denylist, get_embedding_layer
 from torch.quantization import quantize_dynamic
 from torch.quantization.qconfig import float_qparams_weight_only_qconfig
 
@@ -52,23 +55,36 @@ class gcg_attack_params:
         self.base_prompt = f"Write {autotarget_string}."
         self.target_output =  f"Sure, here's {autotarget_string}"
     
+    def set_conversation_template_messages(self, message_list):
+        self.conversation_template_messages = []
+        # validate that the data is more or less as expected
+        if not isinstance(message_list, list):
+            raise Exception("The conversation message data '{message_list}' was not in the form of a list.")
+        for i in range(0, len(message_list)):
+            message_data = message_list[i]
+            if not isinstance(message_data, list):
+                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
+            if len(message_data) != 2:
+                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
+            self.conversation_template_messages.append(message_data)
+    
     def get_known_template_names(self):
         result = [
-            #'gemma', # maps to one_shot
+            'gemma',
             'gpt2',
             'gpt-j',
             'gpt-neo',
             'llama-2',
             #'mamba',
             'one_shot',
-            'opt',
+            #'opt',
             #'phi',
             #'phi3',
-            'pythia',
+            #'pythia',
             'qwen',
             'stablelm',
-            't5',   # Use 't5' for fastchat-t5, flan-t5, and other derivatives
-            'vicuna'#,
+            #'t5',   # Use 't5' for fastchat-t5, flan-t5, and other derivatives
+            'vicuna',
             'zero_shot'
             ]
         result.sort()
@@ -77,12 +93,38 @@ class gcg_attack_params:
     def get_candidate_filter_regex(self):
         return re.compile(self.candidate_filter_regex)
 
+    def get_token_filter_regex(self):
+        if self.token_filter_regex is None:
+            return None
+        return re.compile(self.token_filter_regex)
+
     def __init__(self):
         self.device = 'cuda'
+        
+        # back-end to use if CUDA is not available
+        self.device_fallback = 'cpu'
 
         self.model_path = None
+
+        # If this value is not None, load the tokenizer from a separate path 
+        # For models such as e.g. Mamba that don't include their own tokenizer
+        self.tokenizer_path = None
         
         self.template_name = None
+        
+        # Replace any existing system prompt in the conversation template with this custom content
+        self.custom_system_prompt = None
+        
+        # Clear any existing messages in the conversation template
+        self.clear_existing_template_conversation = False
+        
+        # Add these messages to the conversation template
+        # If not None, this should be a list.
+        # Each entry is a 2-entry list of <role>, <text>
+        # If <role> is an integer, the script will replace it with the role name for the template
+        # If <role> is a string, it will be used unchanged, which may cause issues for some templates or models
+        self.template_messages_from_file_example = "[[0, \"Do you have any albums by Cindergarden or Mari Kattman?\"], [1, \"We have albums by both artists in stock!\"]] or [[\"Human\", \"Do you have any albums by The Birthday Massacre or Night Club?\"], [\"Assistant\", \"We have albums by both artists in stock!\"]]"
+        self.conversation_template_messages = None
 
         # Maximum number of times to run the main loop before exiting
         # This was 500 in the original version, which would take over an hour
@@ -103,6 +145,12 @@ class gcg_attack_params:
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
         self.force_python_tokenizer = False
+        
+        # enable some hardcoded tokenizer workarounds implemented by the original developers
+        self.enable_hardcoded_tokenizer_workarounds = False
+
+        # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
+        self.missing_pad_token_replacement = None
 
         # Options that control detection of a successful jailbreak
         #
@@ -150,6 +198,9 @@ class gcg_attack_params:
             
             # filter out special tokens
             self.exclude_special_tokens = False
+            
+            # If specified, exclude tokens that don't match the following pattern
+            self.token_filter_regex = None
             
             # Filtering out other values can sometimes help prevent the script from focusing 
             # on attacks that are easily detectable as unusual, but also potentially 
@@ -202,7 +253,8 @@ class gcg_attack_params:
 
         # The formatting string for roles when a model uses one of the generic fastchat templates 
         # (one_shot, zero_shot, etc.)
-        self.generic_role_indicator_template = get_default_generic_role_indicator_template()
+        #self.generic_role_indicator_template = get_default_generic_role_indicator_template()
+        self.generic_role_indicator_template = None
 
         # Options that are necessary for some models to load without erroring out
         # trust_remote_code=True is currently necessary for Phi-3
@@ -243,6 +295,15 @@ class gcg_attack_params:
         self.full_decoding_max_new_tokens = 16384
         #self.full_decoding_max_new_tokens = 1024
 
+        # output options
+        self.json_output_file = None
+
+        
+        # TKTK: option to generate a dynamically-quantized version of the model and also check results against it, because quantized models seem much less susceptible to this type of attack.
+        # As noted below in the "Quantization options" section, the attack itself cannot be performed (at least using PyTorch) against an integer-based model - it must be floating point.
+        # However, the attack could be performed on the floating-point model, and each adversarial result checked against the floating-point and quantized models at each iteration.
+        # Alternatively, maybe it would make sense to have the quantized testing performed using the Python Ollama library, because Ollama supports many more quantization formats than PyTorch.
+        
         
         
         # Quantization options
@@ -280,6 +341,18 @@ class gcg_attack_params:
         # Using integer values doesn't work with the llm-attacks code
         #self.conversion_dtype = torch.uint8
         self.conversion_dtype = None
+
+def get_file_content(file_path, failure_is_critical = True):
+    result = None
+    try:
+        with open(file_path) as input_file:
+            result = input_file.read()        
+    except Exception as e:
+        print(f"Couldn't read the file '{file_path}': {e}")
+        if failure_is_critical:
+            sys.exit(1)
+        result = None
+    return result
 
 def numeric_string_to_int(s):
     result = -1
@@ -489,10 +562,6 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
          
     return effective_value
 
-# def generate(attack_params, model, tokenizer, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
-    # output_ids = generate_output_ids(attack_params, model, tokenizer, input_ids, assistant_role_slice, gen_config=gen_config, include_assistant_role_slice = include_assistant_role_slice)
-    # result = output_ids[assistant_role_slice.stop:]
-    # return result
 def generate(attack_params,model, tokenizer, input_ids, assistant_role_slice, gen_config=None):
     if gen_config is None:
         gen_config = model.generation_config
@@ -536,37 +605,38 @@ def check_for_attack_success(attack_params, model, tokenizer, input_ids, assista
     # Additional checks to filter out garbage
     if jailbroken and not attack_params.jailbreak_minimum_sequential_letters_regex.search(gen_str):
         jailbroken = False
-    print(f"Jailbroken: {jailbroken} for generated string '{gen_str}'")
+    #print(f"Jailbroken: {jailbroken} for generated string '{gen_str}'")
     return jailbroken
 
-def get_input_ids_for_generation(attack_params, model, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
-    #print(f"[get_input_ids_for_generation] Debug: getting input IDs from '{input_ids}'")
-    if include_assistant_role_slice:    
-        input_ids = input_ids[:assistant_role_slice.stop].to(model.device).unsqueeze(0)
-        #print(f"[get_input_ids_for_generation] Debug: returning '{input_ids}' because assistant_role_slice.stop is {assistant_role_slice.stop}")
-    else:
-        input_ids = input_ids[:assistant_role_slice.start].to(model.device).unsqueeze(0)
-        #print(f"[get_input_ids_for_generation] Debug: returning '{input_ids}' because assistant_role_slice.start is {assistant_role_slice.start}")
-    return input_ids
+# def get_input_ids_for_generation(attack_params, model, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
+    # #print(f"[get_input_ids_for_generation] Debug: getting input IDs from '{input_ids}'")
+    # if include_assistant_role_slice:    
+        # input_ids = input_ids[:assistant_role_slice.stop].to(model.device).unsqueeze(0)
+        # #print(f"[get_input_ids_for_generation] Debug: returning '{input_ids}' because assistant_role_slice.stop is {assistant_role_slice.stop}")
+    # else:
+        # input_ids = input_ids[:assistant_role_slice.start].to(model.device).unsqueeze(0)
+        # #print(f"[get_input_ids_for_generation] Debug: returning '{input_ids}' because assistant_role_slice.start is {assistant_role_slice.start}")
+    # return input_ids
 
-def generate_output_ids(attack_params, model, tokenizer, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
-    if gen_config is None:
-        gen_config = model.generation_config
-        gen_config.max_new_tokens = attack_params.generation_max_new_tokens
-    input_ids = get_input_ids_for_generation(attack_params, model, input_ids, assistant_role_slice, gen_config=gen_config, include_assistant_role_slice = include_assistant_role_slice)
+# def generate_output_ids(attack_params, model, tokenizer, input_ids, assistant_role_slice, gen_config=None, include_assistant_role_slice = True):
+    # if gen_config is None:
+        # gen_config = model.generation_config
+        # gen_config.max_new_tokens = attack_params.generation_max_new_tokens
+    # input_ids = get_input_ids_for_generation(attack_params, model, input_ids, assistant_role_slice, gen_config=gen_config, include_assistant_role_slice = include_assistant_role_slice)
     
-    attn_masks = torch.ones_like(input_ids).to(model.device)
-    output_ids = model.generate(input_ids, 
-                                attention_mask=attn_masks, 
-                                generation_config=gen_config,
-                                pad_token_id=tokenizer.pad_token_id)[0]
-    return output_ids
+    # attn_masks = torch.ones_like(input_ids).to(model.device)
+    # output_ids = model.generate(input_ids, 
+                                # attention_mask=attn_masks, 
+                                # generation_config=gen_config,
+                                # pad_token_id=tokenizer.pad_token_id)[0]
+    # return output_ids
 
-def get_current_input_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, gen_config=None):
-    input_ids = suffix_manager.get_input_ids(adv_string=adversarial_string)
-    generation_input_ids = get_input_ids_for_generation(attack_params, model, input_ids, suffix_manager._assistant_role_slice, gen_config=gen_config, include_assistant_role_slice = False)
-    #print(f"[get_current_input_tokens] Debug: generation_input_ids = '{generation_input_ids}'")
-    return generation_input_ids[suffix_manager._goal_slice.start:suffix_manager._goal_slice.stop + 1]
+# def get_current_input_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, gen_config=None):
+    # input_ids = suffix_manager.get_input_ids(adv_string=adversarial_string)
+    # generation_input_ids = get_input_ids_for_generation(attack_params, model, input_ids, suffix_manager._assistant_role_slice, gen_config=gen_config, include_assistant_role_slice = False)
+    # #print(f"[get_current_input_tokens] Debug: generation_input_ids = '{generation_input_ids}'")
+    # #return generation_input_ids[suffix_manager._goal_slice.start:suffix_manager._goal_slice.stop + 1]
+    # return generation_input_ids[suffix_manager._goal_slice.start:suffix_manager._control_slice.stop + 1]
 
 
 def get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string):
@@ -574,25 +644,97 @@ def get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_
     current_max_new_tokens = gen_config.max_new_tokens
     gen_config.max_new_tokens = attack_params.full_decoding_max_new_tokens
 
-    input_ids = suffix_manager.get_input_ids(adv_string=adversarial_string).to(attack_params.device)
-    input_ids = input_ids[:suffix_manager._assistant_role_slice.stop].to(model.device).unsqueeze(0)
-    attn_masks = torch.ones_like(input_ids).to(model.device)
-    output_ids = model.generate(input_ids, 
+    #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, update_self_values = False).to(attack_params.device)
+    #print(f"[get_current_input_and_output_tokens] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
+    input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
+    #input_ids = input_ids[:input_id_data.slice_data.assistant_role.stop].to(model.device).unsqueeze(0)
+    input_ids_sliced = input_ids[:input_id_data.slice_data.assistant_role.stop]
+    input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
+    attn_masks = torch.ones_like(input_ids_converted).to(model.device)
+    output_ids = model.generate(input_ids_converted, 
                                 attention_mask=attn_masks, 
                                 generation_config=gen_config,
                                 pad_token_id=tokenizer.pad_token_id)[0]
 
     #input_tokens = output_ids[suffix_manager._goal_slice.start:suffix_manager._goal_slice.stop]
-    input_tokens = output_ids[suffix_manager._goal_slice.start:(suffix_manager._assistant_role_slice.start - 1)]
-    output_tokens = output_ids[suffix_manager._assistant_role_slice.stop:]
-    return input_tokens, output_tokens
+    #input_tokens = output_ids[suffix_manager._goal_slice.start:suffix_manager._control_slice.stop]
+    #output_tokens_all_decoded = get_decoded_tokens(tokenizer, output_ids)
+    #print(f"[get_current_input_and_output_tokens] Debug: output_ids = '{output_ids}', output_tokens_all_decoded = '{output_tokens_all_decoded}'")
+
+    input_tokens = output_ids[input_id_data.slice_data.goal.start:input_id_data.slice_data.control.stop]
+    #input_tokens = output_ids[suffix_manager._goal_slice.start:(suffix_manager._assistant_role_slice.start - 1)]
+    #output_tokens = output_ids[suffix_manager._assistant_role_slice.stop:]
+
+    # Using target.start will cause one token to be discarded if the generated prompt contains a newline after the assistant role stop and the model-generated full output does not, which is the case with Gemma
+    #output_ids_output_only = output_ids[input_id_data.slice_data.target.start:]
+    output_ids_output_only = output_ids[input_id_data.slice_data.assistant_role.stop:]
+    
+    #output_tokens_decoded = get_decoded_tokens(tokenizer, output_tokens)
+    #input_tokens_decoded = get_decoded_tokens(tokenizer, input_tokens)
+    #print(f"[get_current_input_and_output_tokens] Debug: input_tokens = '{input_tokens}', input_tokens_decoded = '{input_tokens_decoded}', output_tokens = '{output_tokens}', output_tokens_decoded = '{output_tokens_decoded}'")
+    return input_id_data.input_ids, input_tokens, output_ids_output_only, output_ids
 
 def get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string, input_label = "Current input", output_label = "Current output"):
-    input_token_ids, output_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string)
-    decoded_input = tokenizer.decode(input_token_ids).strip()
+    full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string)
+    #decoded_full_input = tokenizer.decode(full_input_token_ids).strip()
+    #decoded_input = tokenizer.decode(generation_input_token_ids).strip()
+    #decoded_output = tokenizer.decode(output_token_ids).strip()
+    #decoded_full_generation_tokens = tokenizer.decode(full_generation_token_ids).strip()
+    #decoded_full_input = tokenizer.decode(full_input_token_ids)
+    #decoded_full_input_array = get_decoded_tokens(tokenizer, full_input_token_ids)
+    decoded_input = tokenizer.decode(generation_input_token_ids).strip()
     decoded_output = tokenizer.decode(output_token_ids).strip()
+    #decoded_full_generation_tokens = tokenizer.decode(full_generation_token_ids)
+    #decoded_full_generation_tokens_array = get_decoded_tokens(tokenizer, full_generation_token_ids)
+
     result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'"
+    #result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'\n\nGeneration full input: '{decoded_full_input}'\n\nFull generation text: '{decoded_full_generation_tokens}'"
+    #result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'\n\nGeneration full input: '{decoded_full_input}'\n\nFull generation text: '{decoded_full_generation_tokens}'\n\nGeneration full input as array: '{decoded_full_input_array}'\n\nFull generation text as array: '{decoded_full_generation_tokens_array}', full_generation_token_ids = '{full_generation_token_ids}'"
     return result
+
+# write content to a temporary file first, then delete any existing output file, then move the temporary file to the output file location
+# Prevents overwriting a complete output file with partial output in the event of a crash
+def safely_write_text_output_file(file_path, content, file_mode = "w"):
+    temporary_path = tempfile.mktemp()
+    temporary_path_object = Path(temporary_path)
+    file_path_object = Path(file_path)
+    successful_write = False
+    try:
+        with open(temporary_path, file_mode) as output_file:
+            output_file.write(content)
+        #return file_path
+        successful_write = True
+    except Exception as e:
+        try:
+            with open(file_path, f"{file_mode}b") as output_file:
+                output_file.write(str.encode(content))
+            successful_write = True
+        except Exception as e2:
+            err_message = f"Couldn't write to the temporary file '{temporary_path}' in either text mode ('{e}') or binary mode('{e2}')."
+            raise Exception(err_message)
+    successful_delete = False
+    if successful_write:
+        if os.path.isfile(file_path):
+            try:
+                file_path_object.unlink() 
+                successful_delete = True
+            except Exception as e:
+                err_message = f"Couldn't delete the existing file '{file_path}' to replace it with the newly-generated file: {e}."
+                raise Exception(err_message)
+        else:
+            successful_delete = True
+    successful_replace = False
+    if successful_write and successful_delete:
+        try:
+            temporary_path_object.rename(file_path) 
+            successful_replace = True
+        except Exception as e:
+            err_message = f"Couldn't rename the temporary file '{temporary_path}' to '{file_path}': {e}."
+            raise Exception(err_message)
+    if successful_write and successful_delete and successful_replace:
+        return file_path            
+    return None
 
 def main(attack_params):
 
@@ -632,27 +774,32 @@ def main(attack_params):
     model = None
     tokenizer = None
     suffix_manager = None
+    json_data = []
     
     try:
         print(f"Loading model from '{attack_params.model_path}'")
         model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
-                               low_cpu_mem_usage=attack_params.low_cpu_mem_usage, 
-                               use_cache=attack_params.use_cache,
-                               dtype=torch.float16,
-                               trust_remote_code=attack_params.load_options_trust_remote_code,
-                               ignore_mismatched_sizes=attack_params.load_options_ignore_mismatched_sizes,
-                               device=attack_params.device)
+                                tokenizer_path = attack_params.tokenizer_path,
+                                low_cpu_mem_usage = attack_params.low_cpu_mem_usage, 
+                                use_cache = attack_params.use_cache,
+                                dtype = torch.float16,
+                                trust_remote_code = attack_params.load_options_trust_remote_code,
+                                ignore_mismatched_sizes = attack_params.load_options_ignore_mismatched_sizes,
+                                enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
+                                missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
+                                device=attack_params.device)
         print_stats()
         
         attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", model, tokenizer, attack_params.generation_max_new_tokens)
         attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
 
         
-        token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens)
+        token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, token_regex = attack_params.get_token_filter_regex())
         #print(f"Debug: token_denylist = '{token_denylist}'")
         not_allowed_tokens = None
         if len(token_denylist) > 0:
-            not_allowed_tokens = get_token_list_as_tensor(tokenizer, token_denylist, device=attack_params.device)
+            #not_allowed_tokens = get_token_list_as_tensor(token_denylist, device=attack_params.device)
+            not_allowed_tokens = get_token_list_as_tensor(token_denylist, device='cpu')
         #not_allowed_tokens = get_token_list_as_tensor(tokenizer, token_denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
@@ -695,9 +842,18 @@ def main(attack_params):
                 print(f"Model size after reduction: {quantized_model_size} ({size_factor_formatted} of original size)")
             
         #print(f"Loading conversation template '{attack_params.template_name}'")
-        conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template)
-        if conv_template.name != attack_params.template_name:
-            print(f"Warning: the template '{attack_params.template_name}' was specified, but fastchat returned the template '{conv_template.name}' in response to that value.")
+        #conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
+        conv_template = load_conversation_template(attack_params.model_path, template_name = attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
+        if attack_params.template_name is not None:
+            if conv_template.name != attack_params.template_name:
+                print(f"Warning: the template '{attack_params.template_name}' was specified, but fastchat returned the template '{conv_template.name}' in response to that value.")
+        print(f"Conversation template: '{conv_template.name}'")
+        print(f"Conversation template sep: '{conv_template.sep}'")
+        print(f"Conversation template sep2: '{conv_template.sep2}'")
+        print(f"Conversation template roles: '{conv_template.roles}'")
+        print(f"Conversation template system message: '{conv_template.system_message}'")
+        messages = json.dumps(conv_template.messages)
+        print(f"Conversation template messages: '{messages}'")
         #print_stats()
 
         #print(f"Creating suffix manager")
@@ -728,20 +884,27 @@ def main(attack_params):
                     print_stats()
                     
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
-                    #print(f"Getting input IDs")
-                    input_ids = suffix_manager.get_input_ids(adv_string=adversarial_string, force_python_tokenizer=attack_params.force_python_tokenizer)
+                    #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
+                    #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+                    input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
                     #print_stats()
                     #print(f"Converting input IDs to device")
-                    input_ids = input_ids.to(attack_params.device)
+                    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
+                    #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats()
 
                     # Step 2. Compute Coordinate Gradient
                     #print(f"Computing coordinate gradient")
+                    # coordinate_grad = token_gradients(model, 
+                                    # input_ids, 
+                                    # suffix_manager._control_slice, 
+                                    # suffix_manager._target_slice, 
+                                    # suffix_manager._loss_slice)
                     coordinate_grad = token_gradients(model, 
                                     input_ids, 
-                                    suffix_manager._control_slice, 
-                                    suffix_manager._target_slice, 
-                                    suffix_manager._loss_slice)
+                                    input_id_data.slice_data.control, 
+                                    input_id_data.slice_data.target, 
+                                    input_id_data.slice_data.loss)
                     #print_stats()
                     
                     is_success = False
@@ -752,7 +915,12 @@ def main(attack_params):
                         
                         # Step 3.1 Slice the input to locate the adversarial suffix.
                         #print(f"Slicing input")
-                        adversarial_string_tokens = input_ids[suffix_manager._control_slice].to(attack_params.device)
+                        control_slice = input_ids[input_id_data.slice_data.control]
+                        
+                        #control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
+                        #print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
+
+                        adversarial_string_tokens = control_slice.to(attack_params.device)
                         #print_stats()
                         #print(f"adversarial_string_tokens: {adversarial_string_tokens}")
                         
@@ -767,7 +935,11 @@ def main(attack_params):
                         #print_stats()
                         #print(f"new_adversarial_string_toks: {new_adversarial_string_toks}")
                         #decoded_ast = get_decoded_tokens(tokenizer, adversarial_string_tokens)
-                        #decoded_nast = get_decoded_tokens(tokenizer, new_adversarial_string_toks)
+                        #nast_data = new_adversarial_string_toks
+                        #if isinstance(new_adversarial_string_toks, torch.Tensor):
+                            #print(f"Debug: new_adversarial_string_toks.tolist() = '{new_adversarial_string_toks.tolist()}', dir(new_adversarial_string_toks) = '{dir(new_adversarial_string_toks)}'")
+                        #    nast_data = new_adversarial_string_toks.tolist()
+                        #decoded_nast = get_decoded_tokens(tokenizer, nast_data)
                         #print(f"Debug: adversarial_string_tokens = '{adversarial_string_tokens}', new_adversarial_string_toks = '{new_adversarial_string_toks}', decoded_ast = '{decoded_ast}', decoded_nast = '{decoded_nast}'")
                         
                         # Note: I'm leaving this explanation here for historical reference
@@ -798,14 +970,16 @@ def main(attack_params):
                         logits, ids = get_logits(model=model, 
                                                  tokenizer=tokenizer,
                                                  input_ids=input_ids,
-                                                 control_slice=suffix_manager._control_slice, 
+                                                 #control_slice=suffix_manager._control_slice, 
+                                                 control_slice=input_id_data.slice_data.control, 
                                                  test_controls=new_adversarial_string_list, 
                                                  return_ids=True,
                                                  batch_size=attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
                         #print_stats()
 
                         #print(f"Calculating target loss")
-                        losses = target_loss(logits, ids, suffix_manager._target_slice)
+                        #losses = target_loss(logits, ids, suffix_manager._target_slice)
+                        losses = target_loss(logits, ids, input_id_data.slice_data.target)
                         #print_stats()
 
                         #print(f"Getting losses argmin")
@@ -825,10 +999,14 @@ def main(attack_params):
                         adversarial_string = best_new_adversarial_string
                         #print_stats()
                         #print(f"Checking for success")
+                        #is_success_input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string).to(attack_params.device)
+                        #print(f"[main - checking for success] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
+                        is_success_input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+                        is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
                         is_success = check_for_attack_success(attack_params, model, 
                                                  tokenizer,
-                                                 suffix_manager.get_input_ids(adv_string=adversarial_string).to(attack_params.device), 
-                                                 suffix_manager._assistant_role_slice, 
+                                                 is_success_input_ids, 
+                                                 is_success_input_id_data.slice_data.assistant_role, 
                                                  attack_params.negative_output_strings)            
                         #print_stats()
 
@@ -836,13 +1014,34 @@ def main(attack_params):
                     #plotlosses.update({'Loss': current_loss.detach().cpu().numpy()})
                     #plotlosses.send() 
                     
-                    print(f"Loss: {current_loss.detach().cpu().numpy()}")
-                    
+                    print(f"Jailbroken: {jailbroken} for generated string '{gen_str}'")
+                    current_loss_display_value = current_loss.detach().cpu().numpy()
+                    print(f"Loss: {current_loss_display_value}")
                     print(f"Passed:{is_success}\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
                     
                     if is_success or attack_params.display_full_failed_output:
-                        current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
+                        #current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
+                        full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string)
+                        decoded_input = tokenizer.decode(generation_input_token_ids).strip()
+                        decoded_output = tokenizer.decode(output_token_ids).strip()
+                        current_string = f"Current input: '{decoded_input}'\n\nCurrent output: '{decoded_output}'"
                         print(current_string)
+                        if attack_params.json_output_file is not None:
+                            json_data_current_iteration = {}
+                            json_data_current_iteration["jailbreak_detected"] = jailbroken
+                            json_data_current_iteration["loss"] = current_loss_display_value
+                            json_data_current_iteration["full_test_token_ids"] = full_input_token_ids
+                            json_data_current_iteration["full_generation_token_ids"] = full_generation_token_ids
+                            json_data_current_iteration["input_token_ids"] = generation_input_token_ids
+                            json_data_current_iteration["output_token_ids"] = output_token_ids
+                            json_data_current_iteration["decoded_full_test_tokens"] = get_decoded_tokens(tokenizer, full_input_token_ids)
+                            json_data_current_iteration["decoded_full_generation_tokens"] = get_decoded_tokens(tokenizer, full_generation_token_ids)
+                            json_data_current_iteration["decoded_input_tokens"] = get_decoded_tokens(tokenizer, generation_input_token_ids)
+                            json_data_current_iteration["decoded_output_token_ids"] = get_decoded_tokens(tokenizer, output_token_ids)
+                            json_data_current_iteration["input_string"] = decoded_input
+                            json_data_current_iteration["output_string"] = decoded_output
+                            json_data.append(json_data_current_iteration)
+                            safely_write_output_file(attack_params.json_output_file, json.dumps(json_data))
                         if is_success:
                             successful_attacks.append(current_string)
                             if attack_params.break_on_success:
@@ -851,8 +1050,8 @@ def main(attack_params):
                     # (Optional) Clean up the cache.
                     print(f"Cleaning up the cache")
                     del coordinate_grad, adversarial_string_tokens ; gc.collect()
-                    if "cuda" in attack_params.device:
-                        torch.cuda.empty_cache()
+                    #if "cuda" in attack_params.device:
+                    #    torch.cuda.empty_cache()
                     
                 except KeyboardInterrupt:
                     #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -887,23 +1086,48 @@ def main(attack_params):
 
 if __name__=='__main__':
     short_description = get_short_script_description()
-    print(f"gcg-attack.py version {script_version}, {script_date}\n{short_description}")
-    
-    parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    print(f"{script_name} version {script_version}, {script_date}\n{short_description}")
     
     attack_params = gcg_attack_params()
+    
+    cuda_available = torch.cuda.is_available()
+    mps_available = torch.backends.mps.is_available()
+    
+    if not cuda_available:
+        print(f"Warning: this host does not appear to have a PyTorch CUDA back-end available. The default --device option has therefore been changed from '{attack_params.device}' to '{attack_params.device_fallback}'. Using CPU processing will result in significantly longer run times for this tool. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
+        attack_params.device = attack_params.device_fallback
+    if mps_available:
+        print(f"Warning: this host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
+    
+    parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     parser.add_argument("-m", "--model", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
         
+    parser.add_argument("--tokenizer", type=str, 
+        help="(optional) Path to the base directory for the LLM tokenizer you want to use with the model instead of any tokenizer that may be included with the model itself. Intended for use with models such as Mamba that do not include their own tokenizer.")
+        
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("-t", "--template", required=True, type=str, 
-        help=f"The model type name, for selecting the correct chat template. Use --list-templates to view available options.")
+    parser.add_argument("-t", "--template", type=str, 
+        help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
 
     parser.add_argument("--list-templates", type=str2bool, nargs='?',
-        const=True, default=attack_params.low_cpu_mem_usage,
+        const=True,
         help="Output a list of all template names for the version of the fastchat library you have installed (to use with --template), then exit.")
+        
+    parser.add_argument("--system-prompt", type=str, 
+        help=f"Specify a custom value to use instead of the default system prompt for the conversation template.")
+
+    parser.add_argument("--system-prompt-from-file", type=str, 
+        help=f"Specify a custom value to use instead of the default system prompt for the conversation template by reading it from a file. The entire file will be used as a single string system prompt.")
+
+    parser.add_argument("--clear-existing-conversation", type=str2bool, nargs='?',
+        const=True, default=attack_params.clear_existing_template_conversation,
+        help="Removes any existing non-system messages from the conversation template.")
+        
+    parser.add_argument("--template-messages-from-file", type=str, 
+        help=f"Load custom messages into the conversation template by reading them from a JSON file. If --clear-existing-conversation is not specified, the messages will be appended to any existing messages in the list for the template. The format of the file should be '[[<role ID or name>, <message>],[<role ID or name>, <message>][...][<role ID or name>, <message>]]', e.g. {attack_params.template_messages_from_file_example}")
 
     parser.add_argument("--base-prompt", type=str, 
         help=f"The prompt the tool should try to jailbreak, e.g. '{attack_params.base_prompt_example}'")
@@ -981,6 +1205,9 @@ if __name__=='__main__':
         const=True, default=False,
         help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
 
+    parser.add_argument("--token-filter-regex", type=str,
+        help="If specified, biases the adversarial content generation to exclude tokens that don't match the specified regular expression.")
+
     parser.add_argument("--adversarial-candidate-filter-regex", type=str, 
         default=attack_params.candidate_filter_regex,
         help="The regular expression used to filter candidate adversarial strings. The default value is very forgiving and simply requires that the string contain at least one occurrence of two consecutive mixed-case alphanumeric characters.")
@@ -1007,7 +1234,7 @@ if __name__=='__main__':
         const=True, default=attack_params.attempt_to_keep_token_count_consistent,
         help="Enable the check from the original authors' code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are generally much better options.")
 
-    parser.add_argument("--generic-role-template", default=attack_params.generic_role_indicator_template, type=str, 
+    parser.add_argument("--generic-role-template", type=str, 
         help="The Python formatting string to use if fastchat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
     
     parser.add_argument("--trust-remote-code", type=str2bool, nargs='?',
@@ -1035,9 +1262,18 @@ if __name__=='__main__':
     parser.add_argument("--force-python-tokenizer", type=str2bool, nargs='?',
         const=True, default=attack_params.force_python_tokenizer,
         help="Use the Python tokenizer even if the model supports a (usually faster) non-Python tokenizer. May allow use of some models that include incomplete non-Python tokenizers.")
+    parser.add_argument("--enable-hardcoded-tokenizer-workarounds", type=str2bool, nargs='?',
+        help="Enable the undocumented, hardcoded tokenizer workarounds that the original developers introduced for some models.")
+    padding_token_values = get_missing_pad_token_names()
+    parser.add_argument("--missing-pad-token-replacement", type=str,
+        help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
+    parser.add_argument("--json-output-file", type=str,
+        help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
 
     # TKTK: option to export attack_params as JSON or joad it as JSON
     # TKTK: ability to customize the positive and negative test strings
+    # Related TKTK: ability to specify positive/negative test rules after 
+    #       implementing the rule engine instead of positive/negative lists
     # TKTK: ability to have the script output structured data file(s) 
     #       containing each input, output, and jailbreak detection result 
     #       to make it easier to use the output in other tools
@@ -1061,12 +1297,45 @@ if __name__=='__main__':
 
     attack_params.device = args.device
 
-    attack_params.model_path = args.model
+    if cuda_available:
+        if len(attack_params.device) < 4 or attack_params.device[0:4] != "cuda":
+            print(f"Warning: this appears to have a PyTorch CUDA back-end available, but the back-end has been set to '{attack_params.device}' instead. This is likely to result in significantly decreased performance versus using the CUDA back-end.")        
+
+    attack_params.model_path = os.path.abspath(args.model)
     if not os.path.isdir(attack_params.model_path):
         print(f"The specified model directory ('{attack_params.model_path}') does not appear to exist.")
         sys.exit(1)
         
-    attack_params.template_name = args.template
+    if args.tokenizer:
+        attack_params.tokenizer_path = os.path.abspath(args.tokenizer)
+        if not os.path.isdir(attack_params.tokenizer_path):
+            print(f"The specified tokenizer directory ('{attack_params.tokenizer_path}') does not appear to exist.")
+            sys.exit(1)
+        
+    if args.template:
+        attack_params.template_name = args.template
+
+    if args.clear_existing_conversation:
+        attack_params.clear_existing_template_conversation = True
+    
+    if args.system_prompt:
+        attack_params.custom_system_prompt = args.system_prompt
+        
+    if args.system_prompt_from_file:
+        if args.system_prompt:
+            print(f"Only one of --system-prompt-from-file and --system-prompt may be specified.")
+            sys.exit(1)
+        system_prompt_file = os.path.abspath(args.system_prompt_from_file)
+        attack_params.custom_system_prompt = get_file_content(system_prompt_file, failure_is_critical = True)
+
+    if args.template_messages_from_file:
+        message_file = os.path.abspath(args.template_messages_from_file)
+        message_file_content = get_file_content(message_file, failure_is_critical = True)
+        try:
+            attack_params.set_conversation_template_messages(json.loads(message_file_content))
+        except Exception as e:
+            print(f"Error loading conversation template messages from file '{message_file}', content '{message_file_content}': {e}.")
+            sys.exit(1)
 
     attack_params.initial_adversarial_string = args.initial_adversarial_string
 
@@ -1106,6 +1375,9 @@ if __name__=='__main__':
     
     attack_params.exclude_special_tokens = args.exclude_special_tokens
     
+    if args.token_filter_regex:
+        attack_params.token_filter_regex = args.token_filter_regex
+    
     attack_params.candidate_filter_regex = args.adversarial_candidate_filter_regex
     
     if args.adversarial_candidate_filter_tokens_min:
@@ -1143,7 +1415,8 @@ if __name__=='__main__':
     if args.adversarial_candidate_newline_replacement:
         attack_params.candidate_replace_newline_characters = args.adversarial_candidate_newline_replacement
     
-    attack_params.generic_role_indicator_template = args.generic_role_template
+    if args.generic_role_template:
+        attack_params.generic_role_indicator_template = args.generic_role_template
 
     attack_params.load_options_trust_remote_code = args.trust_remote_code
     
@@ -1161,6 +1434,14 @@ if __name__=='__main__':
     
     attack_params.force_python_tokenizer = args.force_python_tokenizer
 
+    if args.enable_hardcoded_tokenizer_workarounds:
+        attack_params.enable_hardcoded_tokenizer_workarounds = True
+        
+    if args.missing_pad_token_replacement:
+        if args.missing_pad_token_replacement not in padding_token_values:
+            print(f"The value for --missing-pad-token-replacement must be one of: {padding_token_values}")
+            sys.exit(1)
+        attack_params.missing_pad_token_replacement = args.missing_pad_token_replacement
 
     # shortcut option processing
     if args.exclude_whitespace_tokens:
