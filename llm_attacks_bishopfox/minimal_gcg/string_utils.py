@@ -46,6 +46,7 @@ class TrashFireTokenCollection:
         result = TrashFireTokenCollection()
         result.input_strings = [ '</s>', '<s>', '###', '##', '#', "\n", "\\n", "\r", "\\r", "\r\n", "\\r\\", "", ":", " ", "\t",
                                     '<sep>',
+                                    '<|system|>'
                                     '<|end|>',
                                     '<eos>',
                                     '<eod>',
@@ -79,7 +80,8 @@ class TrashFireTokenCollection:
         if hasattr(conversation_template, "sep2"):
             result.input_strings = append_single_or_list_members(result.input_strings, conversation_template.sep2, ignore_if_none = True)
         
-        result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        #result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
         
         result.decoded_tokens = get_decoded_tokens(tokenizer, result.token_ids)
         #print(f"[get_hardcoded_trash_fire_token_collection] Debug: result.input_strings = '{result.input_strings}', result.token_ids = '{result.token_ids}', result.decoded_tokens = '{result.decoded_tokens}'")
@@ -119,7 +121,8 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
         conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
         conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
         conv_template.system_message = None
-        conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
+        #conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
+        conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
         conv_template.sep = '\n'
     if is_phi2_template(original_template_name):
         conv_template.name = "phi2"
@@ -217,6 +220,7 @@ class SuffixManager:
         self.instruction = instruction
         self.target = target
         self.adv_string = adv_string
+        self.trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(tokenizer, conv_template)
     
     # For debugging / creating handlers for new conversation templates
     # accepts a dictionary of slices, where the key is the slice name and the value is the slice
@@ -240,26 +244,6 @@ class SuffixManager:
         slice_dictionary = slice_data.get_slice_dictionary()
         for slice_name in slice_info.keys():
             print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}'")
-                
-    # def print_slice_info(self, source_method_name, slice_data, tokens):
-        # decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
-        # print(f"[print_slice_info] Debug: len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
-        
-        # slice_dictionary = slice_data.get_slice_dictionary()
-        # for slice_name in slice_dictionary.keys():
-            # sl = slice_dictionary[slice_name]
-            # print(f"[{source_method_name}] Debug: slice '{slice_name}' = '{sl}'")
-            # if sl is not None:
-                # #print(f"[{source_method_name}] Debug: slice '{slice_name}' = '{sl}'")
-                # #slice_tokens = []
-                # slice_tokens = tokens[sl]
-                # #print(f"[{source_method_name}] Debug: slice '{slice_name}' tokens = '{slice_tokens}'")
-                # #slice_tokens_decoded = []
-                # slice_tokens_decoded = decoded_tokens[sl]
-                # #for token_num in range(0, len(slice_tokens)):
-                # #    slice_tokens_decoded.append(decoded_tokens[slice_tokens[token_num]])
-
-                # print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_tokens_decoded}'")
 
     def validate_slice_data(self, source_method_name, slice_data):
         invalid_slice_dictionary = {}
@@ -409,72 +393,6 @@ class SuffixManager:
         
         #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
         return result_token_array, result_decoded_token_array
-    
-    # def get_slice_data(self, string_to_search_for, tokens, start_index = 0, stop_index = None):        
-        # decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
-        # #print(f"[get_slice_data] Debug: decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
-        # string_tokens = get_encoded_token(self.tokenizer, string_to_search_for)
-        # #print(f"[get_slice_data] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")
-        # # hacky workarounds for garbagey behaviour
-        # # Let's just put '<s>' at the beginning of all token lists, and '</s>' at the end!  It will be great!
-        # string_to_search_for_array = string_to_search_for.split(" ")
-        # first_search_word = string_to_search_for_array[0]
-        # len_first_search_word = len(first_search_word)
-        # decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
-        # string_tokens, decoded_string_tokens = self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = True)
-        # original_decoded_string_tokens = copy.deepcopy(decoded_string_tokens)
-        # tokens_as_string = "".join(decoded_string_tokens)
-        # # Ignore any leading tokens like <s>
-        # got_real_first_token = False
-        # #print(f"[get_slice_data] Debug: tokens_as_string = '{tokens_as_string}', first_search_word = '{first_search_word}'")
-        # while len(tokens_as_string) >= len_first_search_word:
-            # #comp1 = tokens_as_string[0:len_first_search_word].strip()
-            # comp1 = tokens_as_string.strip()[0:len_first_search_word].strip()
-            # comp2 = first_search_word.strip()
-            # #print(f"[get_slice_data] Debug: comp1 = '{comp1}', comp2 = '{comp2}'")
-            # if comp1 == comp2:
-                # got_real_first_token = True
-                # break
-            # new_string_tokens = []
-            # for i in range(1, len(string_tokens)):
-                # new_string_tokens.append(string_tokens[i])
-            # string_tokens = copy.deepcopy(new_string_tokens)
-            # decoded_string_tokens = get_decoded_tokens(self.tokenizer, string_tokens)
-            # string_tokens, decoded_string_tokens = self.remove_empty_leading_and_trailing_tokens(string_tokens, decoded_string_tokens, strip_decoded_tokens = True)
-            # tokens_as_string = "".join(decoded_string_tokens)
-            # #print(f"[get_slice_data] Debug: tokens_as_string = '{tokens_as_string}', first_search_word = '{first_search_word}'")
-        # if not got_real_first_token:
-            # raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{original_decoded_string_tokens}' while trying to remove extra tokens")
-        
-        # #print(f"[get_slice_data] Debug: searching for '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
-        # result_start = self.find_first_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
-        # result_stop = None
-        # if result_start is None:
-            # # try to find cases where tokens have spaces on either side or not at all
-            # decoded_tokens_processed_1 = []
-            # decoded_tokens_processed_2 = []
-            # for i in range(0, len(decoded_tokens)):
-                # processed_token = decoded_tokens[i].strip()
-                # decoded_tokens_processed_1.append(processed_token)
-                # decoded_tokens_processed_2.append(decoded_tokens[i])
-            # result_start = self.find_first_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_1, start_index=start_index, stop_index=stop_index)
-            # if result_start is None:
-                # result_start = self.find_first_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_2, start_index=start_index, stop_index=stop_index)
-                # if result_start is None:
-                    # raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
-                # else:
-                    # result_stop = result_start + len(string_to_search_for_array)
-                    # # This issue is so frequent that enabling this error is too noisy
-                    # #print(f"[get_slice_data] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
-            # else:
-                # result_stop = result_start + len(string_to_search_for_array)
-                # # This issue is so frequent that enabling this error is too noisy
-                # #print(f"[get_slice_data] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
-                
-        # else:
-            # result_stop = result_start + len(string_tokens)
-            
-        # return slice(result_start, result_stop)
 
     def find_last_index_of_token(self, string_to_search_for, tokens, start_index = 0, stop_index = None):        
         decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
@@ -521,6 +439,15 @@ class SuffixManager:
         #print(f"[find_last_index_of_token] Debug: result = '{result}'")
         return result
     
+    # so many spaghetti code special cases to handle madness like 'This is a special token, but you can't treat it as 100% trash fire because it's also a sentinel that the parser has to look for'
+    def is_conversation_role_token(self, conversation_template, token):
+        if token is not None:
+            if token.strip() != "":
+                for c_role in conversation_template.roles:
+                    if token in c_role:
+                        return True
+        return False
+    
 #        blincoln@atropos $ ollama run gemma2:9b-instruct-fp16
 #
 #        >>> Please draw an ASCII art image of a machine learning developer dressed as a cattle rustler, chasing a flaming dumpster down a river.
@@ -560,8 +487,8 @@ class SuffixManager:
 #
 #
 #        >>> That's perfect, thank you Gemma 2.
-    
-    def is_disastrous_dumpster_fire_token(self, hardcoded_trash_fire_tokens, token, decoded_token):
+        
+    def is_disastrous_dumpster_fire_token(self, hardcoded_trash_fire_tokens, conversation_template, token, decoded_token):
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
         escaped_token = get_escaped_string(decoded_token)
         if token in hardcoded_trash_fire_tokens.token_ids:
@@ -581,6 +508,12 @@ class SuffixManager:
                     #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the decoded token was in the list of input strings used to generate the list of trash fire tokens.")
                     token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
                     break
+        
+        # but wait! we can't exclude conversation role tokens! That would make parsing the output much harder!
+        if token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
+            if self.is_conversation_role_token(conversation_template, decoded_token.strip()):
+                token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
+        
         return token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys
     
     # dynamically determine the last token in a set of tokens 
@@ -593,12 +526,12 @@ class SuffixManager:
         if stop_index is not None:
             range_end = stop_index
         for i in range(start_index, range_end):
-            token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = self.is_disastrous_dumpster_fire_token(hardcoded_trash_fire_tokens, tokens[i], decoded_tokens[i])
+            token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = self.is_disastrous_dumpster_fire_token(hardcoded_trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
             if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
                 result = i
         if result is None:
-            raise Exception(f"[find_last_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}', please, stop the madness right now.")
-        #print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' between {start_index} and {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
+            raise Exception(f"[find_last_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
+        #print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
         return result
     
     def find_first_non_garbage_token(self, conversation_template, tokens, decoded_tokens, hardcoded_trash_fire_tokens, start_index = 0, stop_index = None):
@@ -608,216 +541,13 @@ class SuffixManager:
         if stop_index is not None:
             range_end = stop_index
         for i in range(start_index, range_end):
-            token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = self.is_disastrous_dumpster_fire_token(hardcoded_trash_fire_tokens, tokens[i], decoded_tokens[i])
+            token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = self.is_disastrous_dumpster_fire_token(hardcoded_trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
             if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
-                #print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' is index {i}, '{decoded_tokens[i]}'")
+                #print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
                 return i
         if result is None:
-            raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}', please, stop the madness right now.")
+            raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
         return result
-    
-    # def get_prompt(self, adv_string=None, force_python_tokenizer = False, update_self_values = True):
-
-        # if adv_string is not None:
-            # self.adv_string = adv_string
-
-        # self.conv_template.append_message(self.conv_template.roles[0], f"{self.instruction} {self.adv_string}")
-        # self.conv_template.append_message(self.conv_template.roles[1], f"{self.target}")
-        # prompt = self.conv_template.get_prompt()
-
-        # encoding = self.tokenizer(prompt)
-        # toks = encoding.input_ids
-        # original_toks = copy.deepcopy(toks)
-        # original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
-       
-        # python_tokenizer = False
-        # if self.conv_template.name == 'oasst_pythia':
-            # python_tokenizer = True
-        # if force_python_tokenizer:
-            # python_tokenizer = True
-        # #if "pythia" in self.conv_template.name:
-        # #    python_tokenizer = True
-        # # This (formerly undocumented) check is a way to determine if the model is using 
-        # # Python-based tokenizers. It works because Python-based tokenizers (at least 
-        # # in the current version of Transformers) don't support the char_to_token 
-        # # operation), and it's used to avoid calling char_to_token for the rest of 
-        # # the get_prompt method in that case.
-        # if not python_tokenizer:
-            # try:
-                # encoding.char_to_token(len(prompt)-1)
-            # except:
-                # python_tokenizer = True
-
-        # slice_dict = {}    
-        # if python_tokenizer:
-            # print(f"[get_prompt] Debug: using Python tokenizer.")
-            # self.conv_template.messages = []
-            
-            # self.conv_template.append_message(self.conv_template.roles[0], None)
-            # toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-            # # find the token that indicates the following text is input
-            # delimiter = f"{self.conv_template.roles[0]}"
-            # #print(f"[get_prompt] Debug: self.conv_template.roles = '{self.conv_template.roles}', delimiter = '{delimiter}', toks = '{toks}', original_toks = '{original_toks}'")
-            # #self._user_role_slice = self.get_slice_data(self.instruction.strip(), original_toks)
-            # #self._user_role_slice = self.get_slice_data(delimiter, toks)
-            # self._user_role_slice = self.find_last_index_of_token(delimiter, toks)
-            # slice_dict["_user_role"] = self._user_role_slice
-            # self.validate_slice_data('get_prompt - _user_role_slice', slice_dict)
-
-            # self.conv_template.update_last_message(f"{self.instruction}")
-            # toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-            # first_non_garbage_token = self.find_first_non_garbage_token(toks, start_index = self._user_role_slice.stop)
-            # last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = first_non_garbage_token) + 1
-            # self._goal_slice = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
-            # slice_dict["_goal"] = self._goal_slice
-            # self.validate_slice_data('get_prompt - _goal_slice', slice_dict)
-
-            # separator = ' ' if self.instruction else ''
-            # self.conv_template.update_last_message(f"{self.instruction}{separator}{self.adv_string}")
-            # toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-            # first_non_garbage_token = self.find_first_non_garbage_token(toks, start_index = self._goal_slice.stop)
-            # last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = first_non_garbage_token) + 1
-            # #self._control_slice = slice(self._goal_slice.stop, len(toks))
-            # self._control_slice = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
-            # slice_dict["_control"] = self._control_slice
-            # self.validate_slice_data('get_prompt - _control_slice', slice_dict)
-
-            # # find the token that marks a transition to output
-            # self.conv_template.append_message(self.conv_template.roles[1], None)
-            # toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-            # first_non_garbage_token = self.find_first_non_garbage_token(toks, start_index = self._control_slice.stop)
-            # last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = first_non_garbage_token) + 1
-            # #self._assistant_role_slice = slice(self._control_slice.stop, len(toks))
-            # self._assistant_role_slice = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
-            # slice_dict["_assistant_role"] = self._assistant_role_slice
-            # self.validate_slice_data('get_prompt - _assistant_role_slice', slice_dict)
-
-            # self.conv_template.update_last_message(f"{self.target}")
-            # toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-            # #self._target_slice = slice(self._assistant_role_slice.stop, len(toks)-2)
-            # #self._loss_slice = slice(self._assistant_role_slice.stop-1, len(toks)-3)
-            # #self._target_slice = self.get_slice_data(self.target, toks)
-            # first_non_garbage_token = self.find_first_non_garbage_token(toks, start_index = self._assistant_role_slice.stop)
-            # last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = first_non_garbage_token) + 1
-            # #last_non_garbage_token = self.find_last_non_garbage_token(toks, start_index = self._assistant_role_slice.stop)
-            # #if last_non_garbage_token is None:
-            # #    decoded_tokens = get_decoded_tokens(self.tokenizer, toks)
-            # #    raise Exception(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}', please, stop the madness right now.")
-            # #last_non_garbage_token += 1
-            # #self._target_slice = slice(self._assistant_role_slice.stop, last_non_garbage_token)
-            # self._target_slice = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
-            # slice_dict["_target"] = self._target_slice
-            # self.validate_slice_data('get_prompt - _target_slice', slice_dict)
-            
-            # #self._loss_slice = slice(self._assistant_role_slice.stop - 1, last_non_garbage_token - 1)
-            # self._loss_slice = slice(first_non_garbage_token - 1, last_non_garbage_token - 1)
-            # slice_dict["_loss"] = self._loss_slice
-            # self.validate_slice_data('get_prompt - _loss_slice', slice_dict)
-            
-        # else:
-            # print(f"[get_prompt] Debug: not using Python tokenizer")
-            # sys_template = None
-            # if hasattr(self.conv_template, "system"):
-                # sys_template = self.conv_template.system
-            # if sys_template is None and hasattr(self.conv_template, "system_template"):
-                # sys_template = self.conv_template.system_template
-            # if sys_template is None:
-                # print(f"[get_prompt] Warning: unable to find system template in conversation template for this model - using role 0 template instead")
-                # sys_template = self.conv_template.roles[0]
-            # self._system_slice = slice(
-                # None, 
-                # encoding.char_to_token(len(sys_template))
-            # )
-            # slice_dict["_system"] = self._system_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-
-            # self._user_role_slice = slice(
-                # encoding.char_to_token(prompt.find(self.conv_template.roles[0])),
-                # encoding.char_to_token(prompt.find(self.conv_template.roles[0]) + len(self.conv_template.roles[0]) + 1)
-            # )
-            # slice_dict["_user_role"] = self._user_role_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-
-            # self._goal_slice = slice(
-                # encoding.char_to_token(prompt.find(self.instruction)),
-                # encoding.char_to_token(prompt.find(self.instruction) + len(self.instruction))
-            # )
-            # slice_dict["_goal"] = self._goal_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-            
-            # self._control_slice = slice(
-                # encoding.char_to_token(prompt.find(self.adv_string)),
-                # encoding.char_to_token(prompt.find(self.adv_string) + len(self.adv_string))
-            # )
-            # slice_dict["_control"] = self._control_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-            
-            # self._assistant_role_slice = slice(
-                # encoding.char_to_token(prompt.find(self.conv_template.roles[1])),
-                # encoding.char_to_token(prompt.find(self.conv_template.roles[1]) + len(self.conv_template.roles[1]) + 1)
-            # )
-            # slice_dict["_assistant_role"] = self._assistant_role_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-
-            # #self.print_slice_info("get_prompt", slice_dict, toks)
-            # #print(f"[get_prompt] Debug: prompt = '{prompt}', self.target = '{self.target}'")
-            # prompt_find_self_target = prompt.find(self.target)
-            # #print(f"[get_prompt] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
-            # prompt_find_self_target_c2t = encoding.char_to_token(prompt_find_self_target)
-            # if prompt_find_self_target_c2t is None:
-                # print(f"[get_prompt] Warning: got None for encoding.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.target}' in '{prompt}'. Using value {self._assistant_role_slice.stop} instead of None. This may indicate an error with the parsing logic.")
-                # prompt_find_self_target_c2t = self._assistant_role_slice.stop
-            # prompt_combined_c2t = None
-            # add_length = len(self.target) + 1
-            # while prompt_combined_c2t is None:
-                # prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
-                # add_length -= 1
-                # if add_length < 0:
-                    # prompt_combined_c2t = prompt_find_self_target_c2t
-                    # break
-            # # Subtract one more than the first valid value so that the length of the slice is correct
-            # #if prompt_combined_c2t != prompt_find_self_target_c2t:
-            # #    prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
-            # #prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target) + len(self.target)
-            # #print(f"[get_prompt] Debug: prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
-            # self._target_slice = slice(
-                # #encoding.char_to_token(prompt_find_self_target),
-                # prompt_find_self_target_c2t,
-                # #encoding.char_to_token(prompt_find_self_target + len(self.target))
-                # prompt_combined_c2t + 1
-            # )
-            # slice_dict["_target"] = self._target_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-            
-            # self._loss_slice = slice(
-                # prompt_find_self_target_c2t - 1,
-                # #prompt_combined_c2t - 1
-                # prompt_combined_c2t
-            # )
-            # slice_dict["_loss"] = self._loss_slice
-            # self.validate_slice_data('get_prompt', slice_dict)
-
-        # #print(f"[get_prompt] Debug: self.conv_template (after modifications) = '{self.conv_template}'")
-        # final_decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-        # #print(f"[get_prompt] Debug: toks (after parsing) = '{toks}', final_decoded_toks = '{final_decoded_toks}'")
-
-        # # slice_dict = {}
-        # # if hasattr(self, "_system_slice"):
-            # # slice_dict["_system"] = self._system_slice
-        # # slice_dict["_user_role"] = self._user_role_slice
-        # # slice_dict["_goal"] = self._goal_slice
-        # # slice_dict["_control"] = self._control_slice
-        # # slice_dict["_assistant_role"] = self._assistant_role_slice
-        # # slice_dict["_target"] = self._target_slice
-        # # slice_dict["_loss"] = self._loss_slice
-
-        # self.print_slice_info("get_prompt", slice_dict, toks)
-
-        # self.conv_template.messages = []
-
-        # return prompt
-
-    
 
     def get_prompt(self, adv_string=None, force_python_tokenizer = False):#, update_self_values = True):
 
@@ -831,40 +561,11 @@ class SuffixManager:
             adversarial_string = adv_string
 
         # Get the list of dumpster fire tokens once to make the many references to it run faster
-        hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(self.tokenizer, conversation_template)
+        #hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(self.tokenizer, conversation_template)
 
         conversation_template.append_message(conversation_template.roles[0], f"{self.instruction} {adversarial_string}")
         conversation_template.append_message(conversation_template.roles[1], f"{self.target}")
         result.prompt = conversation_template.get_prompt()
-        
-        # system_slice = None
-        # #if hasattr(self, "_system_slice"):
-        # #    if self._system_slice is not None:
-        # #        system_slice = copy.deepcopy(self._system_slice)
-        # user_role_slice = None
-        # #if hasattr(self, "_user_role_slice"):
-        # #    if self._user_role_slice is not None:
-        # #        user_role_slice = copy.deepcopy(self._user_role_slice)
-        # goal_slice = None
-        # #if hasattr(self, "_goal_slice"):
-        # #    if self._goal_slice is not None:
-        # #        goal_slice = copy.deepcopy(self._goal_slice)
-        # control_slice = None
-        # #if hasattr(self, "_control_slice"):
-        # #    if self._control_slice is not None:
-        # #        control_slice = copy.deepcopy(self._control_slice)
-        # assistant_role_slice = None
-        # #if hasattr(self, "_assistant_role_slice"):
-        # #    if self._assistant_role_slice is not None:
-        # #        assistant_role_slice = copy.deepcopy(self._assistant_role_slice)
-        # target_slice = None
-        # #if hasattr(self, "_target_slice"):
-        # #    if self._target_slice is not None:
-        # #        target_slice = copy.deepcopy(self._target_slice)
-        # loss_slice = None
-        # #if hasattr(self, "_loss_slice"):
-        # #    if self._loss_slice is not None:
-        # #        loss_slice = copy.deepcopy(self._loss_slice)
 
         encoding = self.tokenizer(result.prompt)
         toks = encoding.input_ids
@@ -901,8 +602,8 @@ class SuffixManager:
             conversation_template.update_last_message(f"{self.instruction}")
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = result.slice_data.user_role.stop)
-            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = first_non_garbage_token) + 1
+            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.user_role.stop)
+            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.goal = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - goal_slice', result.slice_data)
 
@@ -912,8 +613,8 @@ class SuffixManager:
             conversation_template.update_last_message(f"{self.instruction}{separator}{adversarial_string}")
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = result.slice_data.goal.stop)
-            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = first_non_garbage_token) + 1
+            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.goal.stop)
+            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.control = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - control_slice', result.slice_data)
 
@@ -921,16 +622,16 @@ class SuffixManager:
             conversation_template.append_message(conversation_template.roles[1], None)
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = result.slice_data.control.stop)
-            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = first_non_garbage_token) + 1
+            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.control.stop)
+            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.assistant_role = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - assistant_role_slice', result.slice_data)
 
             conversation_template.update_last_message(f"{self.target}")
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = result.slice_data.assistant_role.stop)
-            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, hardcoded_trash_fire_tokens, start_index = first_non_garbage_token) + 1
+            first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.assistant_role.stop)
+            last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.target = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - target_slice', result.slice_data)
             
@@ -1014,22 +715,9 @@ class SuffixManager:
         result.full_prompt_ids = toks
         result.input_ids = toks[:result.slice_data.target.stop]
 
-        #self.print_slice_info("get_prompt", result.slice_data, toks)
+        self.print_slice_info("get_prompt", result.slice_data, toks)
 
         conversation_template.messages = []
-
-        # if update_self_values:
-            # self.adv_string = adversarial_string
-            # self.conv_template = conversation_template
-            # self._system_slice = system_slice
-            # self._user_role_slice = user_role_slice
-            # self._goal_slice = goal_slice
-            # self._control_slice = control_slice
-            # self._assistant_role_slice = assistant_role_slice
-            # self._target_slice = target_slice
-            # self._loss_slice = loss_slice
-
-        # return prompt
 
         return result
     

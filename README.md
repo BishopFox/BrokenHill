@@ -203,7 +203,11 @@ Bias the adversarial content generation data to avoid using tokens that are not 
 
 ##### --exclude-special-tokens
 
-Bias the adversarial content generation data to avoid using special tokens (begin/end of string, etc.).
+Bias the adversarial content generation data to avoid using basic special tokens (begin/end of string, padding, and unknown).
+
+##### --exclude-additional-special-tokens
+
+Bias the adversarial content generation data to avoid using any additional special tokens defined in the tokenizer configuration. Useful for models such as Phi-3 that define more types of special token.
 
 ##### --exclude-token <string>
 

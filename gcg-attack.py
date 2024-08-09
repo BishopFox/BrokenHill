@@ -1,7 +1,7 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.11"
+script_version = "0.12"
 script_date = "2024-08-09"
 
 def get_script_description():
@@ -202,8 +202,11 @@ class gcg_attack_params:
             # limit tokens to only printable ASCII values
             self.exclude_nonascii_tokens = False
             
-            # filter out special tokens
+            # filter out basic special tokens (EOS/BOS/pad/unknown)
             self.exclude_special_tokens = False
+            
+            # filter out any additional special tokens defined in the tokenizer configuration
+            self.exclude_additional_special_tokens = False
             
             # If specified, exclude tokens that don't match the following pattern
             self.token_filter_regex = None
@@ -468,8 +471,8 @@ def get_model_size(mdl):
 
 # Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
 # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
-# TKTK: iterate over all other parameters with similar names and warn the user if any of them may 
-# cause the script to crash unless the value is reduced.
+# TKTK: move this to attack_manager.py
+# TKTK: iterate over all other parameters with similar names and warn the user if any of them may cause the script to crash unless the value is reduced.
 def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model, tokenizer, desired_value):
     effective_value = desired_value
 
@@ -821,7 +824,8 @@ def main(attack_params):
         attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
 
         
-        token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, token_regex = attack_params.get_token_filter_regex())
+        token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, token_regex = attack_params.get_token_filter_regex())        
+        
         #print(f"Debug: token_denylist = '{token_denylist}'")
         not_allowed_tokens = None
         if len(token_denylist) > 0:
@@ -915,6 +919,14 @@ def main(attack_params):
                     #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
                     input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
                     #print_stats()
+                    
+                    #decoded_input_ids = get_decoded_tokens(tokenizer, input_id_data.input_ids)
+                    #decoded_full_prompt_ids = get_decoded_tokens(tokenizer, input_id_data.full_prompt_ids)
+                    #decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_ids[input_id_data.slice_data.control])
+                    #decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_ids[input_id_data.slice_data.target])
+                    #decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_ids[input_id_data.slice_data.loss])
+                    #print(f"[input ID generation for token_gradients] Debug: decoded_input_ids = '{decoded_input_ids}', decoded_full_prompt_ids = '{decoded_full_prompt_ids}', decoded_control_slice = '{decoded_control_slice}', decoded_target_slice = '{decoded_target_slice}', decoded_loss_slice = '{decoded_loss_slice}'")
+                    
                     #print(f"Converting input IDs to device")
                     input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
@@ -946,8 +958,8 @@ def main(attack_params):
                         #print(f"Slicing input")
                         control_slice = input_ids[input_id_data.slice_data.control]
                         
-                        #control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
-                        #print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
+                        control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
+                        print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
 
                         adversarial_string_tokens = control_slice.to(attack_params.device)
                         #print_stats()
@@ -1235,7 +1247,11 @@ if __name__=='__main__':
 
     parser.add_argument("--exclude-special-tokens", type=str2bool, nargs='?',
         const=True, default=attack_params.exclude_special_tokens,
-        help="Bias the adversarial content generation data to avoid using special tokens (begin/end of string, etc.).")
+        help="Bias the adversarial content generation data to avoid using basic special tokens (begin/end of string, padding, unknown).")
+
+    parser.add_argument("--exclude-additional-special-tokens", type=str2bool, nargs='?',
+        const=True, default=attack_params.exclude_additional_special_tokens,
+        help="Bias the adversarial content generation data to avoid using additional special tokens defined in the tokenizer configuration.")
 
     parser.add_argument("--exclude-token", action='append', nargs='*', required=False,
         help=f"Bias the adversarial content generation data to avoid using the specified token (if it exists as a discrete value in the model). May be specified multiple times to exclude multiple tokens.")
@@ -1424,6 +1440,8 @@ if __name__=='__main__':
     attack_params.exclude_nonascii_tokens = args.exclude_nonascii_tokens
     
     attack_params.exclude_special_tokens = args.exclude_special_tokens
+    
+    attack_params.exclude_additional_special_tokens = args.exclude_additional_special_tokens
     
     if args.token_filter_regex:
         attack_params.token_filter_regex = args.token_filter_regex
