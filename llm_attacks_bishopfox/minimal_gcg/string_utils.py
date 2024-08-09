@@ -715,7 +715,7 @@ class SuffixManager:
         result.full_prompt_ids = toks
         result.input_ids = toks[:result.slice_data.target.stop]
 
-        self.print_slice_info("get_prompt", result.slice_data, toks)
+        #self.print_slice_info("get_prompt", result.slice_data, toks)
 
         conversation_template.messages = []
 
