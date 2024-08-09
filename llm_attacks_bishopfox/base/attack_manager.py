@@ -106,6 +106,10 @@ def get_default_positive_test_strings():
     base_list = ["but I'll try"]
     return generate_trivial_string_variations(base_list)
 
+# This list is hardcoded so that results can be deterministic
+def get_random_seed_list_for_comparisons():
+    return [ 0x56, 0xea, 0x7b, 0x6d, 0xc3, 0x71, 0x20, 0x31, 0x51, 0x79, 0xae, 0x7c, 0xf6, 0x92, 0xc2, 0x12, 0x93, 0x4c, 0x7e, 0x32, 0x63, 0x4a, 0xac, 0x73, 0x9a, 0xc7, 0x69, 0x98, 0x89, 0xe1, 0x2c, 0xe7, 0x5a, 0xbd, 0x45, 0x70, 0x0d, 0x34, 0x24, 0xe6, 0x65, 0xbc, 0x50, 0x03, 0x7f, 0x28, 0x7a, 0x48, 0x67, 0xfd, 0x42, 0x59, 0xc4, 0x97, 0x3a, 0x3d, 0x83, 0xf5, 0xf2, 0xdf, 0xd7, 0x3f, 0xa9, 0x86, 0x21, 0x68, 0x94, 0x1a, 0x02, 0x23, 0x38, 0x5c, 0x8a, 0x17, 0x6a, 0xf9, 0xd8, 0xd2, 0x88, 0xa7, 0x2e, 0x00, 0x37, 0x41, 0x8f, 0xcc, 0x90, 0xf7, 0x8e, 0x4d, 0xba, 0xd3, 0x36, 0xe3, 0xb4, 0x8d, 0x4f, 0x29, 0xf4, 0x87, 0x3c, 0x58, 0x57, 0x66, 0x10, 0x9f, 0xa6, 0x75, 0x9c, 0x81, 0x09, 0xb6, 0xa8, 0x76, 0xe4, 0xbe, 0x01, 0xef, 0x07, 0x85, 0xbf, 0x18, 0xa0, 0x3e, 0x2d, 0xa4, 0x6c, 0xc8, 0x74, 0x46, 0x77, 0xfc, 0x33, 0x30, 0xb5, 0x44, 0xb8, 0xd4, 0xb9, 0x14, 0xa5, 0x78, 0xd6, 0xed, 0x15, 0x6f, 0x08, 0x7d, 0x3b, 0xc6, 0x5e, 0x0a, 0xdd, 0xe5, 0xf3, 0x2a, 0x8c, 0xec, 0xce, 0x1d, 0xb7, 0x52, 0xc0, 0xfb, 0x27, 0x13, 0xcb, 0x43, 0xd5, 0x6e, 0xd1, 0x72, 0x62, 0xad, 0x26, 0x9b, 0x2b, 0x6b, 0x84, 0xcf, 0xdc, 0x1f, 0x0c, 0x61, 0x55, 0xb2, 0x35, 0x9e, 0x54, 0x5f, 0xde, 0xca, 0x64, 0x04, 0x91, 0xe0, 0xeb, 0xaa, 0x19, 0xf8, 0xbb, 0x40, 0xf1, 0xc5, 0x82, 0x05, 0x99, 0xc1, 0xab, 0xa1, 0xa3, 0xb1, 0x5b, 0x25, 0x0f, 0xd9, 0xcd, 0x0b, 0xb0, 0x2f, 0xaf, 0x39, 0xa2, 0xda, 0x22, 0x11, 0xc9, 0xdb, 0x4b, 0x53, 0x1b, 0x16, 0xd0, 0x06, 0xfa, 0x80, 0x60, 0x95, 0xb3, 0xe2, 0x5d, 0x1c, 0xfe, 0xf0, 0xff, 0x47, 0x0e, 0x49, 0x1e, 0xee, 0x8b, 0x9d, 0xe8, 0x4e, 0xe9, 0x96 ]
+
 def get_escaped_string(input_string):
     if input_string is None:
         return None
@@ -368,7 +372,7 @@ def get_encoded_string(input_string):
 # [get_token_denylist] Debug: got token(s) '[835, 29871]' from string '### '
 # [get_token_denylist] Debug: did not add tokens '[835, 29871]' to the denylist because a single string became multiple tokens
 
-def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, token_regex = None):
+def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
     #print(f"[get_token_denylist] Debug: building token denylist from string list '{string_list}'")    
     denied_toks = []
     
@@ -436,52 +440,55 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
                 if decoded_token is not None and decoded_token not in input_string_list:
                     input_string_list.append(decoded_token)
 
+    if filter_whitespace_tokens:
+        for j in range(0, tokenizer.vocab_size):
+            candidate_token = get_decoded_token(tokenizer, j)
+            if candidate_token is None:
+                if j not in denied_toks:
+                    #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because the tokenizer decoded it to a null value and it was not already on the list.")
+                    denied_toks.append(j)
+            else:
+                #candidate_token_escaped = get_encoded_string(candidate_token)
+                if candidate_token.strip() == "":
+                    if j not in denied_toks:
+                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it consists solely of whitespace characters and was not already on the list.")
+                        denied_toks.append(j)
+
     for i in range(0, len(string_list)):
         if string_list[i] is not None and string_list[i] not in input_string_list:
             input_string_list.append(string_list[i])
 
     for i in range(0, len(input_string_list)):
         current_string = input_string_list[i]
-        handled = False
-        if current_string == "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG":
-            handled = True
-            for j in range(0, tokenizer.vocab_size):
-                candidate_token = get_decoded_token(tokenizer, j)
-                if candidate_token is not None:
-                    #candidate_token_escaped = get_encoded_string(candidate_token)
-                    if candidate_token.strip() == "":
-                        if j not in denied_toks:
-                            #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it consists solely of whitespace characters and was not already on the list.")
-                            denied_toks.append(j)
-        if not handled:
-            #current_string_escaped = get_encoded_string(current_string)
-            denied_toks_original = get_encoded_token(tokenizer, current_string)
-            #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
-            # If a given string was transformed into more than one token, ignore it
-            
-            if denied_toks_original is not None:
-                if isinstance(denied_toks_original, list):
-                    if len(denied_toks_original) == 1:
-                        #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
-                        denied_toks_original = denied_toks_original[0]
-                    else:
-                        #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
-                        denied_toks_original = None
-            if denied_toks_original is not None:
-                if denied_toks_original not in denied_toks:
-                    #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
-                    denied_toks.append(denied_toks_original)
-            # also check to see if any tokens are equivalent to the string value when decoded, 
-            # even if the encoder didn't return them
-            for j in range(0, tokenizer.vocab_size):
-                candidate_token = get_decoded_token(tokenizer, j)
-                #candidate_token_escaped = get_encoded_string(candidate_token)
-                #if candidate_token == current_string:
-                if candidate_token is not None:
-                    if candidate_token.strip() == current_string.strip():
-                        if j not in denied_toks:
-                            #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
-                            denied_toks.append(j)
+
+        #current_string_escaped = get_encoded_string(current_string)
+        denied_toks_original = get_encoded_token(tokenizer, current_string)
+        #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
+        # If a given string was transformed into more than one token, ignore it
+        
+        if denied_toks_original is not None:
+            if isinstance(denied_toks_original, list):
+                if len(denied_toks_original) == 1:
+                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
+                    denied_toks_original = denied_toks_original[0]
+                else:
+                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
+                    denied_toks_original = None
+        if denied_toks_original is not None:
+            if denied_toks_original not in denied_toks:
+                #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
+                denied_toks.append(denied_toks_original)
+        # also check to see if any tokens are equivalent to the string value when decoded, 
+        # even if the encoder didn't return them
+        for j in range(0, tokenizer.vocab_size):
+            candidate_token = get_decoded_token(tokenizer, j)
+            #candidate_token_escaped = get_encoded_string(candidate_token)
+            #if candidate_token == current_string:
+            if candidate_token is not None:
+                if candidate_token.strip() == current_string.strip():
+                    if j not in denied_toks:
+                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
+                        denied_toks.append(j)
     return denied_toks
 
 
@@ -2005,3 +2012,106 @@ def get_goals_and_targets(params):
     print('Loaded {} test goals'.format(len(test_goals)))
 
     return train_goals, train_targets, test_goals, test_targets
+
+
+# Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
+# Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
+# TKTK: iterate over all other parameters with similar names and warn the user if any of them may cause the script to crash unless the value is reduced.
+def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model, tokenizer, desired_value):
+    effective_value = desired_value
+
+    limited_by_tokenizer_model_max_length = False
+    limited_by_tokenizer_max_position_embeddings = False
+    limited_by_tokenizer_config_model_max_length = False
+    limited_by_tokenizer_config_max_position_embeddings = False
+    limited_by_model_config_max_position_embeddings = False
+    limited_by_model_decoder_config_max_position_embeddings = False
+
+    tokenizer_model_max_length = None
+    tokenizer_max_position_embeddings = None
+    tokenizer_config_model_max_length = None
+    tokenizer_config_max_position_embeddings = None
+    model_config_max_position_embeddings = None
+    model_decoder_config_max_position_embeddings = None
+
+    limiting_factor_count = 0
+    
+    if hasattr(tokenizer, "model_max_length"):        
+        if tokenizer.model_max_length is not None:
+            tokenizer_model_max_length = tokenizer.model_max_length
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_model_max_length = {tokenizer_model_max_length}")
+            if tokenizer_model_max_length < desired_value:
+                limited_by_tokenizer_model_max_length = True
+                limiting_factor_count += 1
+                
+    if hasattr(tokenizer, "max_position_embeddings"):        
+        if tokenizer.max_position_embeddings is not None:
+            tokenizer_max_position_embeddings = tokenizer.max_position_embeddings
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+            if tokenizer_max_position_embeddings < desired_value:
+                limited_by_tokenizer_max_position_embeddings = True
+                limiting_factor_count += 1
+
+    if hasattr(tokenizer, "config"):
+        if tokenizer.config is not None:
+            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer.config = {tokenizer.config}")
+            if hasattr(tokenizer.config, "model_max_length"):            
+                if tokenizer.config.model_max_length is not None:
+                    tokenizer_config_model_max_length = tokenizer.config.model_max_length
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+                    if tokenizer_config_model_max_length < desired_value:            
+                        limited_by_tokenizer_config_model_max_length = True
+                        limiting_factor_count += 1
+            if hasattr(tokenizer.config, "max_position_embeddings"):            
+                if tokenizer.config.max_position_embeddings is not None:
+                    tokenizer_config_max_position_embeddings = tokenizer.config.max_position_embeddings
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+                    if tokenizer_config_max_position_embeddings < desired_value:            
+                        limited_by_tokenizer_config_max_position_embeddings = True
+                        limiting_factor_count += 1
+        
+    if hasattr(model, "config"):
+        if model.config is not None:
+            print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.config = {model.config}")
+            if hasattr(model.config, "max_position_embeddings"):            
+                if model.config.max_position_embeddings is not None:
+                    model_config_max_position_embeddings = model.config.max_position_embeddings
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_config_max_position_embeddings = {model_config_max_position_embeddings}")
+                    if model_config_max_position_embeddings < desired_value:            
+                        limited_by_model_config_max_position_embeddings = True
+                        limiting_factor_count += 1
+    
+    if hasattr(model, "decoder"):
+        if model.decoder is not None:
+            if hasattr(model.decoder, "config"):
+                if model.decoder.config is not None:
+                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.decoder.config = {model.decoder.config}")
+                    if hasattr(model.decoder.config, "max_position_embeddings"):            
+                        if model.decoder.config.max_position_embeddings is not None:
+                            model_decoder_config_max_position_embeddings = model.decoder.config.max_position_embeddings
+                            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+                            if model_decoder_config_max_position_embeddings < desired_value:            
+                                limited_by_model_decoder_config_max_position_embeddings = True
+                                limiting_factor_count += 1
+    
+    if limiting_factor_count > 0:
+        description_string = f"Warning: the current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
+        for limit_value in [ tokenizer_model_max_length, tokenizer_max_position_embeddings, tokenizer_config_model_max_length, tokenizer_config_max_position_embeddings, model_config_max_position_embeddings, model_decoder_config_max_position_embeddings ]:
+            if limit_value is not None:
+                effective_value = min(effective_value, limit_value)
+        if limited_by_tokenizer_model_max_length:
+            description_string += f"The tokenizer's model_max_length value is {tokenizer_model_max_length}. "
+        if limited_by_tokenizer_max_position_embeddings:
+            description_string += f"The tokenizer's max_position_embeddings value is {tokenizer_max_position_embeddings}. "
+        if limited_by_tokenizer_config_model_max_length:
+            description_string += f"The tokenizer's configuration's model_max_length value is {tokenizer_config_model_max_length}. "
+        if limited_by_tokenizer_config_max_position_embeddings:
+            description_string += f"The tokenizer's configuration's max_position_embeddings value is {tokenizer_config_max_position_embeddings}. "
+        if limited_by_model_config_max_position_embeddings:
+            description_string += f"The model configuration's max_position_embeddings value is {model_config_max_position_embeddings}. "
+        if limited_by_model_decoder_config_max_position_embeddings:
+            description_string += f"The model's decoder's configuration's max_position_embeddings value is {model_decoder_config_max_position_embeddings}. "
+        description_string += f"The effective value that will be used is {effective_value}."
+        print(description_string)
+         
+    return effective_value

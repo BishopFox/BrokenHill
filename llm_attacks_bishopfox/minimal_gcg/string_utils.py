@@ -81,7 +81,7 @@ class TrashFireTokenCollection:
             result.input_strings = append_single_or_list_members(result.input_strings, conversation_template.sep2, ignore_if_none = True)
         
         #result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
-        result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
         
         result.decoded_tokens = get_decoded_tokens(tokenizer, result.token_ids)
         #print(f"[get_hardcoded_trash_fire_token_collection] Debug: result.input_strings = '{result.input_strings}', result.token_ids = '{result.token_ids}', result.decoded_tokens = '{result.decoded_tokens}'")
