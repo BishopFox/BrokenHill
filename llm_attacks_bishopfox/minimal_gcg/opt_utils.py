@@ -345,6 +345,9 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
     if test_controls is None or len(test_controls) < 1:
         raise ValueError(f"test_controls must be a list of strings, got empty array or null")
 
+    test_ids = None
+    nested_ids = None
+
     if isinstance(test_controls[0], str):
         max_len = control_slice.stop - control_slice.start
         test_ids = [
@@ -358,6 +361,9 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
         test_ids = torch.nested.to_padded_tensor(nested_ids, pad_tok, (len(test_ids), max_len))
     else:
         raise ValueError(f"test_controls must be a list of strings, got {type(test_controls)}")
+
+    #decoded_test_ids = get_decoded_tokens(tokenizer, test_ids)
+    #print(f"[get_logits] Debug: test_ids = '{test_ids}', decoded_test_ids = '{decoded_test_ids}'")
 
     if not(test_ids[0].shape[0] == control_slice.stop - control_slice.start):
         raise ValueError((
@@ -380,15 +386,22 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
 
     if return_ids:
         del locs, test_ids ; gc.collect()
-        return forward(model=model, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size), ids
+        result1 = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
+        
+        #print(f"[get_logits] Debug: returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
+
+        return result1, ids
     else:
         del locs, test_ids
-        logits = forward(model=model, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
+        logits = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
         del ids ; gc.collect()
+        
+        #print(f"[get_logits] Debug: returning logits = '{logits}', attn_mask = '{attn_mask}'")
+        
         return logits
     
 
-def forward(*, model, input_ids, attention_mask, batch_size=512):
+def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
 
     logits = []
     for i in range(0, input_ids.shape[0], batch_size):
@@ -399,7 +412,14 @@ def forward(*, model, input_ids, attention_mask, batch_size=512):
         else:
             batch_attention_mask = None
 
-        logits.append(model(input_ids=batch_input_ids, attention_mask=batch_attention_mask).logits)
+        model_result = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        #model_result_decoded = get_decoded_tokens(tokenizer, model_result)
+        #print(f"[forward] Debug: getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
+        #print(f"[forward] Debug: getting logits for model_result = '{model_result}'")
+
+        model_result_logits = model_result.logits
+
+        logits.append(model_result_logits)
 
         gc.collect()
 
@@ -407,10 +427,23 @@ def forward(*, model, input_ids, attention_mask, batch_size=512):
     
     return torch.cat(logits, dim=0)
 
-def target_loss(logits, ids, target_slice):
+# In this function, the logits returned by get_logits and forward are compared against the token IDs returned by get_logits
+# ...which seems to correspond to the token IDs that represent the target output, repeated enough times to equal the length of the first entry in the list of candidate values? I think?
+# If I understand the goal here, it's to treat the target tokens as coordinates and figure out how far away the candidate tokens are from them?
+# ...because I don't see anywhere that the generated output tokens are compared to the target tokens, which is what I originally assumed was the goal.
+def target_loss(logits, ids, target_slice, tokenizer):
     crit = nn.CrossEntropyLoss(reduction='none')
-    loss_slice = slice(target_slice.start-1, target_slice.stop-1)
-    loss = crit(logits[:,loss_slice,:].transpose(1,2), ids[:,target_slice])
+    # [blincoln] Testing out my theory that the -1 offset is incorrect
+    #loss_slice = slice(target_slice.start-1, target_slice.stop-1)
+    loss_slice = slice(target_slice.start, target_slice.stop)
+    logits_sliced = logits[:,loss_slice,:]
+    logits_sliced_transposed = logits_sliced.transpose(1,2)
+    ids_sliced = ids[:,target_slice]
+    
+    #ids_sliced_decoded = get_decoded_tokens(tokenizer, ids_sliced)
+    #print(f"[target_loss] Debug: calculating cross-entropy loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")
+
+    loss = crit(logits_sliced_transposed, ids_sliced)
     return loss.mean(dim=-1)
 
 def get_missing_pad_token_names():

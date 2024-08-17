@@ -199,12 +199,12 @@ class PromptSliceData:
 class PromptAndInputIDCollection:
     def __init__(self):
         self.prompt = None
-        self.full_prompt_ids = None
-        self.input_ids = None
+        self.full_prompt_token_ids = None
+        self.input_token_ids = None
         self.slice_data = PromptSliceData()
     
     def get_input_ids_as_tensor(self):
-        return torch.tensor(self.input_ids)
+        return torch.tensor(self.input_token_ids)
 
 # TKTK: Replace this with an AdversarialTokenManager that tracks an array of token IDs instead of a string
 # That would allow not only performing a prefix/suffix attack, but also interleaving the tokens into the 
@@ -296,10 +296,13 @@ class SuffixManager:
     #       For testing attack results, it's the LLM's output in response to the combination of prompt and adversarial tokens.
     
     
-    # _loss_slice: I honestly don't know how this is supposed to be significantly different from the _target_slice.
-    # In the original code, _loss_slice was always the same as _target_slice, except with 1 subtracted from the start and stop values.
-    # The length of the two slices must match, or the attack will crash with an error.
-    # I suspect _loss_slice was originally more significant, and has essentially been stubbed out.
+    # _loss_slice: If I understand the attack correctly, the "loss slice" isn't actually part of the data returned by get_prompt at all. It's the equivalent text output when testing the result of the new adversarial data against the old data.
+    # In the original code, _loss_slice was always the same as _target_slice, except with 1 subtracted from the start and stop values. I have no idea why that is. I think it really messed up the loss calculations.
+    # TKTK: test out making it equivalent to the loss slice, as well as just using the remainder of the text, with two handling modes:
+    # Truncate the slices to the shorter of the two
+    # Pad the longer data
+    #   Option to pad the longer data with different tokens, e.g. padding, unknown.
+    # The length of the two slices must match when passed to downstream functions or the attack will crash with an error.
 
     # For some LLMs, e.g. Llama-2, the distinction between speaking roles is handled differently, but the parsing logic should still produce equivalent results.
     # In the case of Llama-2, the standard conversation template wraps user input in [INST] [/INST] tags, and anything else is the LLM's response.
@@ -635,7 +638,9 @@ class SuffixManager:
             result.slice_data.target = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - target_slice', result.slice_data)
             
-            result.slice_data.loss = slice(first_non_garbage_token - 1, last_non_garbage_token - 1)
+            # [blincoln] Testing out my theory that the -1 offset is incorrect
+            #result.slice_data.loss = slice(first_non_garbage_token - 1, last_non_garbage_token - 1)
+            result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - loss_slice', result.slice_data)
             
         else:
@@ -702,9 +707,14 @@ class SuffixManager:
             )
             self.validate_slice_data('get_prompt', result.slice_data)
             
+            # [blincoln] Testing out my theory that the -1 offset is incorrect
+            # result.slice_data.loss = slice(
+                # prompt_find_self_target_c2t - 1,
+                # prompt_combined_c2t
+            # )
             result.slice_data.loss = slice(
-                prompt_find_self_target_c2t - 1,
-                prompt_combined_c2t
+                prompt_find_self_target_c2t,
+                prompt_combined_c2t + 1
             )
             self.validate_slice_data('get_prompt', result.slice_data)
 
@@ -712,8 +722,8 @@ class SuffixManager:
         #final_decoded_toks = get_decoded_tokens(self.tokenizer, toks)
         #print(f"[get_prompt] Debug: toks (after parsing) = '{toks}', final_decoded_toks = '{final_decoded_toks}'")
         
-        result.full_prompt_ids = toks
-        result.input_ids = toks[:result.slice_data.target.stop]
+        result.full_prompt_token_ids = toks
+        result.input_token_ids = toks[:result.slice_data.target.stop]
 
         #self.print_slice_info("get_prompt", result.slice_data, toks)
 
@@ -721,15 +731,7 @@ class SuffixManager:
 
         return result
     
-    def get_input_ids(self, adv_string=None, force_python_tokenizer = False):
-        result = self.get_prompt(adv_string=adv_string, force_python_tokenizer=force_python_tokenizer)
-        #toks = self.tokenizer(result.prompt).input_ids
-        #result.input_ids = toks[:self._target_slice.stop]
-        #result.input_ids = toks[:result.slice_data.target.stop]        
-        #toks_decoded = get_decoded_tokens(self.tokenizer, toks)
-        #toks_decoded = get_decoded_tokens(self.tokenizer, result.input_ids)
-        #result_input_ids_decoded = get_decoded_tokens(self.tokenizer, result.input_ids)
-        #print(f"[get_input_ids] Debug: toks = '{toks}', toks_decoded = '{toks_decoded}', result.prompt = '{result.prompt}', result.input_ids = '{result.input_ids}', result_input_ids_decoded = '{result_input_ids_decoded}'")
-        #print(f"[get_input_ids] Debug: result.prompt = '{result.prompt}', result.input_ids = '{result.input_ids}', result_input_ids_decoded = '{result_input_ids_decoded}'")
-        return result
+#    def get_input_ids(self, adv_string=None, force_python_tokenizer = False):
+#        result = self.get_prompt(adv_string=adv_string, force_python_tokenizer=force_python_tokenizer)
+#        return result
 

@@ -155,11 +155,13 @@ The initial string to iterate on. Leave this as the default to perform the stand
 
 Limit sample control results to this many top values (default: 256)
 
-#### --temperature <number>
+#### --temperature <floating-point number>
 
-'Temperature' value to pass to the model. Use the default value for deterministic results. (default: 1)
+'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results.
 
-#### Random seed values
+You don't need to set this value very high to get a wide variety of output. 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
+
+#### Randomization
 
 ##### --random-seed-numpy <integer>
 
@@ -172,6 +174,12 @@ Random seed for PyTorch (default: 20)
 ##### --random-seed-cuda <integer>
 
 Random seed for CUDA (default: 20)
+
+##### --random-seed-comparisons <number>
+
+This will cause the tool to generate <number> additional versions of the LLM-generated output for each candidate adversarial value, after temporarily re-seeding the pseudo-random number generators with a list of alternative values that do not include any of the three options above. This can help avoid focusing on fragile results - if a given adversarial value only works in one of four randomized trials, it's unlikely to work against the same LLM running on someone else's system.
+
+When using this option, `--temperature` must also be set to a non-default value, because otherwise models that have sample-based output disabled by default will simply return <number> identical results.
 
 #### --max-iterations <positive integer>
 

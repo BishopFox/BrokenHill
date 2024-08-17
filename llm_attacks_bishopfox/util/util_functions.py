@@ -40,6 +40,17 @@ def numeric_string_to_int(s):
     print(f"Unhandled case while parsing the value '{s}'")
     sys.exit(1)
 
+def numeric_string_to_float(s):
+    result = None
+    try:
+        result = float(s)
+        return result
+    except Exception as e:
+        print(f"Tried to parse the value '{s}' as a floating-point number and failed: {e}")
+        sys.exit(1)
+    return None
+ 
+ 
 # begin: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
 def str2bool(v):
     if isinstance(v, bool):

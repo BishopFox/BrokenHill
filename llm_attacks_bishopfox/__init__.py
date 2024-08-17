@@ -20,6 +20,7 @@ from .base.attack_manager import (
     get_escaped_string,
     get_goals_and_targets,
     get_nonascii_token_list,
+    get_random_seed_list_for_comparisons,
     get_token_denylist,
     get_token_list_as_tensor,
     get_workers
