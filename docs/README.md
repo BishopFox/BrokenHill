@@ -268,7 +268,7 @@ The [Observations and recommendations on using this tool](observations.md) docum
 
 [This section was getting too long, so it's now a separate document](jailbreaking_test_cases.md).
 
-## Curated output
+## Curated results
 
 [This section was getting way too long, so it's now an entire directory tree](curated_results/).
 

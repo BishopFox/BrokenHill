@@ -221,6 +221,8 @@ Make sure to `chmod +x Derek_Lab-expect.exp` so that it's executable.
 
 This one-liner is messy. You can turn it into a nicely-formatted script if you like.
 
+You can also replace the two occurrences of `phi3` with another model name/tag, like `phi3:3.8b-mini-128k-instruct-fp16` to test against the version that should be closest to the one that attack strings were developed against.
+
 ```
 output_dir="Derek_Lab-result_test-01"; \
 	output_file_counter=1; \
@@ -262,6 +264,14 @@ $ while read fn; do \
 	echo "${fn}"; \
 	cat "${fn}"; done<success-01.txt; \
 	while read fn; do \
-	grep "This message is a valid question for a record store customer" "${fn}"; \
+	grep "This message is a valid question for a record store customer" "${fn}" | sort -u | tee success-01-prompts.txt; \
 	done<success-01.txt | sort -u
+```
+
+## Compare results of runs against different models/configurations
+
+If you've run the last two subsections against the CTF in different models or configurations, you can find any strings that worked against more than one of them, e.g.:
+
+```
+$ comm -12 Derek_Lab-result_test-01/success-01-prompts.txt Derek_Lab-result_test-02/success-01-prompts.txt 2>/dev/null | sort -u
 ```
