@@ -1,15 +1,15 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.14"
-script_date = "2024-08-14"
+script_version = "0.15"
+script_date = "2024-08-19"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
     result += "\n"
     result += "Originally based on the demo.ipynb notebook included in the https://github.com/llm-attacks/llm-attacks repository."
     result += "\n"
-    result += "*Heavily* modified by Ben Lincoln, Bishop Fox."
+    result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     result += "\n"
     result += f"version {script_version}, {script_date}"    
     return result
@@ -17,7 +17,7 @@ def get_script_description():
 def get_short_script_description():
     result = 'Based on code by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
     result += "\n"
-    result += "*Heavily* modified by Ben Lincoln, Bishop Fox."
+    result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     return result
 
 import argparse
@@ -52,9 +52,16 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfo
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoCollection
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
 from llm_attacks_bishopfox.attack.attack_classes import FakeException
+from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import gcg_attack_params
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
+#from llm_attacks_bishopfox.jailbreak_detection import JailbreakDetectionRuleResult
+#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
+#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_decoded_token
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_decoded_tokens
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
@@ -225,35 +232,39 @@ def generate(attack_params, model, tokenizer, suffix_manager, adversarial_string
     else:
         working_gen_config.max_new_tokens = attack_params.generation_max_new_tokens
 
-    #input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-    input_id_data = suffix_manager.get_prompt(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
-    input_ids_sliced = input_ids[:input_id_data.slice_data.assistant_role.stop]
+    result = GenerationResults()
+    result.max_new_tokens = working_gen_config.max_new_tokens
+
+    #result.input_token_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+    result.input_token_id_data = suffix_manager.get_prompt(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
+    input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
     #input_ids = input_ids[:assistant_role_slice.stop].to(model.device).unsqueeze(0)
     #attn_masks = torch.ones_like(input_ids).to(model.device)
     attn_masks = torch.ones_like(input_ids_converted).to(model.device)
         
-    #output_ids = model.generate(input_ids, 
-    output_ids = model.generate(input_ids_converted, 
+    result.output_token_ids = model.generate(input_ids_converted, 
                                 attention_mask=attn_masks, 
                                 generation_config=working_gen_config,
                                 pad_token_id=tokenizer.pad_token_id)[0]
     
-    #return output_ids[assistant_role_slice.stop:]
-    output_ids_output_only = output_ids[input_id_data.slice_data.assistant_role.stop:]
+    result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
     
-    generation_input_token_ids = output_ids[input_id_data.slice_data.goal.start:input_id_data.slice_data.control.stop]
+    result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.goal.start:result.input_token_id_data.slice_data.control.stop]
+    
+    return result
     
     # input_id_data.input_token_ids: the token IDs that represent just the user input part of the prompt generated by get_prompt
     # generation_input_token_ids: the token IDs that represent just the user input part of the prompt sent to the LLM - should be identical to the previous value
     # output_ids_output_only: the token IDs that represent just the LLM's response to the input
     # output_ids: the complete set of tokens that represents the system prompt, messages, user input, and the LLM's response
     #return input_id_data.input_token_ids, generation_input_token_ids, output_ids_output_only, output_ids
-    return input_id_data, generation_input_token_ids, output_ids_output_only, output_ids
+    #return input_id_data, generation_input_token_ids, output_ids_output_only, output_ids
 
-def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, adversarial_string, test_prefixes, gen_config=None, do_sample = True):
-    input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params,
+def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, adversarial_string, jailbreak_detector, gen_config=None, do_sample = True):
+    #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params,
+    generation_results = generate(attack_params,
                                         model, 
                                         tokenizer, 
                                         suffix_manager, 
@@ -264,26 +275,16 @@ def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, ad
     #gen_str = tokenizer.decode(generated_tokens).strip()
     
     result_ar_info_data = AttackResultInfoData()
-    result_ar_info_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
+    result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
                                   
     gen_str = result_ar_info_data.decoded_llm_output_string
-                                  
-    jailbroken = True
-    # if the output contains one of the negative test strings, flag it as not jailbroken
-    for prefix in attack_params.negative_output_strings:
-        if prefix in result_ar_info_data.decoded_llm_output_string:
-            jailbroken = False
-            break
-    # ...but if it contains one of the positive test strings, flag it as jailbroken again
-    for prefix in attack_params.positive_output_strings:
-        if prefix in result_ar_info_data.decoded_llm_output_string:
-            jailbroken = True
-            break
-    # Additional checks to filter out garbage
-    if jailbroken and not attack_params.jailbreak_minimum_sequential_letters_regex.search(result_ar_info_data.decoded_llm_output_string):
-        jailbroken = False
+                  
+    jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
+                  
+    jailbroken = False
+    if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
+        jailbroken = True
     #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
-
     
     return jailbroken, result_ar_info_data
 
@@ -401,6 +402,9 @@ def main(attack_params):
     model = None
     tokenizer = None
     suffix_manager = None
+    jailbreak_detector = LLMJailbreakDetector()
+    jailbreak_detector.rule_set = attack_params.jailbreak_detection_rule_set
+    
     # keep two arrays to avoid having to convert every item to JSON every iteration
     json_data = []
     attack_data = []
@@ -484,7 +488,7 @@ def main(attack_params):
         print(f"Conversation template sep2: '{conv_template.sep2}'")
         print(f"Conversation template roles: '{conv_template.roles}'")
         print(f"Conversation template system message: '{conv_template.system_message}'")
-        messages = json.dumps(conv_template.messages)
+        messages = json.dumps(conv_template.messages, indent=4)
         print(f"Conversation template messages: '{messages}'")
         #print_stats(attack_params)
 
@@ -557,7 +561,6 @@ def main(attack_params):
                     control_slice_decoded = None
                     best_new_adversarial_string = None
                     attack_results_current_iteration = AttackResultInfoCollection()
-                    attack_results_current_iteration.date_time_utc = get_time_string()                    
                     # Step 3. Sample a batch of new tokens based on the coordinate gradient.
                     # Notice that we only need the one that minimizes the loss.
                     with torch.no_grad():
@@ -664,6 +667,8 @@ def main(attack_params):
                         for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
                             prng_seed_index += 1
                             attack_data_current_iteration = AttackResultInfo()
+                            attack_data_current_iteration.model_path = attack_params.model_path
+                            attack_data_current_iteration.tokenizer_path = attack_params.tokenizer_path
                             attack_data_current_iteration.np_random_seed = attack_params.np_random_seed
                             attack_data_current_iteration.torch_manual_seed = attack_params.torch_manual_seed
                             attack_data_current_iteration.torch_cuda_manual_seed_all = attack_params.torch_cuda_manual_seed_all
@@ -702,11 +707,13 @@ def main(attack_params):
                             #is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
                             #is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
                             #is_success, current_generated_string, current_check_token_ids, input_tokens, output_ids_output_only, output_ids = check_for_attack_success(attack_params, model, 
-                            is_success, jailbreak_check_data = check_for_attack_success(attack_params, model, 
-                                                     tokenizer,
-                                                     suffix_manager, 
-                                                     adversarial_string, 
-                                                     attack_params.negative_output_strings, do_sample = do_sample)            
+                            is_success, jailbreak_check_data = check_for_attack_success(attack_params, 
+                                                    model, 
+                                                    tokenizer,
+                                                    suffix_manager, 
+                                                    adversarial_string,
+                                                    jailbreak_detector,
+                                                    do_sample = do_sample)            
                             #print_stats(attack_params)
                             if is_success:
                                 attack_results_current_iteration.jailbreak_detection_count += 1
@@ -739,9 +746,11 @@ def main(attack_params):
                                 # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, because 
                                 #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
                                 #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-                                input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
+                                #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
+                                generation_results = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
                               
-                                full_output_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
+                                #full_output_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
+                                full_output_data.set_values(tokenizer, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
                                 
                                 attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
                             
@@ -785,13 +794,18 @@ def main(attack_params):
                     attack_data.append(attack_results_current_iteration)
                     if attack_params.json_output_file is not None:
                         json_data.append(attack_results_current_iteration.to_dict())
-                        safely_write_text_output_file(attack_params.json_output_file, json.dumps(json_data))
+                        safely_write_text_output_file(attack_params.json_output_file, json.dumps(json_data, indent=4))
                     
-                    if attack_params.rollback_on_loss_increase and main_loop_iteration_number > 0:
-                        previous_data = attack_data[main_loop_iteration_number - 1]                        
-                        if attack_results_current_iteration.loss > previous_data.loss:
-                            print(f"The loss value for adversarial data '{attack_results_current_iteration.adversarial_tokens}' ({attack_results_current_iteration.loss}) is greater than for the previous adversarial data '{previous_data.adversarial_tokens}' ({previous_data.loss}). Rolling back to the previous adversarial data ('{previous_data.best_new_adversarial_value}') for the next iteration instead of using '{best_new_adversarial_string}'.")
-                            best_new_adversarial_string = previous_data.best_new_adversarial_value
+                    if main_loop_iteration_number > 0:
+                        previous_data = attack_data[main_loop_iteration_number - 1]
+                        if attack_params.rollback_on_loss_increase:
+                            if attack_results_current_iteration.loss > previous_data.loss:
+                                print(f"The loss value for adversarial data '{attack_results_current_iteration.adversarial_tokens}' ({attack_results_current_iteration.loss}) is greater than for the previous adversarial data '{previous_data.adversarial_tokens}' ({previous_data.loss}). Rolling back to the previous adversarial data ('{previous_data.best_new_adversarial_value}') for the next iteration instead of using '{best_new_adversarial_string}'.")
+                                best_new_adversarial_string = previous_data.best_new_adversarial_value
+                        if attack_params.rollback_on_jailbreak_count_decrease:
+                            if attack_results_current_iteration.jailbreak_detection_count < previous_data.jailbreak_detection_count:
+                                print(f"The number of successful jailbreak results with adversarial data '{attack_results_current_iteration.adversarial_tokens}' ({attack_results_current_iteration.jailbreak_detection_count}) is less than for the previous adversarial data '{previous_data.adversarial_tokens}' ({previous_data.jailbreak_detection_count}). Rolling back to the previous adversarial data ('{previous_data.best_new_adversarial_value}') for the next iteration instead of using '{best_new_adversarial_string}'.")
+                                best_new_adversarial_string = previous_data.best_new_adversarial_value
                     
                     # Update the running adversarial_string with the best candidate
                     # Moved down here to make full output generation consistent and allow rollback
@@ -837,6 +851,13 @@ def main(attack_params):
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
     print(f"Finished at {end_ts} - elapsed time {total_elapsed_string}")
 
+def exit_if_unauthorized_overwrite(output_file_path, attack_params):
+    if os.path.isfile(output_file_path):
+        if attack_params.overwrite_output:
+            print(f"Warning: overwriting output file '{output_file_path}'")
+        else:
+            print(f"Error: the output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
+            sys.exit(1)
 
 if __name__=='__main__':
     short_description = get_short_script_description()
@@ -854,6 +875,8 @@ if __name__=='__main__':
         print(f"Warning: this host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
     
     parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    
+    # TKTK: --mode full (currently the only behaviour) vs --mode test-results (read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination)
     
     parser.add_argument("-m", "--model", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
@@ -1009,12 +1032,20 @@ if __name__=='__main__':
         const=True, default=attack_params.load_options_ignore_mismatched_sizes,
         help="When loading the model, pass 'ignore_mismatched_sizes=True', which may allow you to load some models with mismatched size data. It will probably only let the tool get a little further before erroring out, though.")
 
+    parser.add_argument("--jailbreak-detection-rules-file", type=str, 
+        help=f"If specified, loads the jailbreak detection rule set from a JSON file instead of using the default rule set.")
+    parser.add_argument("--write-jailbreak-detection-rules-file", type=str, 
+        help=f"If specified, writes the jailbreak detection rule set to a JSON file and then exits. If --jailbreak-detection-rules-file is not specified, this will cause the default rules to be written to the file. If --jailbreak-detection-rules-file *is* specified, then the custom rules will be normalized and written in the current standard format to the output file.")
+
     parser.add_argument("--break-on-success", type=str2bool, nargs='?',
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
     parser.add_argument("--rollback-on-loss-increase", type=str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_loss_increase,
-        help="If the loss value does not decrease between iterations, roll back to the last 'good' adversarial data.")
+        help="If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only.")
+    parser.add_argument("--rollback-on-jailbreak-count-decrease", type=str2bool, nargs='?',
+        const=True, default=attack_params.rollback_on_jailbreak_count_decrease,
+        help="If the number of jailbreaks detected decreases between iterations, roll back to the last 'good' adversarial data.")
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
@@ -1040,11 +1071,6 @@ if __name__=='__main__':
     parser.add_argument("--overwrite-output", type=str2bool, nargs='?',
         const=True,
         help="Overwrite any existing output files (--json-output-file, etc.).")
-
-    # TKTK: option to export attack_params as JSON or joad it as JSON
-    # TKTK: ability to customize the positive and negative test strings
-    # Related TKTK: ability to specify positive/negative test rules after 
-    #       implementing the rule engine instead of positive/negative lists
 
     args = parser.parse_args()
 
@@ -1215,11 +1241,42 @@ if __name__=='__main__':
     
     attack_params.load_options_ignore_mismatched_sizes = args.ignore_mismatched_sizes
     
+
+    # jailbreak detection and related
+
+    if args.jailbreak_detection_rules_file:
+        rules_file = os.path.abspath(args.jailbreak_detection_rules_file)
+        rules_file_content = get_file_content(rules_file, failure_is_critical = True)
+        try:
+            attack_params.jailbreak_detection_rule_set = LLMJailbreakDetectorRuleSet.from_json(rules_file_content)
+        except FakeException as e:
+            print(f"Error loading jailbreak detection rules from file '{rules_file}', content '{rules_file_content}': {e}.")
+            sys.exit(1)
+    else:
+        attack_params.jailbreak_detection_rule_set = LLMJailbreakDetectorRuleSet.get_default_rule_set()
+    
+    if args.write_jailbreak_detection_rules_file:
+        rules_output_file = os.path.abspath(args.write_jailbreak_detection_rules_file)
+        exit_if_unauthorized_overwrite(rules_output_file, attack_params)
+        try:
+            rules_data = attack_params.jailbreak_detection_rule_set.to_dict()
+            json_rules_data = json.dumps(rules_data, indent=4)
+            safely_write_text_output_file(rules_output_file, json_rules_data)
+            print(f"Wrote jailbreak detection rules to file '{rules_output_file}'.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error writing jailbreak detection rules to file '{rules_output_file}': {e}.")
+            sys.exit(1)
+    
     attack_params.break_on_success = args.break_on_success
     
     attack_params.rollback_on_loss_increase = args.rollback_on_loss_increase
     
+    attack_params.rollback_on_jailbreak_count_decrease = args.rollback_on_jailbreak_count_decrease
+    
     attack_params.display_full_failed_output = args.display_failure_output
+    
+    # other tweakable options
     
     attack_params.low_cpu_mem_usage = args.low_cpu_mem_usage
     
@@ -1258,12 +1315,13 @@ if __name__=='__main__':
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)
         # test output ability now so that the user doesn't have to wait to find out that it will fail
-        if os.path.isfile(attack_params.json_output_file):
-            if attack_params.overwrite_output:
-                print(f"Warning: overwriting JSON output file '{attack_params.json_output_file}'")
-            else:
-                print(f"Error: the JSON output file '{attack_params.json_output_file}' already exists. Specify --overwrite-output to replace it.")
-                sys.exit(1)
+        exit_if_unauthorized_overwrite(attack_params.json_output_file, attack_params)
+        # if os.path.isfile(attack_params.json_output_file):
+            # if attack_params.overwrite_output:
+                # print(f"Warning: overwriting JSON output file '{attack_params.json_output_file}'")
+            # else:
+                # print(f"Error: the JSON output file '{attack_params.json_output_file}' already exists. Specify --overwrite-output to replace it.")
+                # sys.exit(1)
         try:
             safely_write_text_output_file(attack_params.json_output_file, "")
         #except Exception as e:

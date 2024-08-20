@@ -23,11 +23,16 @@ def get_version(rel_path):
 
 
 with open('requirements.txt', 'r') as requirements:
+    base_package_list = find_packages()
+    packages_that_setuptools_cannot_find_for_some_reason = [ "llm_attacks_bishopfox.jailbreak_detection" ]
+    for p in packages_that_setuptools_cannot_find_for_some_reason:
+       if p not in base_package_list:
+           base_package_list.append(p)
     setup(name='llm_attacks_bishopfox',
           version=get_version('llm_attacks_bishopfox/__init__.py'),
           install_requires=list(requirements.read().splitlines()),
-          packages=find_packages(),
-          description='library for creating adversarial prompts for language models',
+          packages=base_package_list,
+          description='library and tooling for creating adversarial prompts for language models',
           python_requires='>=3.6',
           author='Andy Zou, Zifan Wang, Matt Fredrikson, J. Zico Kolter, Ben Lincoln',
           #author_email='jzou4@andrew.cmu.edu',

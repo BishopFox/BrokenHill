@@ -285,13 +285,25 @@ When loading the model, pass `trust_remote_code=True`, which enables execution o
 
 When loading the model, pass `ignore_mismatched_sizes=True`, which may allow you to load some models with mismatched size data. It will probably only let the tool get a little further before erroring out, though.
 
+#### --jailbreak-detection-rules-file <string>
+
+Read jailbreak detection rules from a JSON file instead of using the default configuration.
+
+#### --write-jailbreak-detection-rules-file <string>
+
+If specified, writes the jailbreak detection rule set to a JSON file and then exits. If `--jailbreak-detection-rules-file <string>` is not specified, this will cause the default rules to be written to the file. If `--jailbreak-detection-rules-file <string>` *is* specified, then the custom rules will be normalized and written in the current standard format to the specified output file.
+
 #### --break-on-success
 
 Stop iterating upon the first detection of a potential successful jailbreak.
 
 #### --rollback-on-loss-increase
 
-If the loss value increases between two iterations, roll back to the previous adversarial content instead of progressing down a potentially bad path.
+If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only. Rolling back on loss increase is not recommended because the "loss" being tested is for the adversarial tokens versus the desired output, *not* the current LLM output, so it is not a good direct indicator of the strength of the attack.
+
+#### --rollback-on-jailbreak-count-decrease
+
+If the number of jailbreaks detected decreases between iterations, roll back to the previous adversarial content.
 
 #### --display-failure-output
 

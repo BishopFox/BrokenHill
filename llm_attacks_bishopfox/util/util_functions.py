@@ -4,10 +4,13 @@ import datetime
 import math
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
 import torch
+
+from enum import StrEnum
 
 def get_file_content(file_path, failure_is_critical = True):
     result = None
@@ -185,6 +188,60 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
     return None
 
 
+# regex flags are an integer, so it would work to just serialize this value as a number, but it would be a number that would have no guarantee of representing the same set of flags for a different Python version/platform/etc.
+class RegexFlagString(StrEnum):
+    re_ASCII = 're.ASCII'
+    re_DEBUG = 're.DEBUG'
+    re_IGNORECASE = 're.IGNORECASE'
+    re_LOCALE = 're.LOCALE'
+    re_MULTILINE = 're.MULTILINE'
+    re_NOFLAG = 're.NOFLAG'
+    re_DOTALL = 're.DOTALL'
+    re_UNICODE = 're.UNICODE'
+    re_VERBOSE = 're.VERBOSE'
 
+def regex_flags_to_list(regex_flags):
+    result = []
+    if (regex_flags & re.ASCII) == re.ASCII:
+        result.append(str(RegexFlagString.re_ASCII))
+    if (regex_flags & re.DEBUG) == re.DEBUG:
+        result.append(str(RegexFlagString.re_DEBUG))
+    if (regex_flags & re.IGNORECASE) == re.IGNORECASE:
+        result.append(str(RegexFlagString.re_IGNORECASE))
+    if (regex_flags & re.LOCALE) == re.LOCALE:
+        result.append(str(RegexFlagString.re_LOCALE))
+    if (regex_flags & re.MULTILINE) == re.MULTILINE:
+        result.append(str(RegexFlagString.re_MULTILINE))
+    if (regex_flags & re.DOTALL) == re.DOTALL:
+        result.append(str(RegexFlagString.re_DOTALL))
+    if (regex_flags & re.UNICODE) == re.UNICODE:
+        result.append(str(RegexFlagString.re_UNICODE))
+    if (regex_flags & re.VERBOSE) == re.VERBOSE:
+        result.append(str(RegexFlagString.re_VERBOSE))
+    # only include NOFLAG if there are no flags specified, since it's equivalent to 0
+    if len(result) == 0:
+        result.append(str(RegexFlagString.re_NOFLAG))
+    return result
 
-
+def regex_flags_from_list(regex_flag_list):
+    result = re.NOFLAG
+    # normalize any data read from elsewhere
+    if RegexFlagString.re_ASCII in regex_flag_list:
+        result = result | re.ASCII
+    if RegexFlagString.re_DEBUG in regex_flag_list:
+        result = result | re.DEBUG
+    if RegexFlagString.re_IGNORECASE in regex_flag_list:
+        result = result | re.IGNORECASE
+    if RegexFlagString.re_LOCALE in regex_flag_list:
+        result = result | re.LOCALE
+    if RegexFlagString.re_MULTILINE in regex_flag_list:
+        result = result | re.MULTILINE
+    if RegexFlagString.re_DOTALL in regex_flag_list:
+        result = result | re.DOTALL
+    if RegexFlagString.re_UNICODE in regex_flag_list:
+        result = result | re.UNICODE
+    if RegexFlagString.re_VERBOSE in regex_flag_list:
+        result = result | re.VERBOSE
+    if RegexFlagString.re_ASCII in regex_flag_list:
+        result = result | re.ASCII
+    return result

@@ -5,9 +5,15 @@ import psutil
 import re
 import torch
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
+from transformers import AutoTokenizer
 
-from llm_attacks_bishopfox import get_embedding_matrix, get_embeddings, get_decoded_token, get_decoded_tokens, get_encoded_token, get_encoded_tokens 
+from llm_attacks_bishopfox import get_decoded_token
+from llm_attacks_bishopfox import get_decoded_tokens
+from llm_attacks_bishopfox import get_embedding_matrix
+from llm_attacks_bishopfox import get_embeddings 
+from llm_attacks_bishopfox import get_encoded_token 
+from llm_attacks_bishopfox import get_encoded_tokens 
 
 def print_stats(function_name):
     print(f"---")

@@ -2,7 +2,12 @@ import copy
 import torch
 import fastchat 
 
-from llm_attacks_bishopfox import get_decoded_token, get_decoded_tokens, get_encoded_token, get_encoded_tokens, get_token_denylist, get_escaped_string
+from llm_attacks_bishopfox import get_decoded_token
+from llm_attacks_bishopfox import get_decoded_tokens
+from llm_attacks_bishopfox import get_encoded_token 
+from llm_attacks_bishopfox import get_encoded_tokens 
+from llm_attacks_bishopfox import get_escaped_string
+from llm_attacks_bishopfox import get_token_denylist
 
 def get_default_generic_role_indicator_template():
     # note: using "### {role}:" instead will cause issues 
@@ -93,10 +98,18 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
     conv_template = None
     # suppress the warning about templates not existing if there's a custom version defined here
     has_custom_template = False
+    use_custom_template = True
     if is_phi3_template(template_name):
         has_custom_template = True
     if is_phi2_template(template_name):
         has_custom_template = True
+    
+    # override use of custom templates if fastchat has defined one for those models by the time this code is executed
+    if has_custom_template:
+        if template_name in fastchat.conversation.conv_templates.keys():
+            print(f"[load_conversation_template] Warning: the llm_attacks_bishopfox library includes a custom chat template named '{template_name}', but it appears that the fastchat library has added support for that model. The fastchat template will be used instead.")
+            use_custom_template = False
+
     original_template_name = template_name
     if template_name is not None:
         if template_name not in fastchat.conversation.conv_templates.keys():
@@ -116,21 +129,22 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
         else:
             print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
             conv_template.messages = []
-    if is_phi3_template(original_template_name):
-        conv_template.name = "phi3"
-        conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-        conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
-        conv_template.system_message = None
-        #conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
-        conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
-        conv_template.sep = '\n'
-    if is_phi2_template(original_template_name):
-        conv_template.name = "phi2"
-        conv_template.system_template = "System: {system_message}\n"
-        conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
-        conv_template.roles = tuple(["User", "Assistant"])
-        conv_template.sep = '\n'
-        conv_template.sep2 = '\n'
+    if use_custom_template:
+        if is_phi3_template(original_template_name):
+            conv_template.name = "phi3"
+            conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+            conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
+            conv_template.system_message = None
+            #conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
+            conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
+            conv_template.sep = '\n'
+        if is_phi2_template(original_template_name):
+            conv_template.name = "phi2"
+            conv_template.system_template = "System: {system_message}\n"
+            conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
+            conv_template.roles = tuple(["User", "Assistant"])
+            conv_template.sep = '\n'
+            conv_template.sep2 = '\n'
     generic_role_template = get_default_generic_role_indicator_template()
     if generic_role_indicator_template is not None:
         # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
