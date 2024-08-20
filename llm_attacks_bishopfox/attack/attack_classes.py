@@ -72,6 +72,11 @@ class OverallScoringFunction(StrEnum):
     MINIMUM = 'minimum'
     MAXIMUM = 'maximum'
 
+class AdversarialContentPlacement(StrEnum):
+    PREFIX = 'prefix'
+    SUFFIX = 'suffix'
+    PLACEHOLDER = 'placeholder'
+    INTERLEAVE = 'interleave'
 
 # Default values defined in this class
 class gcg_attack_params:
@@ -169,6 +174,11 @@ class gcg_attack_params:
         
         # The initial adversarial data
         self.initial_adversarial_string = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
+
+        # where to place the adversarial content in the generated prompt
+        # all other modes besides SUFFIX are TKTK for now
+        # because I don't want to have to rewrite even *more* code that handles the content exclusively as strings instead of token IDs
+        self.adversarial_content_placement = AdversarialContentPlacement.SUFFIX
 
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
@@ -526,8 +536,9 @@ class AttackResultInfo:
         # (Versus "full decoding" (longer max token length by default) for the same input string/tokens).
         # Anything defined in this class that could theoretically be different at the data set level should NOT be changed at the data set level.
         # (e.g. different random seeds)
-        # That is *not* what multiple data sets are for. They're *only* 
+        # That is *not* what multiple data sets are for. They're *only* for the same data with different output lengths
         self.result_data_sets = {}
+        self.jailbreak_detected = False
     
     def to_dict(self):
         result = {}
@@ -535,6 +546,7 @@ class AttackResultInfo:
         result["np_random_seed"] = self.np_random_seed
         result["torch_manual_seed"] = self.torch_manual_seed
         result["torch_cuda_manual_seed_all"] = self.torch_cuda_manual_seed_all
+        result["jailbreak_detected"] = self.jailbreak_detected
         result["result_data_sets"] = {}
         for rds_name in self.result_data_sets.keys():
             result["result_data_sets"][rds_name] = self.result_data_sets[rds_name].to_dict()
@@ -561,6 +573,7 @@ class AttackResultInfo:
         result.np_random_seed = d["np_random_seed"]
         result.torch_manual_seed = d["torch_manual_seed"]
         result.torch_cuda_manual_seed_all = d["torch_cuda_manual_seed_all"]
+        result.jailbreak_detected = d["jailbreak_detected"]
         result.result_data_sets = {}
         for rds_name in d["result_data_sets"].keys():
             result.result_data_sets[rds_name] = AttackResultInfoData.from_dict(d["result_data_sets"][rds_name])
@@ -579,7 +592,7 @@ class AttackResultInfoCollection:
         self.loss = None
         self.adversarial_tokens = None
         self.adversarial_value = None
-        self.best_new_adversarial_value = None
+        self.complete_user_input = None
         self.unique_results = {}
         self.unique_result_count = 0
         self.results = []
@@ -613,7 +626,7 @@ class AttackResultInfoCollection:
         result["loss"] = self.loss
         result["adversarial_tokens"] = self.adversarial_tokens
         result["adversarial_value"] = self.adversarial_value
-        result["best_new_adversarial_value"] = self.best_new_adversarial_value
+        result["complete_user_input"] = self.complete_user_input
         result["results"] = []
         for r in self.results:
             result["results"].append(r.to_dict())
@@ -637,6 +650,7 @@ class AttackResultInfoCollection:
         result.loss = d["loss"]
         result.adversarial_tokens = d["adversarial_tokens"]
         result.adversarial_value = d["adversarial_value"]
+        result.complete_user_input = d["complete_user_input"]
         result.results = []
         for r in d["results"]:
             result.results.append(AttackResultInfo.from_dict(r))        

@@ -216,7 +216,8 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
     return new_control_toks
 
 def get_filtered_cands(tokenizer, control_cand, previous_adversarial_values, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive_tokens = None, filter_repetitive_lines = None, filter_newline_limit = None, replace_newline_characters = None, attempt_to_keep_token_count_consistent = False, candidate_filter_tokens_min = None, candidate_filter_tokens_max = None):
-    cands, filtered_count = [], 0
+    cands = []
+    filtered_count = 0
     if control_cand is None:
         return cands
     for i in range(control_cand.shape[0]):
@@ -437,14 +438,17 @@ def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
 # ...which seems to correspond to the token IDs that represent the target output, repeated enough times to equal the length of the first entry in the list of candidate values? I think?
 # If I understand the goal here, it's to treat the target tokens as coordinates and figure out how far away the candidate tokens are from them?
 # ...because I don't see anywhere that the generated output tokens are compared to the target tokens, which is what I originally assumed was the goal.
-def target_loss(logits, ids, target_slice, tokenizer):
+def target_loss(logits, ids, input_id_data, tokenizer):
     crit = nn.CrossEntropyLoss(reduction='none')
     # [blincoln] Testing out my theory that the -1 offset is incorrect
+    # [blincoln] also corrected this to use the loss slice returned by get_prompt for consistency instead of redefining it here using the same logic as get_prompt
     #loss_slice = slice(target_slice.start-1, target_slice.stop-1)
-    loss_slice = slice(target_slice.start, target_slice.stop)
-    logits_sliced = logits[:,loss_slice,:]
+    # input_id_data.slice_data.target
+    #loss_slice = slice(target_slice.start, target_slice.stop)
+    #logits_sliced = logits[:,loss_slice,:]
+    logits_sliced = logits[:,input_id_data.slice_data.loss,:]
     logits_sliced_transposed = logits_sliced.transpose(1,2)
-    ids_sliced = ids[:,target_slice]
+    ids_sliced = ids[:,input_id_data.slice_data.target]
     
     #ids_sliced_decoded = get_decoded_tokens(tokenizer, ids_sliced)
     #print(f"[target_loss] Debug: calculating cross-entropy loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")

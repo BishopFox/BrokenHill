@@ -220,12 +220,9 @@ class PromptAndInputIDCollection:
     def get_input_ids_as_tensor(self):
         return torch.tensor(self.input_token_ids)
 
-# TKTK: Replace this with an AdversarialTokenManager that tracks an array of token IDs instead of a string
-# That would allow not only performing a prefix/suffix attack, but also interleaving the tokens into the 
-# base string.
-#
-# Also, it would (hopefully) remove the need for the tedious parsing logic I had to write to make the 
-# attack work with most models.
+# TKTK: Replace this with an AdversarialContentManager that can track an array of token IDs instead of a string.
+# That would allow not only performing a prefix/suffix attack, but also interleaving the tokens into the base string.
+# That's actually going to be a lot of work, because of how much of the original code assumes that the adversarial content arrives in the form of a string, e.g. get_logits
 class SuffixManager:
     def __init__(self, *, tokenizer, conv_template, instruction, target, adv_string):
 
@@ -233,7 +230,7 @@ class SuffixManager:
         self.conv_template = conv_template
         self.instruction = instruction
         self.target = target
-        self.adv_string = adv_string
+        self.adversarial_string = adv_string
         self.trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(tokenizer, conv_template)
     
     # For debugging / creating handlers for new conversation templates
@@ -307,16 +304,29 @@ class SuffixManager:
     
     # _target_slice: for attack generation, this is the operator's ideal goal output.
     #   e.g. ""
-    #       For testing attack results, it's the LLM's output in response to the combination of prompt and adversarial tokens.
+    #       For testing attack results, it's the LLM's output in response to the combination of prompt and adversarial tokens.    
     
-    
-    # _loss_slice: If I understand the attack correctly, the "loss slice" isn't actually part of the data returned by get_prompt at all. It's the equivalent text output when testing the result of the new adversarial data against the old data.
-    # In the original code, _loss_slice was always the same as _target_slice, except with 1 subtracted from the start and stop values. I have no idea why that is. I think it really messed up the loss calculations.
-    # TKTK: test out making it equivalent to the loss slice, as well as just using the remainder of the text, with two handling modes:
+    # The length of the target and loss slices must match when passed to downstream functions or the attack will crash with an error.
+        
+    # _loss_slice: as far as I can tell, this is theoretically equivalent to the target slice, and the target_loss function in opt_utils.py originally re-created its own "loss" slice from the target slice information anyway.
+    # I'm unsure why it's a separate slice, and as far as I can tell, the original logic that shifted its start and end indices -1 from the target slice indices was a workaround for a one-token difference between generated prompt and LLM output.
+    #
+    # Reading the original paper, especially page 6 of 2307.15043v2.pdf, one might think that the "loss slice" would be the LLM output that corresponds to the "target slice" in the non-LLM-generated prompt, and that the loss being calculated was the loss between the target and what the LLM actually generated, but this is not the case, at least in the code that was released. The loss calculation is between the tokens of the adversarial content and the target string.
+    #
+    # I assume the idea is that the target string is essentially a coordinate or set of coordinates (a "shape") in ML hyperspace, and the goal is to find the random adversarial content that is closest to that target in ML hyperspace, not necessarily any other representation of the target. That would seem to match following the description from the paper:
+    #
+    #   "The intuition of this approach is that if the language model can be put into a 'state' where this completion is the most likely response, as opposed to refusing to answer the query, then it likely will continue the completion with precisely the desired objectionable behavior"
+    #
+    # I'm not an ML sorceror, so I couldn't tell you (yet) why this doesn't just optimize over time for adversarial content that matches the target string.
+    #
+    # I also still feel like it would make more sense and be more effective to compute the loss between (output of the LLM when given the base prompt + adversarial content) and (target output). But maybe my opinion will change as I learn more about the low-level operation of the attack.
+    # 
+
+    # TKTK: implement two handling modes:
     # Truncate the slices to the shorter of the two
-    # Pad the longer data
-    #   Option to pad the longer data with different tokens, e.g. padding, unknown.
-    # The length of the two slices must match when passed to downstream functions or the attack will crash with an error.
+    # Pad the shorter data to match the length of the longer data
+    #   Option to pad the shorter data with different tokens, e.g. padding, unknown, the tokenized version of a string, etc.
+    # 
 
     # For some LLMs, e.g. Llama-2, the distinction between speaking roles is handled differently, but the parsing logic should still produce equivalent results.
     # In the case of Llama-2, the standard conversation template wraps user input in [INST] [/INST] tags, and anything else is the LLM's response.
@@ -566,12 +576,28 @@ class SuffixManager:
             raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
         return result
 
+    #prompt_and_input_id_data should be a PromptAndInputIDCollection
+    def get_complete_input_token_ids(self, prompt_and_input_id_data):
+        start_index = prompt_and_input_id_data.slice_data.goal.start
+        if prompt_and_input_id_data.slice_data.control.start < start_index:
+            start_index = prompt_and_input_id_data.slice_data.control.start
+        end_index = prompt_and_input_id_data.slice_data.control.stop
+        if prompt_and_input_id_data.slice_data.goal.stop > end_index:
+            end_index = prompt_and_input_id_data.slice_data.goal.stop
+        # increment by one to include the last token
+        #end_index += 1
+        return prompt_and_input_id_data.full_prompt_token_ids[start_index:end_index]
+    
+    #prompt_and_input_id_data should be a PromptAndInputIDCollection
+    def get_complete_input_string(self, prompt_and_input_id_data):
+        return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
+
     def get_prompt(self, adv_string=None, force_python_tokenizer = False):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
         # set up temporary values based on permanent values
-        adversarial_string = self.adv_string
+        adversarial_string = self.adversarial_string
         conversation_template = self.conv_template.copy()
 
         if adv_string is not None:

@@ -1,11 +1,11 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.15"
-script_date = "2024-08-19"
+script_version = "0.16"
+script_date = "2024-08-20"
 
 def get_script_description():
-    result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
+    result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
     result += "\n"
     result += "Originally based on the demo.ipynb notebook included in the https://github.com/llm-attacks/llm-attacks repository."
     result += "\n"
@@ -15,7 +15,7 @@ def get_script_description():
     return result
 
 def get_short_script_description():
-    result = 'Based on code by Andy Zou1, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
+    result = 'Based on code by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
     result += "\n"
     result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     return result
@@ -286,7 +286,7 @@ def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, ad
         jailbroken = True
     #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
     
-    return jailbroken, result_ar_info_data
+    return jailbroken, result_ar_info_data, generation_results
 
 # def get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = True):
     # #gen_config = model.generation_config
@@ -632,7 +632,7 @@ def main(attack_params):
 
                         #print(f"Calculating target loss")
                         #losses = target_loss(logits, ids, suffix_manager._target_slice)
-                        losses = target_loss(logits, ids, input_id_data.slice_data.target, tokenizer)
+                        losses = target_loss(logits, ids, input_id_data, tokenizer)
                         #print_stats(attack_params)
 
                         #print(f"Getting losses argmin")
@@ -655,13 +655,13 @@ def main(attack_params):
                         print(f"Loss: {current_loss_as_float}")
                         print(f"Updating adversarial string from '{adversarial_string}' to best new adversarial string: '{best_new_adversarial_string}' and testing the new value.")
                         adversarial_string = best_new_adversarial_string
-                    
+                        
                         attack_results_current_iteration.loss = current_loss_as_float
 
                         attack_results_current_iteration.adversarial_tokens = control_slice_decoded
                         attack_results_current_iteration.adversarial_value = adversarial_string
-                        attack_results_current_iteration.best_new_adversarial_value = best_new_adversarial_string
-
+                        #attack_results_current_iteration.best_new_adversarial_value = best_new_adversarial_string
+                        
                         # BEGIN: do for every random seed
                         prng_seed_index = -1
                         for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
@@ -707,7 +707,7 @@ def main(attack_params):
                             #is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
                             #is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
                             #is_success, current_generated_string, current_check_token_ids, input_tokens, output_ids_output_only, output_ids = check_for_attack_success(attack_params, model, 
-                            is_success, jailbreak_check_data = check_for_attack_success(attack_params, 
+                            is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
                                                     model, 
                                                     tokenizer,
                                                     suffix_manager, 
@@ -716,7 +716,12 @@ def main(attack_params):
                                                     do_sample = do_sample)            
                             #print_stats(attack_params)
                             if is_success:
+                                attack_data_current_iteration.jailbreak_detected = True
                                 attack_results_current_iteration.jailbreak_detection_count += 1
+                            
+                            # Get the current full user input from the first successful test
+                            if attack_results_current_iteration.complete_user_input is None:
+                                attack_results_current_iteration.complete_user_input = suffix_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
 
                             #print(f"Passed:{is_success}\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
                             #json_data_current_iteration = {}
