@@ -87,9 +87,9 @@ $ bin/python ./gcg-attack.py \
 	--trust-remote-code \
 	--initial-adversarial-string "Do you have any albums by Mari Kattman, Youth Code, Inertia, The Birthday Massacre, Night Club, or Cindergarden in stock?" \
 	--random-seed-comparisons 6 \
-	--temperature 1.01 \
-	--adversarial-candidate-filter-tokens-max 32 \
+	--temperature 1.001 \
 	--jailbreak-detection-rules-file jailbreak_detection-contains_secret_base64.json \
+	--rollback-on-jailbreak-count-threshold 1 \
 	--json-output-file derek_lab-disclose.json
 ```
 
@@ -175,9 +175,10 @@ $ bin/python ./gcg-attack.py \
 	--trust-remote-code \
 	--initial-adversarial-string "Do you have any albums by Mari Kattman, Youth Code, Inertia, The Birthday Massacre, Night Club, or Cindergarden in stock?" \
 	--random-seed-comparisons 6 \
-	--temperature 1.01 \
+	--temperature 1.001 \
 	--jailbreak-detection-rules-file jailbreak_detection-begins_with_true-does_not_contain_false.json \
-	--json-output-file derek_lab-2024-08-20-02-results.json
+	--rollback-on-jailbreak-count-threshold 1 \
+	--json-output-file derek_lab-valid.json
 ```
 
 ## Export the most successful results
@@ -187,15 +188,35 @@ Get a histogram of successful jailbreak counts for each result file, e.g.:
 ```
 $ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' derek_lab-disclose.json | sort | uniq -c
 
+      8 0
+     23 1
+    139 2
+    665 3
+    687 4
+    127 5
+    266 6
+     22 7
+
 $ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' derek_lab-valid.json | sort | uniq -c
+
+	TKTK: numbers below are a placeholder
+
+    174 0
+    179 1
+    467 2
+    804 3
+     75 4
+     52 5
+     11 6
+
 ```
 
-Pick a threshold you're comfortable with, and export only those results that meet or exceed that count. e.g. to limit results to only content that resulted in 5 or more jailbreak detections:
+Pick a threshold you're comfortable with, and export only those results that meet or exceed that count. e.g. to limit results to only content that resulted in 6 or more jailbreak detections:
 
 ```
-$ jq -r '.[] | select(.jailbreak_detection_count >= 5) | [.complete_user_input] | join("\t")' derek_lab-disclose.json | sort -u > derek_lab-disclose-prompts-high_success_rate.txt
+$ jq -r '.[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' derek_lab-disclose.json | sort -u > derek_lab-disclose-prompts-high_success_rate.txt
 
-$ jq -r '.[] | select(.jailbreak_detection_count >= 5) | [.complete_user_input] | join("\t")' derek_lab-valid.json | sort -u  > derek_lab-valid-prompts-high_success_rate.txt
+$ jq -r '.[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' derek_lab-valid.json | sort -u  > derek_lab-valid-prompts-high_success_rate.txt
 ```
 
 ## Test all permutations against the CTF

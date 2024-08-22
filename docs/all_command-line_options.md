@@ -56,13 +56,13 @@ The initial string to iterate on. Leave this as the default to perform the stand
 
 ## --topk <number>
 
-Limit sample control results to this many top values (default: 256)
+The number of results assessed when determining the best possible candidate adversarial data for each iteration. (default: 256)
 
 ## --temperature <floating-point number>
 
 'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results.
 
-You don't need to set this value very high to get a wide variety of output. 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
+You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
 
 ## Randomization
 
@@ -90,7 +90,7 @@ Maximum number of times to iterate on the adversarial data (default: 200)
 
 ## Batch size controls
 
-### --batch-size-new-adversarial-tokens BATCH_SIZE_NEW_ADVERSARIAL_TOKENS
+### --batch-size-new-adversarial-tokens <positive integer>
 
 The PyTorch batch size to use when generating new adversarial tokens. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with all of the batch size values set to 1, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance. (default: 16)
 
@@ -204,9 +204,17 @@ Stop iterating upon the first detection of a potential successful jailbreak.
 
 If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only. Rolling back on loss increase is not recommended because the "loss" being tested is for the adversarial tokens versus the desired output, *not* the current LLM output, so it is not a good direct indicator of the strength of the attack.
 
+## --rollback-on-loss-threshold <floating-point number>
+
+
+
 ## --rollback-on-jailbreak-count-decrease
 
 If the number of jailbreaks detected decreases between iterations, roll back to the previous adversarial content.
+
+## --rollback-on-jailbreak-count-threshold <integer>
+
+
 
 ## --display-failure-output
 

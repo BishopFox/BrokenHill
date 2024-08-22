@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.16"
-script_date = "2024-08-20"
+script_version = "0.17"
+script_date = "2024-08-21"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -409,7 +409,7 @@ def main(attack_params):
     json_data = []
     attack_data = []
     # keep another array to track adversarial values 
-    adversarial_values = []
+    tested_adversarial_values = []
     random_seed_values = get_random_seed_list_for_comparisons()
     
     try:
@@ -504,7 +504,22 @@ def main(attack_params):
         
         #import pdb; pdb.Pdb(nosigint=True).set_trace()
 
+        # TKTK: move this stuff and similar values into an AttackState class to support true suspend/resume
+        # There is only one "last known good" adversarial value tracked to avoid the following scenario:
+        # User has multiple types of rollback enabled
+        # Rollback type 1 is triggered, and the script rolls back to the last-known-good adversarial value associated with rollback type 1
+        # The rollback type 2 last-known-good adversarial value is updated to the value that caused the rollback
+        # In the next iteration, rollback type 2 is triggered, and the script "rolls sideways" to the data that caused the first rollback, making the script branch into bad values
+        last_known_good_adversarial_value = None
+        last_known_good_adversarial_token_ids = None
+        last_known_good_adversarial_tokens = None
+        best_loss_value = None
+        best_jailbreak_count = None
+        original_topk = attack_params.topk
+        is_first_iteration = True
+
         print(f"Starting main loop")
+        
 
         for main_loop_iteration_number in range(attack_params.max_iterations):
             is_success = False
@@ -520,8 +535,8 @@ def main(attack_params):
                     print_stats(attack_params)
                     print(f"---------")
                     
-                    adversarial_values.append(adversarial_string)
-                    
+                    tested_adversarial_values.append(adversarial_string)
+                                       
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
                     #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
@@ -541,253 +556,290 @@ def main(attack_params):
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats(attack_params)
 
-                    # Step 2. Compute Coordinate Gradient
-                    #print(f"Computing coordinate gradient")
-                    # coordinate_grad = token_gradients(model, 
-                                    # input_ids, 
-                                    # suffix_manager._control_slice, 
-                                    # suffix_manager._target_slice, 
-                                    # suffix_manager._loss_slice)
-                    coordinate_grad = token_gradients(model, 
-                                    input_ids, 
-                                    input_id_data.slice_data.control, 
-                                    input_id_data.slice_data.target, 
-                                    input_id_data.slice_data.loss)
-                    #print_stats(attack_params)
-                    
-                    
                     current_check_string = None
                     current_check_token_ids = None
                     control_slice_decoded = None
                     best_new_adversarial_string = None
                     attack_results_current_iteration = AttackResultInfoCollection()
-                    # Step 3. Sample a batch of new tokens based on the coordinate gradient.
-                    # Notice that we only need the one that minimizes the loss.
-                    with torch.no_grad():
-                        
-                        # Step 3.1 Slice the input to locate the adversarial suffix.
-                        #print(f"Slicing input")
-                        control_slice = input_ids[input_id_data.slice_data.control]
-                        
-                        control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
-                        #print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
+                    
+                    # declare these here so they can be cleaned up later
+                    coordinate_grad = None
+                    adversarial_string_tokens = None
+                    # during the first iteration, do not generate variations - test the value that was given                    
+                    if main_loop_iteration_number == 0:
+                        print(f"Testing initial adversarial value '{adversarial_string}'")
+                    else:
 
-                        adversarial_string_tokens = control_slice.to(attack_params.device)
+                        # Step 2. Compute Coordinate Gradient
+                        #print(f"Computing coordinate gradient")
+                        # coordinate_grad = token_gradients(model, 
+                                        # input_ids, 
+                                        # suffix_manager._control_slice, 
+                                        # suffix_manager._target_slice, 
+                                        # suffix_manager._loss_slice)
+                        coordinate_grad = token_gradients(model, 
+                                        input_ids, 
+                                        input_id_data.slice_data.control, 
+                                        input_id_data.slice_data.target, 
+                                        input_id_data.slice_data.loss)
                         #print_stats(attack_params)
-                        #print(f"adversarial_string_tokens: {adversarial_string_tokens}")
                         
-                        # Step 3.2 Randomly sample a batch of replacements.
-                        #print(f"Randomly sampling a batch of replacements")
-                        new_adversarial_string_toks = sample_control(adversarial_string_tokens, 
-                                       coordinate_grad, 
-                                       attack_params.batch_size_new_adversarial_tokens, 
-                                       topk=attack_params.topk, 
-                                       temp=attack_params.model_temperature, 
-                                       not_allowed_tokens=not_allowed_tokens)
-                        #print_stats(attack_params)
-                        #print(f"new_adversarial_string_toks: {new_adversarial_string_toks}")
-                        #decoded_ast = get_decoded_tokens(tokenizer, adversarial_string_tokens)
-                        #nast_data = new_adversarial_string_toks
-                        #if isinstance(new_adversarial_string_toks, torch.Tensor):
-                            #print(f"Debug: new_adversarial_string_toks.tolist() = '{new_adversarial_string_toks.tolist()}', dir(new_adversarial_string_toks) = '{dir(new_adversarial_string_toks)}'")
-                        #    nast_data = new_adversarial_string_toks.tolist()
-                        #decoded_nast = get_decoded_tokens(tokenizer, nast_data)
-                        #print(f"Debug: adversarial_string_tokens = '{adversarial_string_tokens}', new_adversarial_string_toks = '{new_adversarial_string_toks}', decoded_ast = '{decoded_ast}', decoded_nast = '{decoded_nast}'")
                         
-                        # Note: I'm leaving this explanation here for historical reference
-                        # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
-                        # This step is necessary because tokenizers are not invertible
-                        # so Encode(Decode(tokens)) may produce a different tokenization.
-                        # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
-                        #print(f"Getting filtered candidates")
-                        new_adversarial_string_list = get_filtered_cands(tokenizer, 
-                                                            new_adversarial_string_toks, 
-                                                            adversarial_values,
-                                                            filter_cand=True, 
-                                                            curr_control=adversarial_string,
-                                                            filter_regex = attack_params.get_candidate_filter_regex(),
-                                                            filter_repetitive_tokens = attack_params.candidate_filter_repetitive_tokens,
-                                                            filter_repetitive_lines = attack_params.candidate_filter_repetitive_lines,
-                                                            filter_newline_limit = attack_params.candidate_filter_newline_limit,
-                                                            replace_newline_characters = attack_params.candidate_replace_newline_characters,
-                                                            attempt_to_keep_token_count_consistent = attack_params.attempt_to_keep_token_count_consistent, 
-                                                            candidate_filter_tokens_min = attack_params.candidate_filter_tokens_min, 
-                                                            candidate_filter_tokens_max = attack_params.candidate_filter_tokens_max)
-                        if len(new_adversarial_string_list) == 0:
-                            print(f"Error: the attack appears to have failed to generate any adversarial string data at this iteration. This may be due to excessive post-generation filtering options. The tool will likely crash immediately after this condition occurs.")
-                        #print_stats(attack_params)
-                        #print(f"new_adversarial_string_list: '{new_adversarial_string_list}'")
                         
-                        # Step 3.4 Compute loss on these candidates and take the argmin.
-                        #print(f"Getting logits")
-                        logits, ids = get_logits(model=model, 
-                                                 tokenizer=tokenizer,
-                                                 input_ids=input_ids,
-                                                 #control_slice=suffix_manager._control_slice, 
-                                                 control_slice=input_id_data.slice_data.control, 
-                                                 test_controls=new_adversarial_string_list, 
-                                                 return_ids=True,
-                                                 batch_size=attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
-                        #print_stats(attack_params)
+                        # Step 3. Sample a batch of new tokens based on the coordinate gradient.
+                        # Notice that we only need the one that minimizes the loss.
+                        with torch.no_grad():
+                            
+                            # Step 3.1 Slice the input to locate the adversarial suffix.
+                            #print(f"Slicing input")
+                            control_slice = input_ids[input_id_data.slice_data.control]
+                            
+                            control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
+                            #print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
 
-                        #print(f"Calculating target loss")
-                        #losses = target_loss(logits, ids, suffix_manager._target_slice)
-                        losses = target_loss(logits, ids, input_id_data, tokenizer)
-                        #print_stats(attack_params)
-
-                        #print(f"Getting losses argmin")
-                        best_new_adversarial_string_id = losses.argmin()
-                        #print_stats(attack_params)
-
-                        #print(f"Setting best new adversarial string")
-                        best_new_adversarial_string = new_adversarial_string_list[best_new_adversarial_string_id]
-                        #print_stats(attack_params)
-
-                        #print(f"Getting current loss")
-                        current_loss = losses[best_new_adversarial_string_id]
-                        #print_stats(attack_params)
-
-                        # Update the running adversarial_string with the best candidate
-                        #print(f"Updating adversarial string - was '{adversarial_string}', now '{best_new_adversarial_string}'")
-                        #adversarial_string = best_new_adversarial_string
-                        #print_stats(attack_params)
-                        current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
-                        print(f"Loss: {current_loss_as_float}")
-                        print(f"Updating adversarial string from '{adversarial_string}' to best new adversarial string: '{best_new_adversarial_string}' and testing the new value.")
-                        adversarial_string = best_new_adversarial_string
-                        
-                        attack_results_current_iteration.loss = current_loss_as_float
-
-                        attack_results_current_iteration.adversarial_tokens = control_slice_decoded
-                        attack_results_current_iteration.adversarial_value = adversarial_string
-                        #attack_results_current_iteration.best_new_adversarial_value = best_new_adversarial_string
-                        
-                        # BEGIN: do for every random seed
-                        prng_seed_index = -1
-                        for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
-                            prng_seed_index += 1
-                            attack_data_current_iteration = AttackResultInfo()
-                            attack_data_current_iteration.model_path = attack_params.model_path
-                            attack_data_current_iteration.tokenizer_path = attack_params.tokenizer_path
-                            attack_data_current_iteration.np_random_seed = attack_params.np_random_seed
-                            attack_data_current_iteration.torch_manual_seed = attack_params.torch_manual_seed
-                            attack_data_current_iteration.torch_cuda_manual_seed_all = attack_params.torch_cuda_manual_seed_all
-                            # For the first run, leave the model in its default do_sample configuration
-                            do_sample = False
-                            if randomized_test_number > 0:
-                                # For all other runs, enable do_sample to randomize results
-                                do_sample = True
-                                # Pick the next random seed that's not equivalent to any of the initial values
-                                got_random_seed = False
-                                random_seed = random_seed_values[prng_seed_index]
-                                while not got_random_seed:
-                                    seed_already_used = False
-                                    if random_seed == attack_params.np_random_seed:
-                                        seed_already_used = True
-                                    if random_seed == attack_params.torch_manual_seed:
-                                        seed_already_used = True
-                                    if random_seed == attack_params.torch_cuda_manual_seed_all:
-                                        seed_already_used = True
-                                    if seed_already_used:
-                                        prng_seed_index += 1
-                                    else:
-                                        got_random_seed = True
-                                #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to compare results")
-                                np.random.seed(random_seed)
-                                torch.manual_seed(random_seed)
-                                torch.cuda.manual_seed_all(random_seed)
-                                attack_data_current_iteration.np_random_seed = random_seed
-                                attack_data_current_iteration.torch_manual_seed = random_seed
-                                attack_data_current_iteration.torch_cuda_manual_seed_all = random_seed
-                        
-                            #print(f"Checking for success")
-                            #is_success_input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string).to(attack_params.device)
-                            #print(f"[main - checking for success] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
-                            #is_success_input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-                            #is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
-                            #is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
-                            #is_success, current_generated_string, current_check_token_ids, input_tokens, output_ids_output_only, output_ids = check_for_attack_success(attack_params, model, 
-                            is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-                                                    model, 
-                                                    tokenizer,
-                                                    suffix_manager, 
-                                                    adversarial_string,
-                                                    jailbreak_detector,
-                                                    do_sample = do_sample)            
+                            adversarial_string_tokens = control_slice.to(attack_params.device)
                             #print_stats(attack_params)
-                            if is_success:
-                                attack_data_current_iteration.jailbreak_detected = True
-                                attack_results_current_iteration.jailbreak_detection_count += 1
+                            #print(f"adversarial_string_tokens: {adversarial_string_tokens}")
                             
-                            # Get the current full user input from the first successful test
-                            if attack_results_current_iteration.complete_user_input is None:
-                                attack_results_current_iteration.complete_user_input = suffix_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
+                            got_candidate_list = False
+                            new_adversarial_string_toks = None
+                            new_adversarial_string_list = None
+                            sample_control_random_seed = None
 
-                            #print(f"Passed:{is_success}\nCurrent best new adversarial string: '{best_new_adversarial_string}'")
-                            #json_data_current_iteration = {}
-                            
-                            full_output_dataset_name = "full_output"
-                            
-                            jailbreak_check_dataset_name = "jailbreak_check"
-                            if attack_params.display_full_failed_output:
-                                jailbreak_check_dataset_name = full_output_dataset_name
-                            #attack_data_current_iteration.jailbreak_check_data.decoded_llm_output_string = current_generated_string
-                                                        
-                            # is_success_input_ids_list = is_success_input_ids.tolist()
-                            # attack_data_current_iteration.jailbreak_check_input_token_ids = is_success_input_ids_list
-                            # attack_data_current_iteration.jailbreak_check_input_tokens = get_decoded_tokens(tokenizer, is_success_input_ids_list)
-                            # attack_data_current_iteration.jailbreak_check_input_string = tokenizer.decode(is_success_input_ids_list)
-                            # current_check_token_ids_list = current_check_token_ids.tolist()
-                            # attack_data_current_iteration.jailbreak_check_generation_token_ids = current_check_token_ids_list
-                            # attack_data_current_iteration.jailbreak_check_generation_tokens = get_decoded_tokens(tokenizer, current_check_token_ids_list)
-                            # attack_data_current_iteration.jailbreak_check_generation_string = tokenizer.decode(current_check_token_ids_list)
-                            
-                            attack_data_current_iteration.result_data_sets[jailbreak_check_dataset_name] = jailbreak_check_data
-                            
-                            # only generate full output if it hasn't already just been generated
-                            if not attack_params.display_full_failed_output and is_success:
-                                full_output_data = AttackResultInfoData()
-                                #current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
-                                # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, because 
-                                #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-                                #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-                                #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
-                                generation_results = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
-                              
-                                #full_output_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
-                                full_output_data.set_values(tokenizer, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+                            while not got_candidate_list:
+                                # Step 3.2 Randomly sample a batch of replacements.
+                                #print(f"Randomly sampling a batch of replacements")
+                                new_adversarial_string_toks = sample_control(attack_params,
+                                               adversarial_string_tokens, 
+                                               coordinate_grad, 
+                                               attack_params.batch_size_new_adversarial_tokens, 
+                                               topk = attack_params.topk,
+                                               not_allowed_tokens = not_allowed_tokens,
+                                               random_seed = sample_control_random_seed)
+                                #print_stats(attack_params)
+                                #print(f"new_adversarial_string_toks: {new_adversarial_string_toks}")
+                                #decoded_ast = get_decoded_tokens(tokenizer, adversarial_string_tokens)
+                                #nast_data = new_adversarial_string_toks
+                                #if isinstance(new_adversarial_string_toks, torch.Tensor):
+                                    #print(f"Debug: new_adversarial_string_toks.tolist() = '{new_adversarial_string_toks.tolist()}', dir(new_adversarial_string_toks) = '{dir(new_adversarial_string_toks)}'")
+                                #    nast_data = new_adversarial_string_toks.tolist()
+                                #decoded_nast = get_decoded_tokens(tokenizer, nast_data)
+                                #print(f"Debug: adversarial_string_tokens = '{adversarial_string_tokens}', new_adversarial_string_toks = '{new_adversarial_string_toks}', decoded_ast = '{decoded_ast}', decoded_nast = '{decoded_nast}'")
                                 
-                                attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
+                                # Note: I'm leaving this explanation here for historical reference
+                                # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
+                                # This step is necessary because tokenizers are not invertible
+                                # so Encode(Decode(tokens)) may produce a different tokenization.
+                                # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
+                                #print(f"Getting filtered candidates")
+                                new_adversarial_string_list = get_filtered_cands(tokenizer, 
+                                                                    new_adversarial_string_toks, 
+                                                                    tested_adversarial_values,
+                                                                    filter_cand=True, 
+                                                                    curr_control=adversarial_string,
+                                                                    filter_regex = attack_params.get_candidate_filter_regex(),
+                                                                    filter_repetitive_tokens = attack_params.candidate_filter_repetitive_tokens,
+                                                                    filter_repetitive_lines = attack_params.candidate_filter_repetitive_lines,
+                                                                    filter_newline_limit = attack_params.candidate_filter_newline_limit,
+                                                                    replace_newline_characters = attack_params.candidate_replace_newline_characters,
+                                                                    attempt_to_keep_token_count_consistent = attack_params.attempt_to_keep_token_count_consistent, 
+                                                                    candidate_filter_tokens_min = attack_params.candidate_filter_tokens_min, 
+                                                                    candidate_filter_tokens_max = attack_params.candidate_filter_tokens_max)
+                                # if len(new_adversarial_string_list) == 0:
+                                    # print(f"Error: the attack appears to have failed to generate any adversarial string data at this iteration. This may be due to excessive post-generation filtering options. The tool will likely crash immediately after this condition occurs.")
+                                if len(new_adversarial_string_list) > 0:
+                                    got_candidate_list = True
+                                else:
+                                    new_topk = attack_params.topk + original_topk
+                                    if attack_params.max_topk is not None:
+                                        if new_topk > attack_params.max_topk:
+                                            if new_topk > attack_params.topk:
+                                                new_topk = attack_params.max_topk
+                                            else:
+                                                print(f"Error: the attack has failed to generate any adversarial values at this iteration that meet the specified filtering criteria and have not already been tested. This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_params.max_topk}), the tool will now exit. You can try omitting the --max-topk option, or specifying a larger value for --max-topk and/or --batch-size-new-adversarial-tokens to avoid this error.")
+                                                sys.exit(1)
+                                    print(f"The attack has failed to generate any adversarial values at this iteration that meet the specified filtering criteria and have not already been tested. This may be due to excessive post-generation filtering options. The 'topk' value is being increased from {attack_params.topk} to {new_topk} to increase the number of candidate values.")
+                                    attack_params.topk = new_topk
+                                    # temporarily use a new random seed to help avoid getting stuck with trivial variations that don't change anything significant
+                                    if sample_control_random_seed is None:
+                                        sample_control_random_seed = attack_params.torch_manual_seed + 1
+                                    else:
+                                        sample_control_random_seed += 1
+                                    
+                                            
+                            #print_stats(attack_params)
+                            #print(f"new_adversarial_string_list: '{new_adversarial_string_list}'")
                             
-                            
-                            attack_results_current_iteration.results.append(attack_data_current_iteration)
-                            
-                            # END: do for every random seed
+                            # Step 3.4 Compute loss on these candidates and take the argmin.
+                            #print(f"Getting logits")
+                            logits, ids = get_logits(model=model, 
+                                                     tokenizer=tokenizer,
+                                                     input_ids=input_ids,
+                                                     #control_slice=suffix_manager._control_slice, 
+                                                     control_slice=input_id_data.slice_data.control, 
+                                                     test_controls=new_adversarial_string_list, 
+                                                     return_ids=True,
+                                                     batch_size=attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
+                            #print_stats(attack_params)
+
+                            #print(f"Calculating target loss")
+                            #losses = target_loss(logits, ids, suffix_manager._target_slice)
+                            losses = target_loss(logits, ids, input_id_data, tokenizer)
+                            #print_stats(attack_params)
+
+                            #print(f"Getting losses argmin")
+                            best_new_adversarial_string_id = losses.argmin()
+                            #print_stats(attack_params)
+
+                            #print(f"Setting best new adversarial string")
+                            best_new_adversarial_string = new_adversarial_string_list[best_new_adversarial_string_id]
+                            #print_stats(attack_params)
+
+                            #print(f"Getting current loss")
+                            current_loss = losses[best_new_adversarial_string_id]
+                            #print_stats(attack_params)
+
+                            # Update the running adversarial_string with the best candidate
+                            #print(f"Updating adversarial string - was '{adversarial_string}', now '{best_new_adversarial_string}'")
+                            #adversarial_string = best_new_adversarial_string
+                            #print_stats(attack_params)
+                            current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
+                            print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: '{adversarial_string}'\nNow: '{best_new_adversarial_string}'")
+                            adversarial_string = best_new_adversarial_string
+                            print(f"Loss value for the new permutation: {current_loss_as_float}")
                         
-                        # reset back to specified random seeds if using extra tests
-                        # only do this if using extra tests to avoid resetting the PRNG unnecessarily
-                        if attack_params.random_seed_comparisons > 0:
-                            #print(f"[main loop] Resetting random seeds back to {attack_params.np_random_seed}, {attack_params.torch_manual_seed}, and {attack_params.torch_cuda_manual_seed_all}.")
-                            # NumPy
-                            np.random.seed(attack_params.np_random_seed)
-                            # PyTorch
-                            torch.manual_seed(attack_params.torch_manual_seed)
-                            # CUDA
-                            torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
+                            attack_results_current_iteration.loss = current_loss_as_float
+
+                    attack_results_current_iteration.adversarial_token_ids = tokenizer.encode(adversarial_string)
+                    attack_results_current_iteration.adversarial_tokens = get_decoded_tokens(tokenizer, attack_results_current_iteration.adversarial_token_ids)
+                    attack_results_current_iteration.adversarial_value = adversarial_string
+                    
+                    # BEGIN: do for every random seed
+                    prng_seed_index = -1
+                    for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
+                        prng_seed_index += 1
+                        attack_data_current_iteration = AttackResultInfo()
+                        attack_data_current_iteration.model_path = attack_params.model_path
+                        attack_data_current_iteration.tokenizer_path = attack_params.tokenizer_path
+                        attack_data_current_iteration.np_random_seed = attack_params.np_random_seed
+                        attack_data_current_iteration.torch_manual_seed = attack_params.torch_manual_seed
+                        attack_data_current_iteration.torch_cuda_manual_seed_all = attack_params.torch_cuda_manual_seed_all
+                        # For the first run, leave the model in its default do_sample configuration
+                        do_sample = False
+                        if randomized_test_number > 0:
+                            # For all other runs, enable do_sample to randomize results
+                            do_sample = True
+                            # Pick the next random seed that's not equivalent to any of the initial values
+                            got_random_seed = False
+                            random_seed = random_seed_values[prng_seed_index]
+                            while not got_random_seed:
+                                seed_already_used = False
+                                if random_seed == attack_params.np_random_seed:
+                                    seed_already_used = True
+                                if random_seed == attack_params.torch_manual_seed:
+                                    seed_already_used = True
+                                if random_seed == attack_params.torch_cuda_manual_seed_all:
+                                    seed_already_used = True
+                                if seed_already_used:
+                                    prng_seed_index += 1
+                                else:
+                                    got_random_seed = True
+                            #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to compare results")
+                            np.random.seed(random_seed)
+                            torch.manual_seed(random_seed)
+                            torch.cuda.manual_seed_all(random_seed)
+                            attack_data_current_iteration.np_random_seed = random_seed
+                            attack_data_current_iteration.torch_manual_seed = random_seed
+                            attack_data_current_iteration.torch_cuda_manual_seed_all = random_seed
+                    
+                        #print(f"Checking for success")
+                        #is_success_input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string).to(attack_params.device)
+                        #print(f"[main - checking for success] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
+                        #is_success_input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+                        #is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
+                        #is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
+                        #is_success, current_generated_string, current_check_token_ids, input_tokens, output_ids_output_only, output_ids = check_for_attack_success(attack_params, model, 
+                        is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
+                                                model, 
+                                                tokenizer,
+                                                suffix_manager, 
+                                                adversarial_string,
+                                                jailbreak_detector,
+                                                do_sample = do_sample)            
+                        #print_stats(attack_params)
+                        if is_success:
+                            attack_data_current_iteration.jailbreak_detected = True
+                            attack_results_current_iteration.jailbreak_detection_count += 1
+                        
+                        # Get the current full user input from the first successful test
+                        if attack_results_current_iteration.complete_user_input is None:
+                            attack_results_current_iteration.complete_user_input = suffix_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
+
+                        #print(f"Passed:{is_success}\nCurrent best new adversarial string: '{adversarial_string}'")
+                        #json_data_current_iteration = {}
+                        
+                        full_output_dataset_name = "full_output"
+                        
+                        jailbreak_check_dataset_name = "jailbreak_check"
+                        if attack_params.display_full_failed_output:
+                            jailbreak_check_dataset_name = full_output_dataset_name
+                        #attack_data_current_iteration.jailbreak_check_data.decoded_llm_output_string = current_generated_string
+                                                    
+                        # is_success_input_ids_list = is_success_input_ids.tolist()
+                        # attack_data_current_iteration.jailbreak_check_input_token_ids = is_success_input_ids_list
+                        # attack_data_current_iteration.jailbreak_check_input_tokens = get_decoded_tokens(tokenizer, is_success_input_ids_list)
+                        # attack_data_current_iteration.jailbreak_check_input_string = tokenizer.decode(is_success_input_ids_list)
+                        # current_check_token_ids_list = current_check_token_ids.tolist()
+                        # attack_data_current_iteration.jailbreak_check_generation_token_ids = current_check_token_ids_list
+                        # attack_data_current_iteration.jailbreak_check_generation_tokens = get_decoded_tokens(tokenizer, current_check_token_ids_list)
+                        # attack_data_current_iteration.jailbreak_check_generation_string = tokenizer.decode(current_check_token_ids_list)
+                        
+                        attack_data_current_iteration.result_data_sets[jailbreak_check_dataset_name] = jailbreak_check_data
+                        
+                        # only generate full output if it hasn't already just been generated
+                        if not attack_params.display_full_failed_output and is_success:
+                            full_output_data = AttackResultInfoData()
+                            #current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
+                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, because 
+                            #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
+                            #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
+                            #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
+                            generation_results = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
+                          
+                            #full_output_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
+                            full_output_data.set_values(tokenizer, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+                            
+                            attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
+                        
+                        
+                        attack_results_current_iteration.results.append(attack_data_current_iteration)
+                        
+                        # END: do for every random seed
+                    
+                    # reset back to specified random seeds if using extra tests
+                    # only do this if using extra tests to avoid resetting the PRNG unnecessarily
+                    if attack_params.random_seed_comparisons > 0:
+                        #print(f"[main loop] Resetting random seeds back to {attack_params.np_random_seed}, {attack_params.torch_manual_seed}, and {attack_params.torch_cuda_manual_seed_all}.")
+                        # NumPy
+                        np.random.seed(attack_params.np_random_seed)
+                        # PyTorch
+                        torch.manual_seed(attack_params.torch_manual_seed)
+                        # CUDA
+                        torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
                         
                     
                     attack_results_current_iteration.update_unique_output_values()
                     iteration_status_message = f"-----------------\n"
                     iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.results[0].get_first_result_data_set().decoded_user_input_string}\n---\n"
                     iteration_status_message += f"Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}, with {attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
-                    #iteration_status_message += f"Input during this round: '{best_new_adversarial_string}'"
+                    #iteration_status_message += f"Input during this round: '{adversarial_string}'"
                     for uov_string in attack_results_current_iteration.unique_results.keys():
                         uov_count = attack_results_current_iteration.unique_results[uov_string]
                         iteration_status_message += f"--- {uov_count} occurrence(s): ---\n" 
                         iteration_status_message += uov_string
                         iteration_status_message += "\n"
                     iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial string: '{best_new_adversarial_string}'\n"
+                    iteration_status_message += f"Current best new adversarial string: '{adversarial_string}'\n"
                     iteration_status_message += f"-----------------\n"                    
                     print(iteration_status_message)
                     
@@ -801,25 +853,81 @@ def main(attack_params):
                         json_data.append(attack_results_current_iteration.to_dict())
                         safely_write_text_output_file(attack_params.json_output_file, json.dumps(json_data, indent=4))
                     
-                    if main_loop_iteration_number > 0:
-                        previous_data = attack_data[main_loop_iteration_number - 1]
-                        if attack_params.rollback_on_loss_increase:
-                            if attack_results_current_iteration.loss > previous_data.loss:
-                                print(f"The loss value for adversarial data '{attack_results_current_iteration.adversarial_tokens}' ({attack_results_current_iteration.loss}) is greater than for the previous adversarial data '{previous_data.adversarial_tokens}' ({previous_data.loss}). Rolling back to the previous adversarial data ('{previous_data.best_new_adversarial_value}') for the next iteration instead of using '{best_new_adversarial_string}'.")
-                                best_new_adversarial_string = previous_data.best_new_adversarial_value
-                        if attack_params.rollback_on_jailbreak_count_decrease:
-                            if attack_results_current_iteration.jailbreak_detection_count < previous_data.jailbreak_detection_count:
-                                print(f"The number of successful jailbreak results with adversarial data '{attack_results_current_iteration.adversarial_tokens}' ({attack_results_current_iteration.jailbreak_detection_count}) is less than for the previous adversarial data '{previous_data.adversarial_tokens}' ({previous_data.jailbreak_detection_count}). Rolling back to the previous adversarial data ('{previous_data.best_new_adversarial_value}') for the next iteration instead of using '{best_new_adversarial_string}'.")
-                                best_new_adversarial_string = previous_data.best_new_adversarial_value
+                    rollback_triggered = False
                     
-                    # Update the running adversarial_string with the best candidate
-                    # Moved down here to make full output generation consistent and allow rollback
-                    #print(f"Updating adversarial string - was '{adversarial_string}', now '{best_new_adversarial_string}'")
-                    #adversarial_string = best_new_adversarial_string
+                    if main_loop_iteration_number > 0:
+                        rollback_message = ""
+                        if attack_params.rollback_on_loss_increase:
+                            if (attack_results_current_iteration.loss - attack_params.rollback_on_loss_threshold) > best_loss_value:
+                                if attack_params.rollback_on_loss_threshold == 0.0:
+                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the best value achieved during this run ({best_loss_value}). "
+                                else:
+                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the allowed delta of {attack_params.rollback_on_loss_threshold} from the best value achieved during this run ({best_loss_value}). "
+                                rollback_triggered = True
+                            #else:
+                            #    print(f"[main loop] Debug: rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {best_loss_value} and threshold {attack_params.rollback_on_loss_threshold}.")
+                        if attack_params.rollback_on_jailbreak_count_decrease:
+                            if (attack_results_current_iteration.jailbreak_detection_count + attack_params.rollback_on_jailbreak_count_threshold) < best_jailbreak_count:
+                                if attack_params.rollback_on_jailbreak_count_threshold == 0:
+                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than for the best count achieved during this run ({best_jailbreak_count}). "
+                                else:
+                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than the allowed delta of {attack_params.rollback_on_jailbreak_count_threshold} from the best count achieved during this run ({best_jailbreak_count}). "
+                                rollback_triggered = True
+                            #else:
+                            #    print(f"[main loop] Debug: rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {best_jailbreak_count} and threshold {attack_params.rollback_on_jailbreak_count_threshold}.")
+                        # TKTK: if use of a threshold has allowed a score to drop below the last best value for x iterations, roll all the way back to the adversarial value that resulted in the current best value
+                        # maybe use a tree model, with each branch from a node allowed to decrease 50% the amount of the previous branch, and too many failures to reach the value of the previous branch triggers a rollback to that branch
+                        # That would allow some random exploration of various branches, at least allowing for the possibility of discovering a strong value within them, but never getting stuck for too long
+                        if rollback_triggered:
+                            #rollback_message += f"Rolling back to the last-known-good adversarial data '{last_known_good_adversarial_value}' ('{last_known_good_adversarial_tokens}') for the next iteration instead of using this iteration's result '{adversarial_string}' ('{attack_results_current_iteration.adversarial_tokens}')."
+                            rollback_message += f"Rolling back to the last-known-good adversarial data for the next iteration instead of using this iteration's result.\nThis iteration:  '{adversarial_string}'\nLast-known-good: '{last_known_good_adversarial_value}'."
+                            print(rollback_message)
+                            # add the rejected result to the list of tested results to avoid getting stuck in a loop
+                            tested_adversarial_values.append(adversarial_string)
+                            # roll back
+                            adversarial_string = last_known_good_adversarial_value
+                            #best_new_adversarial_string = last_known_good_adversarial_value
+
+                    # only update the "last-known-good" results if no rollback was triggered (for any reason)
+                    # otherwise, if someone has multiple rollback options enabled, and only one of them is tripped, the other path will end up containing bad data
+                    if not rollback_triggered:
+                        rollback_notification_message = f"Updating last-known-good adversarial value from '{last_known_good_adversarial_value}' to '{adversarial_string}'."
+                        last_known_good_adversarial_value = adversarial_string
+                        last_known_good_adversarial_token_ids = attack_results_current_iteration.adversarial_token_ids
+                        last_known_good_adversarial_tokens = attack_results_current_iteration.adversarial_tokens
+                        # only update these if they're improvements - they should work as a high water mark to avoid gradually decreasing quality over time when the rollback thresholds are enabled
+                        update_loss = False
+                        
+                        if best_loss_value is None:
+                            if attack_results_current_iteration.loss is not None:
+                                update_loss = True
+                        else:
+                            if attack_results_current_iteration.loss is not None:
+                                if attack_results_current_iteration.loss < best_loss_value:
+                                    update_loss = True
+                        if update_loss:
+                            rollback_notification_message += f" Updating best loss value from {best_loss_value} to {attack_results_current_iteration.loss}."
+                            best_loss_value = attack_results_current_iteration.loss
+                        
+                        update_jailbreak_count = False
+                        if best_jailbreak_count is None:
+                            if attack_results_current_iteration.jailbreak_detection_count is not None:
+                                update_jailbreak_count = True
+                        else:
+                            if attack_results_current_iteration.jailbreak_detection_count is not None:
+                                if attack_results_current_iteration.jailbreak_detection_count > best_jailbreak_count:
+                                    update_jailbreak_count = True
+                        if update_jailbreak_count:
+                            rollback_notification_message += f" Updating best jailbreak count from {best_jailbreak_count} to {attack_results_current_iteration.jailbreak_detection_count}."
+                            best_jailbreak_count = attack_results_current_iteration.jailbreak_detection_count
                         
                     # (Optional) Clean up the cache.
                     #print(f"Cleaning up the cache")
-                    del coordinate_grad, adversarial_string_tokens ; gc.collect()
+                    if coordinate_grad is not None:
+                        del coordinate_grad
+                    if adversarial_string_tokens is not None:
+                        del adversarial_string_tokens
+                    gc.collect()
                     #if "cuda" in attack_params.device:
                     #    torch.cuda.empty_cache()
                 
@@ -924,11 +1032,17 @@ if __name__=='__main__':
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). Using anything other than CUDA is unlikely to produce satisfactory results.")
 
     parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type=str, 
-        help="The initial string to iterate on. Leave this as the default to perform the standard attack. Specify the output of a previous run to continue iterating at that point. Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
+        help="The initial string to iterate on. Leave this as the default to perform the attack described in the original paper. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
+    
+    # TKTK: --random-token-adversarial-string option to have the initial adversarial value randomly generated from the list of tokens that are allowed by the other options
+    # TKTK: option to specify the initial adversarial value as a list of token IDs
     
     parser.add_argument("--topk", type=numeric_string_to_int,
         default=attack_params.topk,
-        help=f"'topk' value to pass to the sample_control function.")
+        help=f"The number of results assessed when determining the best possible candidate adversarial data for each iteration.")
+        
+    parser.add_argument("--max-topk", type=numeric_string_to_int,
+        help=f"The maximum number to allow --topk to grow to when no candidates are found in a given iteration. Default: unlimited.")
 
     parser.add_argument("--temperature", type=numeric_string_to_float,
         default=attack_params.model_temperature,
@@ -1045,12 +1159,32 @@ if __name__=='__main__':
     parser.add_argument("--break-on-success", type=str2bool, nargs='?',
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
+
     parser.add_argument("--rollback-on-loss-increase", type=str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_loss_increase,
         help="If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only.")
+    parser.add_argument("--rollback-on-loss-threshold", type=numeric_string_to_float,
+        help=f"Equivalent to --rollback-on-loss-increase, but only if the loss value increases by more than the specified amount for a given iteration. Like --rollback-on-loss-increase, using this option is not recommended.")
+
     parser.add_argument("--rollback-on-jailbreak-count-decrease", type=str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_jailbreak_count_decrease,
         help="If the number of jailbreaks detected decreases between iterations, roll back to the last 'good' adversarial data.")
+    parser.add_argument("--rollback-on-jailbreak-count-threshold", type=numeric_string_to_int,
+        help=f"Equivalent to --rollback-on-jailbreak-count-decrease, but only if the jailbreak count decreases by more than the specified amount for a given iteration. Can be useful for avoiding getting stuck in a local maximum.")
+        
+    # TKTK: branching tree rollback modes - see discussion in the main loop
+    # Both of the existing rollback modes should be able to be handled as subsets of tree mode
+    # Basic rollback would be a tree configuration that doesn't allow branching down to less-desirable values at all
+    # Threshold rollback would need some kind of special handling, like "nodes inherit the overall best values instead of using their own values"
+    
+    # TKTK: --gamma-garden <integer> <floating-point value between 0.0 and 1.0>
+    # If no results that meet the current "good" criteria are discovered for <integer> iterations, step through the list of token IDs for the current adversarial value
+    # Use <floating-point value between 0.0 and 1.0> as a percent likelihood of randomly replacing each token ID
+    # In the default mode, keep a list of all of the token IDs that have ever been selected by the GCG algorithm and select randomly from that list
+    # TKTK: --neutron-garden mode that works identically, except that it selects the random token IDs from any in the tokenizer that are allowed by the other options, similiar to the --random-token-adversarial-string option
+    # Both options should probably only allow a given token ID to be used as a random replacement once for each iteration unless there are no more to select from, to avoid results that are unlikely to be useful, like the corner case where a bunch of tokens are reverted back to "!".
+    # For --gamma-garden mode, there should be a threshold value for minimum number of previously-generated tokens to select from before the mode can be triggered, for the same reason. If there are only three token IDs in the list, it doesn't make much sense to potentially replace several "good" tokens with "!". 
+        
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
@@ -1156,6 +1290,9 @@ if __name__=='__main__':
         attack_params.overwrite_output = True
 
     attack_params.topk = args.topk
+    
+    if args.max_topk:
+        attack_params.max_topk = args.max_topk
 
     attack_params.model_temperature = args.temperature
 
@@ -1277,7 +1414,15 @@ if __name__=='__main__':
     
     attack_params.rollback_on_loss_increase = args.rollback_on_loss_increase
     
+    if args.rollback_on_loss_threshold:
+        attack_params.rollback_on_loss_increase = True
+        attack_params.rollback_on_loss_threshold = args.rollback_on_loss_threshold
+    
     attack_params.rollback_on_jailbreak_count_decrease = args.rollback_on_jailbreak_count_decrease
+    
+    if args.rollback_on_jailbreak_count_threshold:
+        attack_params.rollback_on_jailbreak_count_decrease = True
+        attack_params.rollback_on_jailbreak_count_threshold = args.rollback_on_jailbreak_count_threshold
     
     attack_params.display_full_failed_output = args.display_failure_output
     

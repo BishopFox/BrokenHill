@@ -188,9 +188,13 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
     print("Error: one_hot.grad is None")
     return None
 
-def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed_tokens=None):
+def sample_control(attack_params, control_toks, grad, batch_size, topk=256, not_allowed_tokens=None, random_seed = None):
 
     new_control_toks = None
+
+    if random_seed is not None:
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed_all(random_seed)
 
     if grad is not None:
         if not_allowed_tokens is not None:
@@ -212,6 +216,10 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
             device=grad.device)
         )
         new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
+
+    if random_seed is not None:
+        torch.manual_seed(attack_params.torch_manual_seed)
+        torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
 
     return new_control_toks
 

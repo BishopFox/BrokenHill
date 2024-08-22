@@ -327,7 +327,8 @@ class gcg_attack_params:
         self.display_model_size = False
 
         # batch sizes for various operations
-        self.batch_size_new_adversarial_tokens = 16
+        #self.batch_size_new_adversarial_tokens = 16
+        self.batch_size_new_adversarial_tokens = 32
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1
 
@@ -339,8 +340,12 @@ class gcg_attack_params:
 
         # https://pytorch.org/docs/stable/generated/torch.topk.html
         self.topk = 256
+        
+        # maximum topk value to allow topk to increase to when no valid adversarial value candidates are discovered
+        # if this value is set to None, the value is allowed to grow indefinitely
+        self.max_topk = None
 
-        # maximum new tokens value when generating output other than full output
+        # maximum number of tokens to have the LLM generate when testing adversarial values for a jailbreak
         # The original code warned against setting this higher than 32 to avoid a performance penalty
         self.generation_max_new_tokens = 32
 
@@ -351,11 +356,23 @@ class gcg_attack_params:
         # if the loss value increases between iterations, roll back to the last "good" adversarial data
         self.rollback_on_loss_increase = False
         
+        # when rollback is enabled, allow continuing without rollback if the increase in loss is less than this much from the current last-known-good loss value
+        self.rollback_on_loss_threshold = 0.0
+        
         # if the number of successful jailbreaks detected during a given iteration is fewer than the last one, roll back to the last "good" adversarial data
         self.rollback_on_jailbreak_count_decrease = False
+
+        # when rollback is enabled, allow continuing without rollback if the decrease in jailbreak count is less than this much from the current last-known-good loss value
+        self.rollback_on_jailbreak_count_threshold = 0
         
-        # TKTK: ability to roll back if the number of jailbreak detections decreases between iterations
-        # would be more useful when random comparisons are enabled, but no reason not to always allow it that I can think of
+        # TKTK: options to randomize x random tokens in the adversarial data if no successes have occured for y iterations.
+        # ("Gamma garden mode")
+        # If rollback is enabled, "successes" do not include iterations where a rollback occurred.
+        # This is a way to break out of a "rut" that the attack can sometimes get stuck in.
+        # If the result is not an improvement, trigger a rollback and re-randomize even if rollback is not enabled for other criteria.
+        # If rollback is enabled, and the next iteration after randomization would trigger a rollback, the rollback should also be re-randomized.
+        # TKTK: related option to increase the number of tokens that are randomized in the event of sequential randomizations.
+        # e.g. randomization is triggered, and four tokens are randomized. The result does not meet the "success" criteria. The tool should therefore roll back to the pre-randomization value, and randomize e.g. five tokens instead of four.
 
         # output options
         self.overwrite_output = False
@@ -590,6 +607,7 @@ class AttackResultInfoCollection:
         self.original_creation_date_time_utc = get_time_string()
         self.jailbreak_detection_count = 0
         self.loss = None
+        self.adversarial_token_ids = None
         self.adversarial_tokens = None
         self.adversarial_value = None
         self.complete_user_input = None
@@ -624,6 +642,7 @@ class AttackResultInfoCollection:
         result["original_creation_date_time_utc"] = self.original_creation_date_time_utc
         result["jailbreak_detection_count"] = self.jailbreak_detection_count
         result["loss"] = self.loss
+        result["adversarial_token_ids"] = self.adversarial_token_ids
         result["adversarial_tokens"] = self.adversarial_tokens
         result["adversarial_value"] = self.adversarial_value
         result["complete_user_input"] = self.complete_user_input
@@ -648,6 +667,7 @@ class AttackResultInfoCollection:
         result.original_creation_date_time_utc = d["original_creation_date_time_utc"]
         result.jailbreak_detection_count = d["jailbreak_detection_count"]
         result.loss = d["loss"]
+        result.adversarial_token_ids = d["adversarial_token_ids"]
         result.adversarial_tokens = d["adversarial_tokens"]
         result.adversarial_value = d["adversarial_value"]
         result.complete_user_input = d["complete_user_input"]
