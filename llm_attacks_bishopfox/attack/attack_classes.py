@@ -65,18 +65,141 @@ class PyTorchDevice():
         if result.total_memory != result.gpu_total_memory:
             print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
         return result
-        
+
+# not currently used
 class OverallScoringFunction(StrEnum):
     MEDIAN = 'median'
     AVERAGE = 'average'
     MINIMUM = 'minimum'
     MAXIMUM = 'maximum'
 
+class InitialAdversarialContentCreationMode(StrEnum):
+    FROM_STRING = 'from_string'
+    FROM_TOKEN_IDS = 'from_token_ids'
+    RANDOM_TOKEN_IDS = 'random_token_ids'
+
 class AdversarialContentPlacement(StrEnum):
     PREFIX = 'prefix'
     SUFFIX = 'suffix'
     PLACEHOLDER = 'placeholder'
     INTERLEAVE = 'interleave'
+
+class AdversarialContent:
+    def __init__(self):
+        self.token_ids = []
+        self.tokens = []
+        self.as_string = None
+    
+    def copy(self):
+        result = AdversarialContent()
+        result.token_ids = copy.deepcopy(self.token_ids)
+        result.tokens = copy.deepcopy(self.tokens)
+        result.as_string = self.as_string
+        return result
+    
+    def get_full_description(self):
+        return f"'{self.as_string}' ({self.tokens} or {self.token_ids} using the current tokenizer)"
+        
+    def get_short_description(self):
+        return f"'{self.as_string}' ({self.tokens})"
+    
+    def is_match(self, other_adversarial_content):
+        if self.as_string != other_adversarial_content.as_string:
+            return False
+        for i in range(0, len(self.token_ids)):
+            if self.token_ids[i] != other_adversarial_content.token_ids[i]:
+                return False
+        for i in range(0, len(self.tokens)):
+            if self.tokens[i] != other_adversarial_content.tokens[i]:
+                return False
+        return True
+    
+    def to_dict(self):
+        result = {}
+        result["token_ids"] = copy.deepcopy(self.token_ids)
+        result["tokens"] = copy.deepcopy(self.tokens)
+        result["as_string"] = self.as_string
+        return result
+
+    def to_json(self):
+        result = json.dumps(self.to_dict(), indent=4)
+        return result
+    
+    @staticmethod
+    def from_dict(d):
+        result = AdversarialContent()
+        result.token_ids = copy.deepcopy(d["token_ids"])
+        result.tokens = copy.deepcopy(d["tokens"])
+        result.as_string = d["as_string"]
+        return result
+    
+    @staticmethod
+    def from_json(json_string):
+        return AttackResultInfoCollection.from_dict(json.loads(json_string))
+    
+    @staticmethod
+    def from_token_ids(adversarial_content_manager, token_ids):
+        result = AdversarialContent()
+        result.token_ids = copy.deepcopy(token_ids)
+        result.tokens = get_decoded_tokens(adversarial_content_manager.tokenizer, result.token_ids)
+        result.token_ids, result.tokens = adversarial_content_manager.remove_empty_leading_and_trailing_tokens(result.token_ids, result.tokens)   
+        result.as_string = adversarial_content_manager.tokenizer.decode(result.token_ids)
+        return result
+
+    @staticmethod
+    def from_string(adversarial_content_manager, input_string):
+        result = AdversarialContent()
+        result.as_string = input_string
+        result.token_ids = adversarial_content_manager.tokenizer.encode(input_string)
+        result.tokens = get_decoded_tokens(adversarial_content_manager.tokenizer, result.token_ids)
+        result.token_ids, result.tokens = adversarial_content_manager.remove_empty_leading_and_trailing_tokens(result.token_ids, result.tokens)        
+        return result
+
+class AdversarialContentList:
+    def __init__(self):
+        self.adversarial_content = []
+
+    def contains_adversarial_string(self, adversarial_string):
+        for i in range(0, len(self.adversarial_content)):
+            if self.adversarial_content[i].as_string == adversarial_string:
+                return True
+        return False
+
+    def contains_adversarial_content(self, adversarial_content):
+        for i in range(0, len(self.adversarial_content)):
+            if self.adversarial_content[i].is_match(adversarial_content):
+                return True
+        return False
+    
+    def append_if_new(self, new_adversarial_content):
+        if not self.contains_adversarial_content(new_adversarial_content):
+            self.adversarial_content.append(new_adversarial_content)
+
+    def to_dict(self):
+        result = {}
+        result["adversarial_content"] = []
+        for i in range(0, len(self.adversarial_content)):
+            new_content = self.adversarial_content[i]
+            result["adversarial_content"].append(new_content.to_dict())
+        return result
+
+    def to_json(self):
+        result = json.dumps(self.to_dict(), indent=4)
+        return result
+    
+    @staticmethod
+    def from_dict(d):
+        result = AdversarialContentList()
+        result.adversarial_content = []
+        for i in range(0, len(self.adversarial_content)):
+            new_content = AdversarialContent.from_dict(d["adversarial_content"][i])
+            result.adversarial_content.append(new_content)
+        return result
+    
+    @staticmethod
+    def from_json(json_string):
+        return AdversarialContentList.from_dict(json.loads(json_string))
+
 
 # Default values defined in this class
 class gcg_attack_params:
@@ -172,13 +295,20 @@ class gcg_attack_params:
         # Example for automatic base/target generation
         self.autotarget_example = "a convincing anonymous death threat"
         
-        # The initial adversarial data
+        # The initial adversarial data for different methods
+        # This can't be handled up front because everything other than the string depends on loading the tokenizer
         self.initial_adversarial_string = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
+        self.initial_adversarial_token_ids = []
+        self.initial_random_adversarial_token_count = None
+        self.initial_adversarial_content_creation_mode = InitialAdversarialContentCreationMode.FROM_STRING
 
         # where to place the adversarial content in the generated prompt
         # all other modes besides SUFFIX are TKTK for now
         # because I don't want to have to rewrite even *more* code that handles the content exclusively as strings instead of token IDs
         self.adversarial_content_placement = AdversarialContentPlacement.SUFFIX
+        
+        # emulate the original attack by converting the adversarial token IDs to a string and then back to token IDs at every iteration
+        self.reencode_adversarial_content_every_iteration = False
 
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
@@ -327,8 +457,8 @@ class gcg_attack_params:
         self.display_model_size = False
 
         # batch sizes for various operations
-        #self.batch_size_new_adversarial_tokens = 16
-        self.batch_size_new_adversarial_tokens = 32
+        self.batch_size_new_adversarial_tokens = 16
+        #self.batch_size_new_adversarial_tokens = 32
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1
 
@@ -607,9 +737,10 @@ class AttackResultInfoCollection:
         self.original_creation_date_time_utc = get_time_string()
         self.jailbreak_detection_count = 0
         self.loss = None
-        self.adversarial_token_ids = None
-        self.adversarial_tokens = None
-        self.adversarial_value = None
+        self.adversarial_content = AdversarialContent()
+        #self.adversarial_token_ids = None
+        #self.adversarial_tokens = None
+        #self.adversarial_value = None
         self.complete_user_input = None
         self.unique_results = {}
         self.unique_result_count = 0
@@ -642,9 +773,10 @@ class AttackResultInfoCollection:
         result["original_creation_date_time_utc"] = self.original_creation_date_time_utc
         result["jailbreak_detection_count"] = self.jailbreak_detection_count
         result["loss"] = self.loss
-        result["adversarial_token_ids"] = self.adversarial_token_ids
-        result["adversarial_tokens"] = self.adversarial_tokens
-        result["adversarial_value"] = self.adversarial_value
+        result["adversarial_content"] = self.adversarial_content.to_dict()
+        #result["adversarial_token_ids"] = self.adversarial_token_ids
+        #result["adversarial_tokens"] = self.adversarial_tokens
+        #result["adversarial_value"] = self.adversarial_value
         result["complete_user_input"] = self.complete_user_input
         result["results"] = []
         for r in self.results:
@@ -667,9 +799,10 @@ class AttackResultInfoCollection:
         result.original_creation_date_time_utc = d["original_creation_date_time_utc"]
         result.jailbreak_detection_count = d["jailbreak_detection_count"]
         result.loss = d["loss"]
-        result.adversarial_token_ids = d["adversarial_token_ids"]
-        result.adversarial_tokens = d["adversarial_tokens"]
-        result.adversarial_value = d["adversarial_value"]
+        result.adversarial_content = AdversarialContent.from_dict(d["adversarial_content"])
+        #result.adversarial_token_ids = d["adversarial_token_ids"]
+        #result.adversarial_tokens = d["adversarial_tokens"]
+        #result.adversarial_value = d["adversarial_value"]
         result.complete_user_input = d["complete_user_input"]
         result.results = []
         for r in d["results"]:
@@ -700,4 +833,35 @@ class GenerationResults:
         # output_token_ids_output_only: shortcut property containing the token IDs that represent just the LLM's response to the input
         self.output_token_ids_output_only = None
         
+
+# This class is for managing a branching tree exploration of adversarial content
+# Every time the script reaches the initial threshold value for jailbreak count and/or loss, it sets a rollback point with that set of adversarial data.
+# If subsequent permutations based on that adversarial data fail to reach at least the 
+class SearchTreeNode:
+    def __init__(self):
+        self.parent_node = None
+        self.adversarial_content = None
+
+        # How many iterations the script will allow exploring a branch without meeting the required number of jailbreaks or loss score before triggering a rollback.
+        # If this value is set to None or 0, any failure to meet the required thresholds will trigger a rollback
+        self.rollback_grace_iterations = None
+
+        # Multiplier for the rollback_grace_iterations value every time the search branches
+        # e.g. with a value of 0.5, every branch results in the iteration limit being halved
+        # This favours spending some time with more specific variations, but broader search across a variety of larger-scale changes
+        self.rollback_grace_branch_multiplier = 0.75
+
+        # What is the minimum number of jailbreaks for this branch?
+        # If this value (minus the range value, below, if it's set) is not met for a given iteration, the "unsuccessful" counter will be incremented by 1
+        self.jailbreak_count_minimum = None
+        
+        # How far below the jailbreak count minimum is the script allowed to go without incrementing the "unsuccessful" counter for this branch?
+        self.jailbreak_count_range = None
+
+        # What is the maximum loss value for this branch?
+        # If this value (plus the range value, below, if it's set) is not met for a given iteration, the "unsuccessful" counter will be incremented by 1
+        self.loss_maximum = None
+        
+        # How far above the loss maximum is the script allowed to go without incrementing the "unsuccessful" counter for this branch?
+        self.loss_range = None
         

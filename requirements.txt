@@ -8,7 +8,7 @@ transformers
 # tested with ml-collections==0.1.1
 ml_collections
 # tested with fastchat==0.1.0
-fastchat
+#fastchat
 #fschat==0.2.20
 # tested with fschat==0.2.36
 fschat

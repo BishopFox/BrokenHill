@@ -15,6 +15,10 @@ from llm_attacks_bishopfox import get_embeddings
 from llm_attacks_bishopfox import get_encoded_token 
 from llm_attacks_bishopfox import get_encoded_tokens 
 
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
+
+
 def print_stats(function_name):
     print(f"---")
     print(f"[{function_name}] Resource statistics")
@@ -188,9 +192,9 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
     print("Error: one_hot.grad is None")
     return None
 
-def sample_control(attack_params, control_toks, grad, batch_size, topk=256, not_allowed_tokens=None, random_seed = None):
+def sample_control(attack_params, adversarial_content_manager, current_adversarial_content, grad, batch_size, topk=256, not_allowed_tokens=None, random_seed = None):
 
-    new_control_toks = None
+    new_adversarial_token_ids = None
 
     if random_seed is not None:
         torch.manual_seed(random_seed)
@@ -201,101 +205,104 @@ def sample_control(attack_params, control_toks, grad, batch_size, topk=256, not_
             grad[:, not_allowed_tokens.to(grad.device)] = np.infty
 
         top_indices = (-grad).topk(topk, dim=1).indices
-        control_toks = control_toks.to(grad.device)
+        current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(grad.device)
 
-        original_control_toks = control_toks.repeat(batch_size, 1)
+        original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(batch_size, 1)
+
+        #print(f"[sample_control] Debug: current_adversarial_content_token_ids_device = {current_adversarial_content_token_ids_device}, original_adversarial_content_token_ids_device = {original_adversarial_content_token_ids_device}, top_indices = {top_indices}")
+
         new_token_pos = torch.arange(
             0, 
-            len(control_toks), 
-            len(control_toks) / batch_size,
+            len(current_adversarial_content_token_ids_device), 
+            len(current_adversarial_content_token_ids_device) / batch_size,
             device=grad.device
         ).type(torch.int64)
+        rand_ints = torch.randint(0, topk, (batch_size, 1), device=grad.device)
+        #print(f"[sample_control] Debug: new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
         new_token_val = torch.gather(
             top_indices[new_token_pos], 1, 
-            torch.randint(0, topk, (batch_size, 1),
-            device=grad.device)
+            rand_ints
         )
-        new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
+        #print(f"[sample_control] Debug: new_token_val = {new_token_val}")
+        new_adversarial_token_ids = original_adversarial_content_token_ids_device.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
+        #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
 
     if random_seed is not None:
         torch.manual_seed(attack_params.torch_manual_seed)
         torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
+    
+    result = AdversarialContentList()
+    
+    for i in range(new_adversarial_token_ids.shape[0]):
+        new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager, new_adversarial_token_ids[i].tolist())
+        result.append_if_new(new_candidate)
 
-    return new_control_toks
+    return result
 
-def get_filtered_cands(tokenizer, control_cand, previous_adversarial_values, filter_cand=True, curr_control=None, filter_regex = None, filter_repetitive_tokens = None, filter_repetitive_lines = None, filter_newline_limit = None, replace_newline_characters = None, attempt_to_keep_token_count_consistent = False, candidate_filter_tokens_min = None, candidate_filter_tokens_max = None):
-    cands = []
+def get_filtered_cands(adversarial_content_manager, new_adversarial_content_list, previous_adversarial_values, filter_cand=True, current_adversarial_content = None, filter_regex = None, filter_repetitive_tokens = None, filter_repetitive_lines = None, filter_newline_limit = None, replace_newline_characters = None, attempt_to_keep_token_count_consistent = False, candidate_filter_tokens_min = None, candidate_filter_tokens_max = None):
+    result = AdversarialContentList()
     filtered_count = 0
-    if control_cand is None:
-        return cands
-    for i in range(control_cand.shape[0]):
+    if new_adversarial_content_list is None:
+        return result
+    for i in range(len(new_adversarial_content_list.adversarial_content)):
         #print(f"[get_filtered_cands] Debug: i = {i}")
-        #print(f"[get_filtered_cands] Debug: control_cand[i] = {control_cand[i]}")
-        decoded_str = None
-        try:
-            #decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
-            #decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=False)
-            decoded_str = get_decoded_token(tokenizer, control_cand[i])
-        except Exception as e:
-            decoded_str = None
-            decoded_tokens = get_decoded_tokens(tokenizer, control_cand[i].data)
-            #print(f"[get_filtered_cands] Error: when calling get_decoded_token(tokenizer, control_cand[i]) with control_cand[i] = '{control_cand[i]}', decoded_tokens = '{decoded_tokens}': {e} - this may indicate an error in the attack code")            
-        if decoded_str is not None:
-            #print(f"[get_filtered_cands] Debug: decoded_str = '{decoded_str}', curr_control = '{curr_control}', control_cand[i] = '{control_cand[i]}'")
+        #print(f"[get_filtered_cands] Debug: new_adversarial_content_list.adversarial_content[i] = {new_adversarial_content_list.adversarial_content[i].get_short_description()}")
+        adversarial_candidate = new_adversarial_content_list.adversarial_content[i].copy()
+        if adversarial_candidate is not None and adversarial_candidate.as_string is not None:
+            #print(f"[get_filtered_cands] Debug: adversarial_candidate = '{adversarial_candidate.get_short_description()}', current_adversarial_content = '{current_adversarial_content.get_short_description()}', control_cand[i] = '{control_cand[i]}'")
             include_candidate = True
             if filter_cand:
                 include_candidate = False
-                #if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
                 
-                if decoded_str != curr_control:
+                if not adversarial_candidate.is_match(current_adversarial_content):
                     include_candidate = True
                 #else:
-                    #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because it was equivalent to the current control value '{curr_control}'.")
+                    #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because it was equivalent to the current control value '{current_adversarial_content.get_short_description()}'.")
                 if include_candidate:
-                    if decoded_str in previous_adversarial_values:
+                    if previous_adversarial_values.contains_adversarial_content(adversarial_candidate):
                         include_candidate = False
                     #else:
-                    #    print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because it was equivalent to a previous adversarial value.")
+                    #    print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because it was equivalent to a previous adversarial value.")
                 if include_candidate:
-                    token_input_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+                    #token_input_ids = adversarial_content_manager.tokenizer(decoded_str, add_special_tokens=False).input_ids
                     if include_candidate:
                         
-                        len_temp_input_ids = len(token_input_ids)
-                        len_control_cand_i = len(control_cand[i])
+                        candidate_token_count = len(adversarial_candidate.token_ids)
+                        current_adversarial_content_token_count = len(current_adversarial_content.token_ids)
                         if candidate_filter_tokens_min is not None:
-                            if len_temp_input_ids < candidate_filter_tokens_min:
+                            if candidate_token_count < candidate_filter_tokens_min:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was less than the minimum value specified ({candidate_filter_tokens_min}).")
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was less than the minimum value specified ({candidate_filter_tokens_min}).")
                         if candidate_filter_tokens_max is not None:
-                            if len_temp_input_ids > candidate_filter_tokens_max:
+                            if candidate_token_count > candidate_filter_tokens_max:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was greater than the maximum value specified ({candidate_filter_tokens_max}).")
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({candidate_filter_tokens_max}).")
                         if attempt_to_keep_token_count_consistent:
-                            if len_temp_input_ids != len_control_cand_i:
+                            if candidate_token_count != current_adversarial_content_token_count:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{decoded_str}' because the length of its input_ids ({len_temp_input_ids}) was not equal to the length of '{control_cand[i]}' ({len_control_cand_i}).")
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was not equal to the length of '{current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
                     
                     if include_candidate:
                     
-                        #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list because it passsed the filter")
+                        #print(f"[get_filtered_cands] Debug: appending '{adversarial_candidate.get_short_description()}' to candidate list because it passsed the filter")
                         
                         if filter_newline_limit is not None:
                             newline_character_count = 0
                             for newline_character in ["\x0a", "\x0d"]:
-                                if newline_character in decoded_str:
-                                    for current_char in decoded_str:
+                                if newline_character in current_adversarial_content.as_string:
+                                    for current_char in current_adversarial_content.as_string:
                                         if current_char == newline_character:
                                             newline_character_count += 1
                             if newline_character_count > filter_newline_limit:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected due to presence of newline character(s)")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected due to presence of newline character(s)")
                         if include_candidate and filter_regex is not None:
-                            if filter_regex.search(decoded_str):
+                            if filter_regex.search(current_adversarial_content.as_string):
                                 dummy = 1
-                                #print(f"[get_filtered_cands] Debug: '{decoded_str}' passsed the regular expression filter")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passsed the regular expression filter")
                             else:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: '{decoded_str}' failed the regular expression filter")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' failed the regular expression filter")
                         if include_candidate and filter_repetitive_tokens is not None and filter_repetitive_tokens > 0:
                             token_counts = {}
                             already_notified_tokens = []
@@ -307,12 +314,12 @@ def get_filtered_cands(tokenizer, control_cand, previous_adversarial_values, fil
                                         include_candidate = False
                                         if c_token not in already_notified_tokens:
                                             already_notified_tokens.append(c_token)
-                                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected because it had more than {filter_repetitive_tokens} occurrences of the line '{c_token}'")
+                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected because it had more than {filter_repetitive_tokens} occurrences of the line '{c_token}'")
                                 token_counts[c_token] = t_count
                             #if include_candidate:
-                            #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetitive line filter.")
+                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passed the repetitive line filter.")
                         if include_candidate and filter_repetitive_lines is not None and filter_repetitive_lines > 0:
-                            candidate_lines = decoded_str.splitlines()
+                            candidate_lines = current_adversarial_content.as_string.splitlines()
                             token_counts = {}
                             already_notified_tokens = []
                             for c_line in candidate_lines:
@@ -323,71 +330,79 @@ def get_filtered_cands(tokenizer, control_cand, previous_adversarial_values, fil
                                         include_candidate = False
                                         if c_line not in already_notified_tokens:
                                             already_notified_tokens.append(c_line)
-                                            #print(f"[get_filtered_cands] Debug: '{decoded_str}' rejected because it had more than {filter_repetitive_lines} occurrences of the line '{c_line}'")
+                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected because it had more than {filter_repetitive_lines} occurrences of the line '{c_line}'")
                                 token_counts[c_line] = t_count
                             #if include_candidate:
-                            #    print(f"[get_filtered_cands] Debug: '{decoded_str}' passed the repetitive line filter.")
+                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passed the repetitive line filter.")
                             
                 
             if include_candidate:
                 if replace_newline_characters is not None:
+                    decoded_str = adversarial_candidate.as_string
                     decoded_str = decoded_str.replace("\n", replace_newline_characters)
                     decoded_str = decoded_str.replace("\r", replace_newline_characters)
-                if decoded_str in cands:
-                    dummy = 1
-                    #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was equivalent to another candidate.")
-                else:
-                    cands.append(decoded_str)
-                    #print(f"[get_filtered_cands] Debug: appending '{decoded_str}' to candidate list.")
+                    if decoded_str != adversarial_candidate.as_string:
+                        adversarial_candidate = AdversarialContent.from_string(adversarial_content_manager, decoded_str)
+                #print(f"[get_filtered_cands] Debug: appending '{adversarial_candidate.get_short_description()}' to candidate list.")
+                result.append_if_new(adversarial_candidate)
             else:
-                #print(f"[get_filtered_cands] Debug: not appending '{decoded_str}' to candidate list because it was filtered out.")
+                #print(f"[get_filtered_cands] Debug: not appending '{adversarial_candidate.get_short_description()}' to candidate list because it was filtered out.")
                 filtered_count += 1
 
     #print(f"[get_filtered_cands] Debug: control_cand = {control_cand}, cands = {cands}")
 
     if filter_cand:
-        if len(cands) == 0:
+        len_result_adversarial_content = len(result.adversarial_content)
+        if len_result_adversarial_content == 0:
             dummy = 1
             #print(f"[get_filtered_cands] Warning: no candidates found")
         else:
-            cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
+            # I *think* this step is supposed to append copies of the last entry in the list enough times to make the new list as long as the original list
+            #cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
+            # TKTK: try taking this out, because it seems weird to have to do this
+            if len_result_adversarial_content < len(new_adversarial_content_list.adversarial_content):
+                while len(result.adversarial_content) < len(new_adversarial_content_list.adversarial_content):
+                    result.adversarial_content.append(result.adversarial_content[-1].copy())
+                    
             #print(f"[get_filtered_cands] Warning: {round(filtered_count / len(control_cand), 2)} control candidates were not valid")
-    return cands
+    return result
 
 
-def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None, return_ids=False, batch_size=512):
+def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, batch_size=512):
     
-    if test_controls is None or len(test_controls) < 1:
-        raise ValueError(f"test_controls must be a list of strings, got empty array or null")
+    if adversarial_candidate_list is None or len(adversarial_candidate_list.adversarial_content) < 1:
+        raise ValueError(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
 
     test_ids = None
     nested_ids = None
 
-    if isinstance(test_controls[0], str):
-        max_len = control_slice.stop - control_slice.start
-        test_ids = [
-            torch.tensor(tokenizer(control, add_special_tokens=False).input_ids[:max_len], device=model.device)
-            for control in test_controls
-        ]
-        pad_tok = 0
-        while pad_tok in input_ids or any([pad_tok in ids for ids in test_ids]):
-            pad_tok += 1
-        nested_ids = torch.nested.nested_tensor(test_ids)
-        test_ids = torch.nested.to_padded_tensor(nested_ids, pad_tok, (len(test_ids), max_len))
-    else:
-        raise ValueError(f"test_controls must be a list of strings, got {type(test_controls)}")
+    number_of_adversarial_token_ids = len(adversarial_content.token_ids)
+
+    max_len = number_of_adversarial_token_ids
+    test_ids = []
+    for i in range(0, len(adversarial_candidate_list.adversarial_content)):
+        #tid = torch.tensor(tokenizer(adversarial_candidate_list.adversarial_content[i].token_ids, add_special_tokens=False).input_ids[:max_len], device=model.device)
+        tid = torch.tensor(adversarial_candidate_list.adversarial_content[i].token_ids[:max_len], device=model.device)
+        #tid = torch.tensor(adversarial_candidate_list.adversarial_content[i].token_ids, device=model.device)
+        test_ids.append(tid)
+
+    pad_tok = 0
+    while pad_tok in input_ids or any([pad_tok in ids for ids in test_ids]):
+        pad_tok += 1
+    nested_ids = torch.nested.nested_tensor(test_ids)
+    test_ids = torch.nested.to_padded_tensor(nested_ids, pad_tok, (len(test_ids), max_len))
 
     #decoded_test_ids = get_decoded_tokens(tokenizer, test_ids)
     #print(f"[get_logits] Debug: test_ids = '{test_ids}', decoded_test_ids = '{decoded_test_ids}'")
 
-    if not(test_ids[0].shape[0] == control_slice.stop - control_slice.start):
+    if not(test_ids[0].shape[0] == number_of_adversarial_token_ids):
         raise ValueError((
-            f"test_controls must have shape "
-            f"(n, {control_slice.stop - control_slice.start}), " 
+            f"adversarial_candidate_list must have shape "
+            f"(n, {number_of_adversarial_token_ids}), " 
             f"got {test_ids.shape}"
         ))
 
-    locs = torch.arange(control_slice.start, control_slice.stop).repeat(test_ids.shape[0], 1).to(model.device)
+    locs = torch.arange(0, number_of_adversarial_token_ids).repeat(test_ids.shape[0], 1).to(model.device)
     ids = torch.scatter(
         input_ids.unsqueeze(0).repeat(test_ids.shape[0], 1).to(model.device),
         1,

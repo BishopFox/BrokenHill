@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.17"
-script_date = "2024-08-21"
+script_version = "0.18"
+script_date = "2024-08-28"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -15,7 +15,7 @@ def get_script_description():
     return result
 
 def get_short_script_description():
-    result = 'Based on code by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
+    result = 'Based on code and research by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
     result += "\n"
     result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     return result
@@ -46,22 +46,23 @@ from llm_attacks_bishopfox import get_effective_max_token_value_for_model_and_to
 from llm_attacks_bishopfox import get_embedding_layer
 from llm_attacks_bishopfox import get_nonascii_token_list
 from llm_attacks_bishopfox import get_random_seed_list_for_comparisons
-from llm_attacks_bishopfox import get_token_denylist
+from llm_attacks_bishopfox import get_token_allow_and_deny_lists
 from llm_attacks_bishopfox import get_token_list_as_tensor
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfo
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoCollection
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
 from llm_attacks_bishopfox.attack.attack_classes import FakeException
 from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import gcg_attack_params
+from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
-#from llm_attacks_bishopfox.jailbreak_detection import JailbreakDetectionRuleResult
-#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
-#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_decoded_token
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_decoded_tokens
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
@@ -71,14 +72,15 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import sample_control
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
-from llm_attacks_bishopfox.minimal_gcg.string_utils import SuffixManager
-from llm_attacks_bishopfox.minimal_gcg.string_utils import get_default_generic_role_indicator_template
-from llm_attacks_bishopfox.minimal_gcg.string_utils import load_conversation_template
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import load_conversation_template
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_missing_conversation_templates
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
-from llm_attacks_bishopfox.util.util_functions import get_file_content
-from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
+from llm_attacks_bishopfox.util.util_functions import get_random_token_id
+from llm_attacks_bishopfox.util.util_functions import get_random_token_ids
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_float
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
@@ -174,46 +176,7 @@ def print_stats(attack_params):
     display_string += "---\n"
     print(display_string)
 
-
-# def generate(attack_params, model, tokenizer, input_ids, assistant_role_slice, gen_config=None, do_sample = True):
-    # if gen_config is None:
-        # #gen_config = model.generation_config
-        # # Copy the data to avoid changing the original
-        # gen_config = GenerationConfig.from_dict(config_dict = model.generation_config.to_dict())
-    # # preserve the existing max_new_tokens value
-    # #current_max_new_tokens = gen_config.max_new_tokens
-    
-    # if attack_params.model_temperature > 1.0 and do_sample:
-        # gen_config.do_sample = True
-    # #else:
-    # #    gen_config.do_sample = False
-    # gen_config.temperature = attack_params.model_temperature
-    # if attack_params.display_full_failed_output:
-        # gen_config.max_new_tokens = attack_params.full_decoding_max_new_tokens
-    # else:
-        # gen_config.max_new_tokens = attack_params.generation_max_new_tokens
-
-    # #if gen_config.max_new_tokens > 32:
-    # #    print('WARNING: max_new_tokens > 32 may cause testing to slow down.')
-        
-    # input_ids = input_ids[:assistant_role_slice.stop].to(model.device).unsqueeze(0)
-    # attn_masks = torch.ones_like(input_ids).to(model.device)
-    
-    # #model.eval()
-    
-    # output_ids = model.generate(input_ids, 
-                                # attention_mask=attn_masks, 
-                                # generation_config=gen_config,
-                                # pad_token_id=tokenizer.pad_token_id)[0]
-
-    # #model.train()
-
-    # # restore the previous max_new_tokens value
-    # #gen_config.max_new_tokens = current_max_new_tokens
-    
-    # return output_ids[assistant_role_slice.stop:]
-
-def generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, gen_config=None, do_sample = True, generate_full_output = False):
+def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, gen_config=None, do_sample = True, generate_full_output = False):
     working_gen_config = gen_config
     # Copy the generation config to avoid changing the original
     if gen_config is None:
@@ -235,13 +198,10 @@ def generate(attack_params, model, tokenizer, suffix_manager, adversarial_string
     result = GenerationResults()
     result.max_new_tokens = working_gen_config.max_new_tokens
 
-    #result.input_token_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-    result.input_token_id_data = suffix_manager.get_prompt(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
     input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
     input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
-    #input_ids = input_ids[:assistant_role_slice.stop].to(model.device).unsqueeze(0)
-    #attn_masks = torch.ones_like(input_ids).to(model.device)
     attn_masks = torch.ones_like(input_ids_converted).to(model.device)
         
     result.output_token_ids = model.generate(input_ids_converted, 
@@ -253,22 +213,17 @@ def generate(attack_params, model, tokenizer, suffix_manager, adversarial_string
     
     result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.goal.start:result.input_token_id_data.slice_data.control.stop]
     
+    #print(f"[generate] Debug: result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+    
     return result
     
-    # input_id_data.input_token_ids: the token IDs that represent just the user input part of the prompt generated by get_prompt
-    # generation_input_token_ids: the token IDs that represent just the user input part of the prompt sent to the LLM - should be identical to the previous value
-    # output_ids_output_only: the token IDs that represent just the LLM's response to the input
-    # output_ids: the complete set of tokens that represents the system prompt, messages, user input, and the LLM's response
-    #return input_id_data.input_token_ids, generation_input_token_ids, output_ids_output_only, output_ids
-    #return input_id_data, generation_input_token_ids, output_ids_output_only, output_ids
-
-def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, adversarial_string, jailbreak_detector, gen_config=None, do_sample = True):
+def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, jailbreak_detector, gen_config=None, do_sample = True):
     #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params,
     generation_results = generate(attack_params,
                                         model, 
                                         tokenizer, 
-                                        suffix_manager, 
-                                        adversarial_string, 
+                                        adversarial_content_manager, 
+                                        adversarial_content, 
                                         gen_config=gen_config,
                                         do_sample = do_sample)
                                         
@@ -276,7 +231,10 @@ def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, ad
     
     result_ar_info_data = AttackResultInfoData()
     result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
-                                  
+    
+    #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
+    #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+    
     gen_str = result_ar_info_data.decoded_llm_output_string
                   
     jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
@@ -287,81 +245,6 @@ def check_for_attack_success(attack_params, model, tokenizer, suffix_manager, ad
     #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
     
     return jailbroken, result_ar_info_data, generation_results
-
-# def get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = True):
-    # #gen_config = model.generation_config
-    # gen_config = GenerationConfig.from_dict(config_dict = model.generation_config.to_dict())
-    
-    # if attack_params.model_temperature > 1.0 and do_sample:
-        # gen_config.do_sample = True
-    # #else:
-    # #    gen_config.do_sample = False
-    
-    # # preserve the existing max_new_tokens value
-    # #current_max_new_tokens = gen_config.max_new_tokens
-
-    # gen_config.max_new_tokens = attack_params.full_decoding_max_new_tokens
-    # gen_config.temperature = attack_params.model_temperature
-
-    # #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, update_self_values = False).to(attack_params.device)
-    # #print(f"[get_current_input_and_output_tokens] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
-    # #input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-    # input_id_data = suffix_manager.get_prompt(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-    # input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
-    # #input_ids = input_ids[:input_id_data.slice_data.assistant_role.stop].to(model.device).unsqueeze(0)
-    # input_ids_sliced = input_ids[:input_id_data.slice_data.assistant_role.stop]
-    # input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
-    # attn_masks = torch.ones_like(input_ids_converted).to(model.device)
-    
-    # #model.eval()
-    
-    # output_ids = model.generate(input_ids_converted, 
-                                # attention_mask=attn_masks, 
-                                # generation_config=gen_config,
-                                # pad_token_id=tokenizer.pad_token_id)[0]
-
-    # #model.train()
-
-    # #input_tokens = output_ids[suffix_manager._goal_slice.start:suffix_manager._goal_slice.stop]
-    # #input_tokens = output_ids[suffix_manager._goal_slice.start:suffix_manager._control_slice.stop]
-    # #output_tokens_all_decoded = get_decoded_tokens(tokenizer, output_ids)
-    # #print(f"[get_current_input_and_output_tokens] Debug: output_ids = '{output_ids}', output_tokens_all_decoded = '{output_tokens_all_decoded}'")
-
-    # input_tokens = output_ids[input_id_data.slice_data.goal.start:input_id_data.slice_data.control.stop]
-    # #input_tokens = output_ids[suffix_manager._goal_slice.start:(suffix_manager._assistant_role_slice.start - 1)]
-    # #output_tokens = output_ids[suffix_manager._assistant_role_slice.stop:]
-
-    # # Using target.start will cause one token to be discarded if the generated prompt contains a newline after the assistant role stop and the model-generated full output does not, which is the case with Gemma
-    # #output_ids_output_only = output_ids[input_id_data.slice_data.target.start:]
-    # output_ids_output_only = output_ids[input_id_data.slice_data.assistant_role.stop:]
-    
-    # #output_tokens_decoded = get_decoded_tokens(tokenizer, output_tokens)
-    # #input_tokens_decoded = get_decoded_tokens(tokenizer, input_tokens)
-    # #print(f"[get_current_input_and_output_tokens] Debug: input_tokens = '{input_tokens}', input_tokens_decoded = '{input_tokens_decoded}', output_tokens = '{output_tokens}', output_tokens_decoded = '{output_tokens_decoded}'")
-    
-    # # restore the previous max_new_tokens value
-    # #gen_config.max_new_tokens = current_max_new_tokens
-    
-    # return input_id_data.input_ids, input_tokens, output_ids_output_only, output_ids
-
-# def get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string, input_label = "Current input", output_label = "Current output", do_sample = True):
-    # #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-    # full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-    # #decoded_full_input = tokenizer.decode(full_input_token_ids).strip()
-    # #decoded_input = tokenizer.decode(generation_input_token_ids).strip()
-    # #decoded_output = tokenizer.decode(output_token_ids).strip()
-    # #decoded_full_generation_tokens = tokenizer.decode(full_generation_token_ids).strip()
-    # #decoded_full_input = tokenizer.decode(full_input_token_ids)
-    # #decoded_full_input_array = get_decoded_tokens(tokenizer, full_input_token_ids)
-    # decoded_input = tokenizer.decode(generation_input_token_ids).strip()
-    # decoded_output = tokenizer.decode(output_token_ids).strip()
-    # #decoded_full_generation_tokens = tokenizer.decode(full_generation_token_ids)
-    # #decoded_full_generation_tokens_array = get_decoded_tokens(tokenizer, full_generation_token_ids)
-
-    # result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'"
-    # #result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'\n\nGeneration full input: '{decoded_full_input}'\n\nFull generation text: '{decoded_full_generation_tokens}'"
-    # #result = f"{input_label}: '{decoded_input}'\n\n{output_label}: '{decoded_output}'\n\nGeneration full input: '{decoded_full_input}'\n\nFull generation text: '{decoded_full_generation_tokens}'\n\nGeneration full input as array: '{decoded_full_input_array}'\n\nFull generation text as array: '{decoded_full_generation_tokens_array}', full_generation_token_ids = '{full_generation_token_ids}'"
-    # return result
 
 def main(attack_params):
 
@@ -398,18 +281,18 @@ def main(attack_params):
     
     #successful_attacks = []
     successful_attack_count = 0
-    adversarial_string = attack_params.initial_adversarial_string
     model = None
     tokenizer = None
-    suffix_manager = None
+    adversarial_content_manager = None
     jailbreak_detector = LLMJailbreakDetector()
     jailbreak_detector.rule_set = attack_params.jailbreak_detection_rule_set
     
     # keep two arrays to avoid having to convert every item to JSON every iteration
     json_data = []
     attack_data = []
-    # keep another array to track adversarial values 
-    tested_adversarial_values = []
+    # keep another array to track adversarial values
+    current_adversarial_content = None
+    tested_adversarial_content = AdversarialContentList()
     random_seed_values = get_random_seed_list_for_comparisons()
     
     try:
@@ -429,14 +312,15 @@ def main(attack_params):
         attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", model, tokenizer, attack_params.generation_max_new_tokens)
         attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
         
-        token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
+        #token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
+        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
         
-        #print(f"Debug: token_denylist = '{token_denylist}'")
+        #print(f"Debug: token_allow_and_deny_lists.denylist = '{token_allow_and_deny_lists.denylist}', token_allow_and_deny_lists.allowlist = '{token_allow_and_deny_lists.allowlist}'")
         not_allowed_tokens = None
-        if len(token_denylist) > 0:
-            #not_allowed_tokens = get_token_list_as_tensor(token_denylist, device=attack_params.device)
-            not_allowed_tokens = get_token_list_as_tensor(token_denylist, device='cpu')
-        #not_allowed_tokens = get_token_list_as_tensor(tokenizer, token_denylist, device='cpu')
+        if len(token_allow_and_deny_lists.denylist) > 0:
+            #not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device=attack_params.device)
+            not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device='cpu')
+        #not_allowed_tokens = get_token_list_as_tensor(tokenizer, token_allow_and_deny_lists.denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
         original_model_size = 0
@@ -477,12 +361,13 @@ def main(attack_params):
                 size_factor_formatted = f"{size_factor:.2f}%"
                 print(f"Model size after reduction: {quantized_model_size} ({size_factor_formatted} of original size)")
             
+        register_missing_conversation_templates()
         #print(f"Loading conversation template '{attack_params.template_name}'")
         #conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         conv_template = load_conversation_template(attack_params.model_path, template_name = attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         if attack_params.template_name is not None:
             if conv_template.name != attack_params.template_name:
-                print(f"Warning: the template '{attack_params.template_name}' was specified, but fastchat returned the template '{conv_template.name}' in response to that value.")
+                print(f"Warning: the template '{attack_params.template_name}' was specified, but fschat returned the template '{conv_template.name}' in response to that value.")
         print(f"Conversation template: '{conv_template.name}'")
         print(f"Conversation template sep: '{conv_template.sep}'")
         print(f"Conversation template sep2: '{conv_template.sep2}'")
@@ -492,12 +377,42 @@ def main(attack_params):
         print(f"Conversation template messages: '{messages}'")
         #print_stats(attack_params)
 
+        # create a temporary adversarial content manager to create the adversarial content that will be used to initialize the real adversarial content manager
+        # TKTK: maybe split out the trash fire token stuff into a TrashFireTokenWrangler class to avoid having to do this silly workaround
+        adversarial_content_manager = AdversarialContentManager(tokenizer=tokenizer, 
+            conv_template = conv_template, 
+            instruction = attack_params.base_prompt, 
+            target = attack_params.target_output, 
+            adversarial_content = AdversarialContent(),
+            adversarial_content_placement = attack_params.adversarial_content_placement)
+
+        initial_adversarial_content = None
+        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
+            initial_adversarial_content = AdversarialContent.from_string(adversarial_content_manager, attack_params.initial_adversarial_string)
+        
+        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
+            initial_adversarial_content = AdversarialContent.from_token_ids(adversarial_content_manager, attack_params.initial_adversarial_token_ids)
+        
+        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
+            token_ids = get_random_token_ids(token_allow_and_deny_lists, attack_params.initial_random_adversarial_token_count)
+            initial_adversarial_content = AdversarialContent.from_token_ids(adversarial_content_manager, token_ids)
+        
+        # This should never actually happen, but just in case
+        if initial_adversarial_content is None:
+            print("Error: no initial adversarial content was specified.")
+            sys.exit(1)
+            
+        print(f"Initial adversarial content: {initial_adversarial_content.get_full_description()}")
+
+        current_adversarial_content = initial_adversarial_content.copy()
+
         #print(f"Creating suffix manager")
-        suffix_manager = SuffixManager(tokenizer=tokenizer, 
-                      conv_template=conv_template, 
-                      instruction=attack_params.base_prompt, 
-                      target=attack_params.target_output, 
-                      adv_string=attack_params.initial_adversarial_string)
+        adversarial_content_manager = AdversarialContentManager(tokenizer=tokenizer, 
+                      conv_template = conv_template, 
+                      instruction = attack_params.base_prompt, 
+                      target = attack_params.target_output, 
+                      adversarial_content = initial_adversarial_content.copy(),
+                      adversarial_content_placement = attack_params.adversarial_content_placement)
         #print_stats(attack_params)
          
         #print(f"Debug: Model dtype: {model.dtype}")
@@ -510,9 +425,10 @@ def main(attack_params):
         # Rollback type 1 is triggered, and the script rolls back to the last-known-good adversarial value associated with rollback type 1
         # The rollback type 2 last-known-good adversarial value is updated to the value that caused the rollback
         # In the next iteration, rollback type 2 is triggered, and the script "rolls sideways" to the data that caused the first rollback, making the script branch into bad values
-        last_known_good_adversarial_value = None
-        last_known_good_adversarial_token_ids = None
-        last_known_good_adversarial_tokens = None
+        last_known_good_adversarial_content = AdversarialContent()
+        last_known_good_adversarial_content.token_ids = None
+        last_known_good_adversarial_content.tokens = None
+        last_known_good_adversarial_content.as_string = None
         best_loss_value = None
         best_jailbreak_count = None
         original_topk = attack_params.topk
@@ -535,13 +451,17 @@ def main(attack_params):
                     print_stats(attack_params)
                     print(f"---------")
                     
-                    tested_adversarial_values.append(adversarial_string)
+                    tested_adversarial_content.append_if_new(current_adversarial_content)
+                    
+                    # if this is not the first iteration, and the user has enabled emulation of the original attack, encode the current string, then use those IDs for this round instead of persisting everything in token ID format
+                    if main_loop_iteration_number > 0:
+                        if attack_params.reencode_adversarial_content_every_iteration:
+                            reencoded_token_ids = tokenizer.encode(current_adversarial_content.as_string)
+                            current_adversarial_content = AdversarialContent.from_token_ids(reencoded_token_ids)
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
-                    #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
-                    #input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-                    #input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-                    input_id_data = suffix_manager.get_prompt(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
+                    #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with current_adversarial_content = '{current_adversarial_content.get_short_description()}'")
+                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
                     #print_stats(attack_params)
                     
                     #decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
@@ -556,75 +476,50 @@ def main(attack_params):
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats(attack_params)
 
-                    current_check_string = None
-                    current_check_token_ids = None
-                    control_slice_decoded = None
-                    best_new_adversarial_string = None
+                    best_new_adversarial_content = None
                     attack_results_current_iteration = AttackResultInfoCollection()
                     
                     # declare these here so they can be cleaned up later
                     coordinate_grad = None
-                    adversarial_string_tokens = None
                     # during the first iteration, do not generate variations - test the value that was given                    
                     if main_loop_iteration_number == 0:
-                        print(f"Testing initial adversarial value '{adversarial_string}'")
+                        print(f"Testing initial adversarial value '{current_adversarial_content.get_short_description()}'")
                     else:
 
                         # Step 2. Compute Coordinate Gradient
                         #print(f"Computing coordinate gradient")
-                        # coordinate_grad = token_gradients(model, 
-                                        # input_ids, 
-                                        # suffix_manager._control_slice, 
-                                        # suffix_manager._target_slice, 
-                                        # suffix_manager._loss_slice)
                         coordinate_grad = token_gradients(model, 
                                         input_ids, 
                                         input_id_data.slice_data.control, 
                                         input_id_data.slice_data.target, 
                                         input_id_data.slice_data.loss)
                         #print_stats(attack_params)
-                        
-                        
-                        
+
                         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
                         # Notice that we only need the one that minimizes the loss.
                         with torch.no_grad():
                             
-                            # Step 3.1 Slice the input to locate the adversarial suffix.
-                            #print(f"Slicing input")
-                            control_slice = input_ids[input_id_data.slice_data.control]
-                            
-                            control_slice_decoded = get_decoded_tokens(tokenizer, control_slice)
-                            #print(f"[main - Slicing input] Debug: control_slice_decoded = '{control_slice_decoded}'")
-
-                            adversarial_string_tokens = control_slice.to(attack_params.device)
                             #print_stats(attack_params)
-                            #print(f"adversarial_string_tokens: {adversarial_string_tokens}")
                             
                             got_candidate_list = False
-                            new_adversarial_string_toks = None
-                            new_adversarial_string_list = None
+                            new_adversarial_candidate_list = None
+                            new_adversarial_candidate_list_filtered = None
+                            
                             sample_control_random_seed = None
 
                             while not got_candidate_list:
                                 # Step 3.2 Randomly sample a batch of replacements.
                                 #print(f"Randomly sampling a batch of replacements")
-                                new_adversarial_string_toks = sample_control(attack_params,
-                                               adversarial_string_tokens, 
+                                new_adversarial_candidate_list = sample_control(attack_params,
+                                               adversarial_content_manager,
+                                               current_adversarial_content, 
                                                coordinate_grad, 
                                                attack_params.batch_size_new_adversarial_tokens, 
                                                topk = attack_params.topk,
                                                not_allowed_tokens = not_allowed_tokens,
                                                random_seed = sample_control_random_seed)
                                 #print_stats(attack_params)
-                                #print(f"new_adversarial_string_toks: {new_adversarial_string_toks}")
-                                #decoded_ast = get_decoded_tokens(tokenizer, adversarial_string_tokens)
-                                #nast_data = new_adversarial_string_toks
-                                #if isinstance(new_adversarial_string_toks, torch.Tensor):
-                                    #print(f"Debug: new_adversarial_string_toks.tolist() = '{new_adversarial_string_toks.tolist()}', dir(new_adversarial_string_toks) = '{dir(new_adversarial_string_toks)}'")
-                                #    nast_data = new_adversarial_string_toks.tolist()
-                                #decoded_nast = get_decoded_tokens(tokenizer, nast_data)
-                                #print(f"Debug: adversarial_string_tokens = '{adversarial_string_tokens}', new_adversarial_string_toks = '{new_adversarial_string_toks}', decoded_ast = '{decoded_ast}', decoded_nast = '{decoded_nast}'")
+                                #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
                                 
                                 # Note: I'm leaving this explanation here for historical reference
                                 # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
@@ -632,11 +527,11 @@ def main(attack_params):
                                 # so Encode(Decode(tokens)) may produce a different tokenization.
                                 # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
                                 #print(f"Getting filtered candidates")
-                                new_adversarial_string_list = get_filtered_cands(tokenizer, 
-                                                                    new_adversarial_string_toks, 
-                                                                    tested_adversarial_values,
+                                new_adversarial_candidate_list_filtered = get_filtered_cands(adversarial_content_manager, 
+                                                                    new_adversarial_candidate_list, 
+                                                                    tested_adversarial_content,
                                                                     filter_cand=True, 
-                                                                    curr_control=adversarial_string,
+                                                                    current_adversarial_content = current_adversarial_content,
                                                                     filter_regex = attack_params.get_candidate_filter_regex(),
                                                                     filter_repetitive_tokens = attack_params.candidate_filter_repetitive_tokens,
                                                                     filter_repetitive_lines = attack_params.candidate_filter_repetitive_lines,
@@ -645,9 +540,7 @@ def main(attack_params):
                                                                     attempt_to_keep_token_count_consistent = attack_params.attempt_to_keep_token_count_consistent, 
                                                                     candidate_filter_tokens_min = attack_params.candidate_filter_tokens_min, 
                                                                     candidate_filter_tokens_max = attack_params.candidate_filter_tokens_max)
-                                # if len(new_adversarial_string_list) == 0:
-                                    # print(f"Error: the attack appears to have failed to generate any adversarial string data at this iteration. This may be due to excessive post-generation filtering options. The tool will likely crash immediately after this condition occurs.")
-                                if len(new_adversarial_string_list) > 0:
+                                if len(new_adversarial_candidate_list_filtered.adversarial_content) > 0:
                                     got_candidate_list = True
                                 else:
                                     new_topk = attack_params.topk + original_topk
@@ -668,51 +561,46 @@ def main(attack_params):
                                     
                                             
                             #print_stats(attack_params)
-                            #print(f"new_adversarial_string_list: '{new_adversarial_string_list}'")
+                            #print(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
                             
                             # Step 3.4 Compute loss on these candidates and take the argmin.
                             #print(f"Getting logits")
-                            logits, ids = get_logits(model=model, 
-                                                     tokenizer=tokenizer,
-                                                     input_ids=input_ids,
-                                                     #control_slice=suffix_manager._control_slice, 
-                                                     control_slice=input_id_data.slice_data.control, 
-                                                     test_controls=new_adversarial_string_list, 
-                                                     return_ids=True,
-                                                     batch_size=attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
+                            logits, ids = get_logits(model = model, 
+                                                     tokenizer = tokenizer,
+                                                     input_ids = input_ids,
+                                                     adversarial_content = current_adversarial_content, 
+                                                     adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
+                                                     return_ids = True,
+                                                     batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
                             #print_stats(attack_params)
 
                             #print(f"Calculating target loss")
-                            #losses = target_loss(logits, ids, suffix_manager._target_slice)
                             losses = target_loss(logits, ids, input_id_data, tokenizer)
                             #print_stats(attack_params)
 
                             #print(f"Getting losses argmin")
-                            best_new_adversarial_string_id = losses.argmin()
+                            best_new_adversarial_content_id = losses.argmin()
                             #print_stats(attack_params)
 
-                            #print(f"Setting best new adversarial string")
-                            best_new_adversarial_string = new_adversarial_string_list[best_new_adversarial_string_id]
+                            #print(f"Setting best new adversarial content")
+                            best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
                             #print_stats(attack_params)
 
                             #print(f"Getting current loss")
-                            current_loss = losses[best_new_adversarial_string_id]
+                            current_loss = losses[best_new_adversarial_content_id]
                             #print_stats(attack_params)
 
-                            # Update the running adversarial_string with the best candidate
-                            #print(f"Updating adversarial string - was '{adversarial_string}', now '{best_new_adversarial_string}'")
-                            #adversarial_string = best_new_adversarial_string
+                            # Update the running current_adversarial_content with the best candidate
+                            #print(f"Updating adversarial content - was '{current_adversarial_content.get_short_description()}', now '{best_new_adversarial_content.get_short_description()}'")
                             #print_stats(attack_params)
                             current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
-                            print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: '{adversarial_string}'\nNow: '{best_new_adversarial_string}'")
-                            adversarial_string = best_new_adversarial_string
+                            print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {current_adversarial_content.get_short_description()} ({len(current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
+                            current_adversarial_content = best_new_adversarial_content
                             print(f"Loss value for the new permutation: {current_loss_as_float}")
                         
                             attack_results_current_iteration.loss = current_loss_as_float
 
-                    attack_results_current_iteration.adversarial_token_ids = tokenizer.encode(adversarial_string)
-                    attack_results_current_iteration.adversarial_tokens = get_decoded_tokens(tokenizer, attack_results_current_iteration.adversarial_token_ids)
-                    attack_results_current_iteration.adversarial_value = adversarial_string
+                    attack_results_current_iteration.adversarial_content = current_adversarial_content.copy()
                     
                     # BEGIN: do for every random seed
                     prng_seed_index = -1
@@ -753,17 +641,11 @@ def main(attack_params):
                             attack_data_current_iteration.torch_cuda_manual_seed_all = random_seed
                     
                         #print(f"Checking for success")
-                        #is_success_input_ids = suffix_manager.get_input_ids(adv_string = adversarial_string).to(attack_params.device)
-                        #print(f"[main - checking for success] Debug: calling get_input_ids with adversarial_string = '{adversarial_string}'")
-                        #is_success_input_id_data = suffix_manager.get_input_ids(adv_string = adversarial_string, force_python_tokenizer = attack_params.force_python_tokenizer)
-                        #is_success_input_ids = is_success_input_id_data.get_input_ids_as_tensor().to(attack_params.device)
-                        #is_success, current_check_string, current_check_token_ids = check_for_attack_success(attack_params, model, 
-                        #is_success, current_generated_string, current_check_token_ids, input_tokens, output_ids_output_only, output_ids = check_for_attack_success(attack_params, model, 
                         is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
                                                 model, 
                                                 tokenizer,
-                                                suffix_manager, 
-                                                adversarial_string,
+                                                adversarial_content_manager, 
+                                                current_adversarial_content,
                                                 jailbreak_detector,
                                                 do_sample = do_sample)            
                         #print_stats(attack_params)
@@ -773,9 +655,9 @@ def main(attack_params):
                         
                         # Get the current full user input from the first successful test
                         if attack_results_current_iteration.complete_user_input is None:
-                            attack_results_current_iteration.complete_user_input = suffix_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
+                            attack_results_current_iteration.complete_user_input = adversarial_content_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
 
-                        #print(f"Passed:{is_success}\nCurrent best new adversarial string: '{adversarial_string}'")
+                        #print(f"Passed:{is_success}\nCurrent best new adversarial content: '{current_adversarial_content.get_short_description()}'")
                         #json_data_current_iteration = {}
                         
                         full_output_dataset_name = "full_output"
@@ -783,30 +665,15 @@ def main(attack_params):
                         jailbreak_check_dataset_name = "jailbreak_check"
                         if attack_params.display_full_failed_output:
                             jailbreak_check_dataset_name = full_output_dataset_name
-                        #attack_data_current_iteration.jailbreak_check_data.decoded_llm_output_string = current_generated_string
-                                                    
-                        # is_success_input_ids_list = is_success_input_ids.tolist()
-                        # attack_data_current_iteration.jailbreak_check_input_token_ids = is_success_input_ids_list
-                        # attack_data_current_iteration.jailbreak_check_input_tokens = get_decoded_tokens(tokenizer, is_success_input_ids_list)
-                        # attack_data_current_iteration.jailbreak_check_input_string = tokenizer.decode(is_success_input_ids_list)
-                        # current_check_token_ids_list = current_check_token_ids.tolist()
-                        # attack_data_current_iteration.jailbreak_check_generation_token_ids = current_check_token_ids_list
-                        # attack_data_current_iteration.jailbreak_check_generation_tokens = get_decoded_tokens(tokenizer, current_check_token_ids_list)
-                        # attack_data_current_iteration.jailbreak_check_generation_string = tokenizer.decode(current_check_token_ids_list)
                         
                         attack_data_current_iteration.result_data_sets[jailbreak_check_dataset_name] = jailbreak_check_data
                         
                         # only generate full output if it hasn't already just been generated
                         if not attack_params.display_full_failed_output and is_success:
                             full_output_data = AttackResultInfoData()
-                            #current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string)
-                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, because 
-                            #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = get_current_input_and_output_tokens(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-                            #full_input_token_ids, generation_input_token_ids, output_token_ids, full_generation_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample)
-                            #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
-                            generation_results = generate(attack_params, model, tokenizer, suffix_manager, adversarial_string, do_sample = do_sample, generate_full_output = True)
+                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that.
+                            generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, do_sample = do_sample, generate_full_output = True)
                           
-                            #full_output_data.set_values(tokenizer, input_id_data.full_prompt_token_ids, output_token_ids, input_token_ids, output_ids_llm_output_only)
                             full_output_data.set_values(tokenizer, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
@@ -832,14 +699,13 @@ def main(attack_params):
                     iteration_status_message = f"-----------------\n"
                     iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.results[0].get_first_result_data_set().decoded_user_input_string}\n---\n"
                     iteration_status_message += f"Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}, with {attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
-                    #iteration_status_message += f"Input during this round: '{adversarial_string}'"
                     for uov_string in attack_results_current_iteration.unique_results.keys():
                         uov_count = attack_results_current_iteration.unique_results[uov_string]
                         iteration_status_message += f"--- {uov_count} occurrence(s): ---\n" 
                         iteration_status_message += uov_string
                         iteration_status_message += "\n"
                     iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial string: '{adversarial_string}'\n"
+                    iteration_status_message += f"Current best new adversarial content: '{current_adversarial_content.get_short_description()}'\n"
                     iteration_status_message += f"-----------------\n"                    
                     print(iteration_status_message)
                     
@@ -879,22 +745,19 @@ def main(attack_params):
                         # maybe use a tree model, with each branch from a node allowed to decrease 50% the amount of the previous branch, and too many failures to reach the value of the previous branch triggers a rollback to that branch
                         # That would allow some random exploration of various branches, at least allowing for the possibility of discovering a strong value within them, but never getting stuck for too long
                         if rollback_triggered:
-                            #rollback_message += f"Rolling back to the last-known-good adversarial data '{last_known_good_adversarial_value}' ('{last_known_good_adversarial_tokens}') for the next iteration instead of using this iteration's result '{adversarial_string}' ('{attack_results_current_iteration.adversarial_tokens}')."
-                            rollback_message += f"Rolling back to the last-known-good adversarial data for the next iteration instead of using this iteration's result.\nThis iteration:  '{adversarial_string}'\nLast-known-good: '{last_known_good_adversarial_value}'."
+                            #rollback_message += f"Rolling back to the last-known-good adversarial data {last_known_good_adversarial_content.get_short_description()} for the next iteration instead of using this iteration's result {current_adversarial_content.get_short_description()}."
+                            rollback_message += f"Rolling back to the last-known-good adversarial data for the next iteration instead of using this iteration's result.\nThis iteration:  '{current_adversarial_content.get_short_description()}'\nLast-known-good: {last_known_good_adversarial_content.get_short_description()}."
                             print(rollback_message)
                             # add the rejected result to the list of tested results to avoid getting stuck in a loop
-                            tested_adversarial_values.append(adversarial_string)
+                            tested_adversarial_content.append_if_new(current_adversarial_content)
                             # roll back
-                            adversarial_string = last_known_good_adversarial_value
-                            #best_new_adversarial_string = last_known_good_adversarial_value
+                            adversarial_content = last_known_good_adversarial_content.copy()
 
                     # only update the "last-known-good" results if no rollback was triggered (for any reason)
                     # otherwise, if someone has multiple rollback options enabled, and only one of them is tripped, the other path will end up containing bad data
                     if not rollback_triggered:
-                        rollback_notification_message = f"Updating last-known-good adversarial value from '{last_known_good_adversarial_value}' to '{adversarial_string}'."
-                        last_known_good_adversarial_value = adversarial_string
-                        last_known_good_adversarial_token_ids = attack_results_current_iteration.adversarial_token_ids
-                        last_known_good_adversarial_tokens = attack_results_current_iteration.adversarial_tokens
+                        rollback_notification_message = f"Updating last-known-good adversarial value from {last_known_good_adversarial_content.get_short_description()} to {current_adversarial_content.get_short_description()}."
+                        last_known_good_adversarial_content = current_adversarial_content.copy()
                         # only update these if they're improvements - they should work as a high water mark to avoid gradually decreasing quality over time when the rollback thresholds are enabled
                         update_loss = False
                         
@@ -925,8 +788,6 @@ def main(attack_params):
                     #print(f"Cleaning up the cache")
                     if coordinate_grad is not None:
                         del coordinate_grad
-                    if adversarial_string_tokens is not None:
-                        del adversarial_string_tokens
                     gc.collect()
                     #if "cuda" in attack_params.device:
                     #    torch.cuda.empty_cache()
@@ -947,17 +808,6 @@ def main(attack_params):
     if not user_aborted:
         print(f"Main loop complete")
     print_stats(attack_params)
-
-    #len_successful_attacks = len(successful_attacks)
-    #if len_successful_attacks > 1:
-    #    success_list_string = f"Successful attacks ({len_successful_attacks}):"
-    #    for i in range(0, len_successful_attacks):
-    #        success_list_string += f"\n{successful_attacks[i]}\n"
-    #    print(success_list_string)
-
-    #if model is not None and tokenizer is not None and suffix_manager is not None:        
-    #    current_string = get_input_and_output_strings(attack_params, model, tokenizer, suffix_manager, adversarial_string, input_label = "Final input", output_label = "Final output")
-    #    print(current_string)
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
@@ -991,7 +841,7 @@ if __name__=='__main__':
     
     # TKTK: --mode full (currently the only behaviour) vs --mode test-results (read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination)
     
-    parser.add_argument("-m", "--model", required=True, type=str, 
+    parser.add_argument("--model", "-m", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
         
     parser.add_argument("--tokenizer", type=str, 
@@ -999,7 +849,7 @@ if __name__=='__main__':
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("-t", "--template", type=str, 
+    parser.add_argument("--template", "-t", type=str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
 
     parser.add_argument("--list-templates", type=str2bool, nargs='?',
@@ -1034,9 +884,16 @@ if __name__=='__main__':
     parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type=str, 
         help="The initial string to iterate on. Leave this as the default to perform the attack described in the original paper. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
     
-    # TKTK: --random-token-adversarial-string option to have the initial adversarial value randomly generated from the list of tokens that are allowed by the other options
-    # TKTK: option to specify the initial adversarial value as a list of token IDs
+    parser.add_argument("--initial-adversarial-token-ids", type=str, 
+        help="Specify the initial adversarial content as a comma-delimited list of integer token IDs instead of a string. e.g. --initial-adversarial-token-ids '1,2,3,4,5'")
     
+    parser.add_argument("--random-adversarial-tokens", type=numeric_string_to_int,
+        help=f"Generate this many random tokens to use as the initial adversarial value instead of specifying explicit initial data. The list of possible tokens will be filtered using the same criteria defined by any of the candidate-filtering options that are also specified.")
+    
+    parser.add_argument("--reencode-every-iteration", type=str2bool, nargs='?',
+        const=True,
+        help="Emulate the original attack's behaviour of converting the adversarial content to a string and then back to token IDs at every iteration of the attack, instead of persisting it as token IDs only. Enabling this option will cause the number of tokens to change between iterations. Use the --adversarial-candidate-filter-tokens-min, --adversarial-candidate-filter-tokens-max, and/or --attempt-to-keep-token-count-consistent options if you want to try to control how widely the number of tokens varies.")
+        
     parser.add_argument("--topk", type=numeric_string_to_int,
         default=attack_params.topk,
         help=f"The number of results assessed when determining the best possible candidate adversarial data for each iteration.")
@@ -1125,14 +982,14 @@ if __name__=='__main__':
         help="If this value is specified, it will be used to replace any newline characters in candidate adversarial strings. This can be useful if you want to avoid generating attacks that depend specifically on newline-based content, such as injecting different role names.")
 
     parser.add_argument("--adversarial-candidate-filter-tokens-min", type=numeric_string_to_int,
-        help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain fewer than this number of tokens.")
+        help=f"If this value is specified, *and* --reencode-every-iteration is also specified, candidate adversarial strings will be filtered out if they contain fewer than this number of tokens.")
         
     parser.add_argument("--adversarial-candidate-filter-tokens-max", type=numeric_string_to_int,
-        help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain more than this number of tokens.")
+        help=f"If this value is specified, *and* --reencode-every-iteration is also specified, candidate adversarial strings will be filtered out if they contain more than this number of tokens.")
 
     parser.add_argument("--attempt-to-keep-token-count-consistent", type=str2bool, nargs='?',
         const=True, default=attack_params.attempt_to_keep_token_count_consistent,
-        help="Enable the check from the original authors' code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are generally much better options.")
+        help="If this option is specified, *and* --reencode-every-iteration is also specified, enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are generally much better options.")
 
     parser.add_argument("--random-seed-comparisons", type=numeric_string_to_int, default = attack_params.random_seed_comparisons,
         help=f"If this value is greater than zero, at each iteration, the tool will test results using the specified number of additional random seed values, to attempt to avoid focusing on fragile results. The sequence of random seeds is hardcoded to help make results deterministic.")
@@ -1272,7 +1129,33 @@ if __name__=='__main__':
             print(f"Error loading conversation template messages from file '{message_file}', content '{message_file_content}': {e}.")
             sys.exit(1)
 
+    initial_data_method_count = 0
+    if args.initial_adversarial_string != attack_params.initial_adversarial_string:
+        initial_data_method_count += 1
     attack_params.initial_adversarial_string = args.initial_adversarial_string
+    
+    if args.initial_adversarial_token_ids:
+        initial_data_method_count += 1
+        attack_params.initial_adversarial_token_ids = comma_delimited_string_to_integer_array(args.initial_adversarial_token_ids)
+        attack_params.initial_adversarial_content_creation_mode = InitialAdversarialContentCreationMode.FROM_TOKEN_IDS
+        if len(initial_adversarial_token_ids) < 1:
+            print("Error: At least one adversarial token ID must be specified when using --initial-adversarial-token-ids.")
+            sys.exit(1)
+
+    if args.random_adversarial_tokens:
+        initial_data_method_count += 1
+        attack_params.initial_random_adversarial_token_count = args.random_adversarial_tokens
+        attack_params.initial_adversarial_content_creation_mode = InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS
+        if attack_params.initial_random_adversarial_token_count < 1:
+            print("Error: The value specified for --random-adversarial-tokens must be a positive integer.")
+            sys.exit(1)
+    
+    if initial_data_method_count > 1:
+        print("Error: only one of the following options may be specified: --initial-adversarial-string, --initial-adversarial-token-ids, or --random-adversarial-tokens.")
+        sys.exit(1)
+    
+    if args.reencode_every_iteration:
+        attack_params.reencode_adversarial_content_every_iteration = args.reencode_every_iteration
 
     if args.auto_target:
         if args.base_prompt or args.target_output:
@@ -1288,6 +1171,23 @@ if __name__=='__main__':
 
     if args.overwrite_output:
         attack_params.overwrite_output = True
+
+    # TKTK: --evaluate-top-candidates <integer> to cause the top <integer> candidates generated from each gradient-based step to be evaluated for jailbreak success
+    # TKTK: --evaluate-top-candidate-combinations <integer> to take the top <integer> candidates that occupy different positions in the list of token IDs, and evaluate every possible combination of those with the previous iteration's data for jailbreak success
+    # If either or both options are enabled, the highest-scoring value will be passed on to the next iteration.
+    # Q: how to handle multiple candidates with the same top score?
+    # A: a quasi-queueing system that ties into the tree-based rollback mechanism:
+    #   If there are multiple candidates that all have the same "best" score out of the set tested:
+    #       Those candidates all become a chain of nodes with the same scoring data.
+    #       The tool uses the last node as a starting point.
+    #       Then if that branch doesn't result in any successes for enough iterations, the tool will "roll back" to the previous "best score" value in the chain.
+    #   It's not perfect, because it's possible that some of the nodes will never be branched from again even though they're equally "good" starting points, but it would be fairly easy to implement.
+    # 
+    # Another option: a true queuing system, with support for handing off data to other instances of the tool
+    #   e.g. there is a queue for each level of success score, and the user can set a threshold where results are only queued if they're within n of whatever scoring mechanisms are in use.
+    #       a given instance of the tool will select the next value from the highest-value queue that has entries queued, process it, and if necessary return results to the queue.
+    #   that would be really neat, but it's probably going to be awhile before I get around to implementing it.
+    #   Seems like it would require a "queue server" that all of the instances would connect to.
 
     attack_params.topk = args.topk
     

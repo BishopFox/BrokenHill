@@ -10,6 +10,8 @@ import sys
 import tempfile
 import torch
 
+import numpy as np
+
 from enum import StrEnum
 
 def get_file_content(file_path, failure_is_critical = True):
@@ -66,6 +68,18 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 # end: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+
+def comma_delimited_string_to_integer_array(input_string):
+    result = []
+    input_array = input_string.split(",")
+    for i in range(0, len(input_array)):
+        current_value = input_array[i]
+        if current_value is not None:
+            current_value = current_value.strip()
+            if current_value != "":
+                current_integer = numeric_string_to_int(current_value)
+                result.append(current_integer)
+    return result
 
 def get_now():
     return datetime.datetime.now(tz=datetime.timezone.utc)
@@ -245,3 +259,17 @@ def regex_flags_from_list(regex_flag_list):
     if RegexFlagString.re_ASCII in regex_flag_list:
         result = result | re.ASCII
     return result
+
+def get_random_token_id(token_allow_and_deny_lists):
+    rng = np.random.default_rng()
+    #token_index = np.random.Generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
+    token_index = rng.integers(0, high = len(token_allow_and_deny_lists.allowlist))
+    return token_allow_and_deny_lists.allowlist[token_index]
+
+def get_random_token_ids(token_allow_and_deny_lists, number_of_token_ids):
+    result = []
+    for random_token_num in range(0, number_of_token_ids):
+        new_token_id = get_random_token_id(token_allow_and_deny_lists)
+        result.append(new_token_id)
+    return result
+

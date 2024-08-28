@@ -376,29 +376,34 @@ def get_encoded_string(input_string):
 # [get_token_denylist] Debug: got token(s) '[835, 29871]' from string '### '
 # [get_token_denylist] Debug: did not add tokens '[835, 29871]' to the denylist because a single string became multiple tokens
 
-def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
-    #print(f"[get_token_denylist] Debug: building token denylist from string list '{string_list}'")    
-    denied_toks = []
+class TokenAllowAndDenyList:
+    def __init__(self):
+        self.allowlist = []
+        self.denylist = []
+
+def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
+    #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
+    result = TokenAllowAndDenyList()
     
     # add non-ASCII tokens if requested
     if filter_nonascii_tokens:
-        denied_toks = get_nonascii_token_list(tokenizer)
+        result.denylist = get_nonascii_token_list(tokenizer)
     
     if token_regex is not None:
         denied_toks2 = get_nonmatching_token_list(tokenizer, token_regex)
-        if len(denied_toks) == 0:
-            denied_toks = denied_toks2
+        if len(result.denylist) == 0:
+            result.denylist = denied_toks2
         else:
             for dt in denied_toks2:
                 if dt is not None:
-                    if dt not in denied_toks:
-                        denied_toks.append(dt)
+                    if dt not in result.denylist:
+                        result.denylist.append(dt)
     
     if additional_token_ids is not None:
         for dt in additional_token_ids:
             if dt is not None:
-                if dt not in denied_toks:
-                    denied_toks.append(dt)
+                if dt not in result.denylist:
+                    result.denylist.append(dt)
     
     input_string_list = []
     
@@ -438,8 +443,8 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
             
         for special_token_id in special_token_ids:
             if special_token_id is not None:
-                if special_token_id not in denied_toks:
-                    denied_toks.append(special_token_id)
+                if special_token_id not in result.denylist:
+                    result.denylist.append(special_token_id)
                 decoded_token = get_decoded_token(tokenizer, special_token_id)
                 if decoded_token is not None and decoded_token not in input_string_list:
                     input_string_list.append(decoded_token)
@@ -448,15 +453,15 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
         for j in range(0, tokenizer.vocab_size):
             candidate_token = get_decoded_token(tokenizer, j)
             if candidate_token is None:
-                if j not in denied_toks:
+                if j not in result.denylist:
                     #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because the tokenizer decoded it to a null value and it was not already on the list.")
-                    denied_toks.append(j)
+                    result.denylist.append(j)
             else:
                 #candidate_token_escaped = get_encoded_string(candidate_token)
                 if candidate_token.strip() == "":
-                    if j not in denied_toks:
+                    if j not in result.denylist:
                         #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it consists solely of whitespace characters and was not already on the list.")
-                        denied_toks.append(j)
+                        result.denylist.append(j)
 
     for i in range(0, len(string_list)):
         if string_list[i] is not None and string_list[i] not in input_string_list:
@@ -479,9 +484,9 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
                     #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
                     denied_toks_original = None
         if denied_toks_original is not None:
-            if denied_toks_original not in denied_toks:
+            if denied_toks_original not in result.denylist:
                 #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
-                denied_toks.append(denied_toks_original)
+                result.denylist.append(denied_toks_original)
         # also check to see if any tokens are equivalent to the string value when decoded, 
         # even if the encoder didn't return them
         for j in range(0, tokenizer.vocab_size):
@@ -490,10 +495,14 @@ def get_token_denylist(tokenizer, string_list, device='cpu', additional_token_id
             #if candidate_token == current_string:
             if candidate_token is not None:
                 if candidate_token.strip() == current_string.strip():
-                    if j not in denied_toks:
+                    if j not in result.denylist:
                         #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
-                        denied_toks.append(j)
-    return denied_toks
+                        result.denylist.append(j)
+    # finally, build the corresponding allowlist:
+    for j in range(0, tokenizer.vocab_size):
+        if j not in result.denylist:
+            result.allowlist.append(j)
+    return result
 
 
 class AttackPrompt(object):

@@ -7,7 +7,10 @@ from llm_attacks_bishopfox import get_decoded_tokens
 from llm_attacks_bishopfox import get_encoded_token 
 from llm_attacks_bishopfox import get_encoded_tokens 
 from llm_attacks_bishopfox import get_escaped_string
-from llm_attacks_bishopfox import get_token_denylist
+from llm_attacks_bishopfox import get_token_allow_and_deny_lists
+
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
+from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
 
 def get_default_generic_role_indicator_template():
     # note: using "### {role}:" instead will cause issues 
@@ -53,6 +56,7 @@ class TrashFireTokenCollection:
                                     '<sep>',
                                     '<|system|>'
                                     '<|end|>',
+                                    '<bos>',
                                     '<eos>',
                                     '<eod>',
                                     '<|user|>',
@@ -85,41 +89,113 @@ class TrashFireTokenCollection:
         if hasattr(conversation_template, "sep2"):
             result.input_strings = append_single_or_list_members(result.input_strings, conversation_template.sep2, ignore_if_none = True)
         
-        #result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
-        result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        #result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        allow_and_denylists = get_token_allow_and_deny_lists(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        result.token_ids = allow_and_denylists.denylist
         
         result.decoded_tokens = get_decoded_tokens(tokenizer, result.token_ids)
         #print(f"[get_hardcoded_trash_fire_token_collection] Debug: result.input_strings = '{result.input_strings}', result.token_ids = '{result.token_ids}', result.decoded_tokens = '{result.decoded_tokens}'")
         return result
+
+DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
+
+def get_default_conversation_template():
+    return fastchat.conversation.get_conv_template(DEFAULT_CONVERSATION_TEMPLATE_NAME)
+
+def get_phi2_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="phi2"
+    conv_template.system_template = "System: {system_message}\n"
+    conv_template.system_message="A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
+    conv_template.roles = tuple(["User", "Assistant"])
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep = '\n'
+    conv_template.sep2 = '\n'
+    return conv_template
+
+def get_phi3_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="phi3"
+    conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
+    conv_template.system_message=None
+    conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep = '\n'
+    return conv_template
+
+
+def get_gemma_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="gemma"
+    conv_template.system_message="<bos>"
+    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep="<end_of_turn>\n"
+    conv_template.stop_str="<end_of_turn>"
+    return conv_template
+
+# TKTK: allow overriding templates if they're added later
+# override = True is required because otherwise adding a missing template will fail with an assertion
+def register_missing_conversation_templates():
+    fschat_added_support = []
+    if "phi2" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("phi2")
+    else:
+        fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
+    if "phi3" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("phi3")
+    else:
+        fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
+    if "gemma" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("gemma")
+    else:
+        fastchat.conversation.register_conv_template(template = get_gemma_conversation_template(), override = True)
+    if len(fschat_added_support) > 0:
+        print(f"[register_missing_conversation_templates] Warning: the fschat (fastchat) library appears to have added support for the following model(s), which previously required custom definitions: {fschat_added_support}. This may cause differences in results generated by this tool.")
+        
+    #template_name_list = []
+    #for t_name in fastchat.conversation.conv_templates.keys():
+    #    template_name_list.append(t_name)
+    #print(f"[register_missing_conversation_templates] Debug: fastchat.conversation.conv_templates.keys() = {template_name_list}")
+    #template_name_list.sort()
+    #print(f"[register_missing_conversation_templates] Debug: fastchat.conversation.conv_templates.keys() (sorted) = {template_name_list}")
 
 #def load_conversation_template(template_name, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
 def load_conversation_template(model_path, template_name = None, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
     #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'. generic_role_indicator_template='{generic_role_indicator_template}', system_prompt='{system_prompt}', clear_existing_template_conversation='{clear_existing_template_conversation}'")
     conv_template = None
     # suppress the warning about templates not existing if there's a custom version defined here
-    has_custom_template = False
-    use_custom_template = True
-    if is_phi3_template(template_name):
-        has_custom_template = True
-    if is_phi2_template(template_name):
-        has_custom_template = True
+    # has_custom_template = False
+    # use_custom_template = True
+    # if is_phi3_template(template_name):
+        # has_custom_template = True
+    # if is_phi2_template(template_name):
+        # has_custom_template = True
     
-    # override use of custom templates if fastchat has defined one for those models by the time this code is executed
-    if has_custom_template:
-        if template_name in fastchat.conversation.conv_templates.keys():
-            print(f"[load_conversation_template] Warning: the llm_attacks_bishopfox library includes a custom chat template named '{template_name}', but it appears that the fastchat library has added support for that model. The fastchat template will be used instead.")
-            use_custom_template = False
+    # # override use of custom templates if fastchat has defined one for those models by the time this code is executed
+    # if has_custom_template:
+        # if template_name in fastchat.conversation.conv_templates.keys():
+            # print(f"[load_conversation_template] Warning: the llm_attacks_bishopfox library includes a custom chat template named '{template_name}', but it appears that the fastchat library has added support for that model. The fastchat template will be used instead.")
+            # use_custom_template = False
 
-    original_template_name = template_name
+    #original_template_name = template_name    
+    
+    #register_missing_conversation_templates()
+    
+    #template_name_list = []
+    #for t_name in fastchat.conversation.conv_templates.keys():
+    #    template_name_list.append(t_name)
+    #template_name_list.sort()
+    #print(f"[load_conversation_template] Debug: fastchat.conversation.conv_templates.keys() = {template_name_list}")
+    
     if template_name is not None:
         if template_name not in fastchat.conversation.conv_templates.keys():
-            if not has_custom_template:
-                print(f"[load_conversation_template] Warning: chat template '{template_name}' was not found in fastchat - defaulting to 'zero_shot'.")
-            template_name = 'zero_shot'
-        print(f"[load_conversation_template] Debug: loading chat template '{template_name}'")
+            print(f"[load_conversation_template] Warning: chat template '{template_name}' was not found in fastchat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
+            template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
+        #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'")
         conv_template = fastchat.conversation.get_conv_template(template_name)
     else:
-        print(f"[load_conversation_template] Debug: determining chat template based on content in '{model_path}'")
+        #print(f"[load_conversation_template] Debug: determining chat template based on content in '{model_path}'")
         conv_template = fastchat.model.get_conversation_template(model_path)
     # make sure fastchat doesn't sneak the one_shot messages in when zero_shot was requested
     if clear_existing_template_conversation:
@@ -129,22 +205,22 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
         else:
             print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
             conv_template.messages = []
-    if use_custom_template:
-        if is_phi3_template(original_template_name):
-            conv_template.name = "phi3"
-            conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-            conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
-            conv_template.system_message = None
-            #conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
-            conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
-            conv_template.sep = '\n'
-        if is_phi2_template(original_template_name):
-            conv_template.name = "phi2"
-            conv_template.system_template = "System: {system_message}\n"
-            conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
-            conv_template.roles = tuple(["User", "Assistant"])
-            conv_template.sep = '\n'
-            conv_template.sep2 = '\n'
+    # if use_custom_template:
+        # if is_phi3_template(original_template_name):
+            # conv_template.name = "phi3"
+            # conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+            # conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
+            # conv_template.system_message = None
+            # #conv_template.roles = tuple(["\n<|user|>", "<|end|>\n<|assistant|>"])
+            # conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
+            # conv_template.sep = '\n'
+        # if is_phi2_template(original_template_name):
+            # conv_template.name = "phi2"
+            # conv_template.system_template = "System: {system_message}\n"
+            # conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
+            # conv_template.roles = tuple(["User", "Assistant"])
+            # conv_template.sep = '\n'
+            # conv_template.sep2 = '\n'
     generic_role_template = get_default_generic_role_indicator_template()
     if generic_role_indicator_template is not None:
         # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
@@ -223,14 +299,15 @@ class PromptAndInputIDCollection:
 # TKTK: Replace this with an AdversarialContentManager that can track an array of token IDs instead of a string.
 # That would allow not only performing a prefix/suffix attack, but also interleaving the tokens into the base string.
 # That's actually going to be a lot of work, because of how much of the original code assumes that the adversarial content arrives in the form of a string, e.g. get_logits
-class SuffixManager:
-    def __init__(self, *, tokenizer, conv_template, instruction, target, adv_string):
+class AdversarialContentManager:
+    def __init__(self, *, tokenizer, conv_template, instruction, target, adversarial_content, adversarial_content_placement = AdversarialContentPlacement.SUFFIX):
 
         self.tokenizer = tokenizer
         self.conv_template = conv_template
         self.instruction = instruction
         self.target = target
-        self.adversarial_string = adv_string
+        self.adversarial_content = adversarial_content
+        self.adversarial_content_placement = adversarial_content_placement
         self.trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(tokenizer, conv_template)
     
     # For debugging / creating handlers for new conversation templates
@@ -388,6 +465,7 @@ class SuffixManager:
         return result
 
     def remove_empty_leading_and_trailing_tokens(self, token_array, decoded_token_array, strip_decoded_tokens = False):
+        #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token_array = {token_array}, decoded_token_array = {decoded_token_array}")
         len_token_array = len(token_array)
         len_decoded_token_array = len(decoded_token_array)
         if len_token_array != len_decoded_token_array:
@@ -401,7 +479,16 @@ class SuffixManager:
             if strip_decoded_tokens:
                 decoded_token_temp = decoded_token_temp.strip()
                 decoded_token_array[i] = decoded_token_temp
-            if decoded_token_temp != "":
+            is_skippable_token = False
+            #print(f"[remove_empty_leading_and_trailing_tokens - leading] Debug: checking token '{decoded_token_array[i]}', id {token_array[i]}")
+            if decoded_token_temp == "":
+                #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is whitespace or empty")
+                is_skippable_token = True
+            if not is_skippable_token:
+                if self.is_disastrous_dumpster_fire_token(self.trash_fire_tokens, None, token_array[i], decoded_token_array[i]):
+                    is_skippable_token = True
+            if not is_skippable_token:
+                #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is not skippable")
                 break
             first_non_empty_token += 1
         
@@ -410,7 +497,16 @@ class SuffixManager:
             if strip_decoded_tokens:
                 decoded_token_temp = decoded_token_temp.strip()
                 decoded_token_array[i] = decoded_token_temp
-            if decoded_token_temp != "":
+            is_skippable_token = False
+            #print(f"[remove_empty_leading_and_trailing_tokens - trailing] Debug: checking token '{decoded_token_array[i]}', id {token_array[i]}")
+            if decoded_token_temp == "":
+                #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is whitespace or empty")
+                is_skippable_token = True
+            if not is_skippable_token:
+                if self.is_disastrous_dumpster_fire_token(self.trash_fire_tokens, None, token_array[i], decoded_token_array[i]):
+                    is_skippable_token = True
+            if not is_skippable_token:
+                #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is not skippable")
                 break
             last_non_empty_token -= 1
         
@@ -522,6 +618,10 @@ class SuffixManager:
             #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token ID was in the list of trash fire tokens.")
             token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
         if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
+            if decoded_token in hardcoded_trash_fire_tokens.input_strings:
+                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token was in the list of input strings that generated the list of trash fire tokens.")
+                token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
+        if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             for ctv in [decoded_token, decoded_token.strip()]:
                 if ctv == "":
                     #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because it was empty or contained only whitespace.")
@@ -537,9 +637,11 @@ class SuffixManager:
                     break
         
         # but wait! we can't exclude conversation role tokens! That would make parsing the output much harder!
-        if token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
-            if self.is_conversation_role_token(conversation_template, decoded_token.strip()):
-                token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
+        if conversation_template is not None:
+            if token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
+                if self.is_conversation_role_token(conversation_template, decoded_token.strip()):
+                    #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as not being a flaming dumpster floating down the river because the decoded token was in the list of that are conversation roles for the current conversation template, even though it is still a flaming dumpster floating down the river.")
+                    token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
         
         return token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys
     
@@ -592,21 +694,21 @@ class SuffixManager:
     def get_complete_input_string(self, prompt_and_input_id_data):
         return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
 
-    def get_prompt(self, adv_string=None, force_python_tokenizer = False):#, update_self_values = True):
+    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
         # set up temporary values based on permanent values
-        adversarial_string = self.adversarial_string
+        working_adversarial_content = self.adversarial_content.copy()
         conversation_template = self.conv_template.copy()
 
-        if adv_string is not None:
-            adversarial_string = adv_string
+        if adversarial_content is not None:
+            working_adversarial_content = adversarial_content.copy()
 
         # Get the list of dumpster fire tokens once to make the many references to it run faster
         #hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_hardcoded_trash_fire_token_collection(self.tokenizer, conversation_template)
 
-        conversation_template.append_message(conversation_template.roles[0], f"{self.instruction} {adversarial_string}")
+        conversation_template.append_message(conversation_template.roles[0], f"{self.instruction} {working_adversarial_content.as_string}")
         conversation_template.append_message(conversation_template.roles[1], f"{self.target}")
         result.prompt = conversation_template.get_prompt()
 
@@ -615,7 +717,9 @@ class SuffixManager:
         #original_toks = copy.deepcopy(toks)
         #original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
        
-        python_tokenizer = False
+        #python_tokenizer = False
+        # Using the non-Python tokenizer is totally broken right now, because it assumes that e.g. the first occurence of a role name is the correct location to use, even for chat templates with messages
+        python_tokenizer = True
         if conversation_template.name == 'oasst_pythia':
             python_tokenizer = True
         if force_python_tokenizer:
@@ -642,6 +746,7 @@ class SuffixManager:
             result.slice_data.user_role = self.find_last_index_of_token(delimiter, toks)
             self.validate_slice_data('get_prompt - user_role_slice', result.slice_data)
 
+            # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
             conversation_template.update_last_message(f"{self.instruction}")
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
@@ -653,7 +758,7 @@ class SuffixManager:
             separator = ' '
             if not self.instruction:
                 separator = ''
-            conversation_template.update_last_message(f"{self.instruction}{separator}{adversarial_string}")
+            conversation_template.update_last_message(f"{self.instruction}{separator}{working_adversarial_content.as_string}")
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
             first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.goal.stop)
@@ -661,10 +766,14 @@ class SuffixManager:
             result.slice_data.control = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - control_slice', result.slice_data)
 
+            # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
+
             # find the token that marks a transition to output
+            #print(f"[get_prompt] Debug: appending conversation_template.roles[1] = '{conversation_template.roles[1]}'")
             conversation_template.append_message(conversation_template.roles[1], None)
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
             decoded_toks = get_decoded_tokens(self.tokenizer, toks)
+            #print(f"[get_prompt] Debug: conversation with assistant role tokens = '{decoded_toks}'")
             first_non_garbage_token = self.find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.control.stop)
             last_non_garbage_token = self.find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.assistant_role = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
@@ -705,6 +814,7 @@ class SuffixManager:
             )
             self.validate_slice_data('get_prompt', result.slice_data)
 
+            # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
             result.slice_data.goal = slice(
                 encoding.char_to_token(result.prompt.find(self.instruction)),
                 encoding.char_to_token(result.prompt.find(self.instruction) + len(self.instruction))
@@ -712,11 +822,13 @@ class SuffixManager:
             self.validate_slice_data('get_prompt', result.slice_data)
             
             result.slice_data.control = slice(
-                encoding.char_to_token(result.prompt.find(adversarial_string)),
-                encoding.char_to_token(result.prompt.find(adversarial_string) + len(adversarial_string))
+                encoding.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
+                encoding.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
             )
             self.validate_slice_data('get_prompt', result.slice_data)
+            # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
             
+            #print(f"[get_prompt] Debug: finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
             result.slice_data.assistant_role = slice(
                 encoding.char_to_token(result.prompt.find(conversation_template.roles[1])),
                 encoding.char_to_token(result.prompt.find(conversation_template.roles[1]) + len(conversation_template.roles[1]) + 1)

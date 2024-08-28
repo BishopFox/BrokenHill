@@ -52,11 +52,25 @@ If you want to specify a PyTorch device other than `cuda`, use this option, but 
 
 ## --initial-adversarial-string <string>
 
-The initial string to iterate on. Leave this as the default to perform the standard attack. Specify the output of a previous run to continue iterating at that point. Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens. (default: `! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !`)
+Base the initial adversarial content on a string. Leave this as the default to perform the standard attack. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens. (default: `! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !`)
+
+## --initial-adversarial-token-ids <comma-delimited list of integers>
+
+Base the initial adversarial content on a list of specific token IDs instead of tokenizing a string. This is intended to allow starting a test with the exact token-level version of specific adversarial content from a previous test against the same LLM.
+
+Example: `--initial-adversarial-token-ids '1,2,3,4,5'`
+
+## --random-adversarial-tokens <positive integer>
+
+Base the initial adversarial content on a set of this many random tokens. If token-filtering options are enabled (e.g. `--exclude-nonascii-tokens`), the same filtering will be applied to the list of tokens that can be randomly selected for the initial value.
 
 ## --topk <number>
 
 The number of results assessed when determining the best possible candidate adversarial data for each iteration. (default: 256)
+
+## --max-topk <number>
+
+If the tool, during a given iteration, finds that candidate filtering has resulted in zero candidates, it will increase the `--topk` value to (n * topk), where n is the number of times zero candidates have occurred. By default, this will occur without limit. Use the `--max-topk` option to specify a value which will cause the script to exit instead of attempting to include even more candidates.
 
 ## --temperature <floating-point number>
 
@@ -206,7 +220,7 @@ If the loss value increases between iterations, roll back to the last 'good' adv
 
 ## --rollback-on-loss-threshold <floating-point number>
 
-
+Same as `--rollback-on-loss-increase`, but allows the loss to increase by up to this value without triggering a rollback. The 'last known good' values are only updated if the loss value has not increased versus the best value, though.
 
 ## --rollback-on-jailbreak-count-decrease
 
@@ -214,7 +228,7 @@ If the number of jailbreaks detected decreases between iterations, roll back to 
 
 ## --rollback-on-jailbreak-count-threshold <integer>
 
-
+Same as `--rollback-on-jailbreak-count-decrease`, but allows the jailbreak count to decrease by up to this many jailbreaks without triggering a rollback. The 'last known good' values are only updated if the jailbreak count has not decreased versus the best value, though.
 
 ## --display-failure-output
 
@@ -235,6 +249,8 @@ Displays size information for the selected model. Warning: will write the raw mo
 ## --force-python-tokenizer
 
 Uses the Python tokenizer even if the model supports a non-Python tokenizer. The non-Python tokenizer is the default where it exists because it's usually faster. Some models seem to include incomplete non-Python tokenizers that cause the script to crash, and this may allow them to be used.
+
+Note: this option currently has no effect, because the Python tokenizer is currently used for all models, due to bugs in the non-Python tokenizer logic.
 
 ## --enable-hardcoded-tokenizer-workarounds
 
