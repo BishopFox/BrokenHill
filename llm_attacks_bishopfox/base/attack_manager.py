@@ -7,7 +7,7 @@ import time
 from copy import deepcopy
 from typing import Optional, Any
 
-import numpy as np
+import numpy
 import pandas as pd
 import torch
 import torch.multiprocessing as mp
@@ -16,19 +16,7 @@ import torch.nn.functional as F
 from fastchat.model import get_conversation_template
 from tokenizers import AddedToken
 from transformers import (AutoTokenizer, GPT2LMHeadModel)
-#from transformers import (AutoModelForCausalLM, AutoTokenizer, GPT2LMHeadModel,
-#                          GemmaForCausalLM,
-#                          GPTJForCausalLM, 
-#                          GPTNeoForCausalLM, 
-#                          GPTNeoXForCausalLM,
-#                          LlamaForCausalLM,
-#                          MambaForCausalLM,
-#                          OPTForCausalLM,
-#                          PhiForCausalLM, 
-#                          Phi3ForCausalLM, 
-#                          Qwen2ForCausalLM, 
-#                          StableLmForCausalLM)
-#from transformers import *
+
 
 # Dynamically import all of the transformers "ForCausalLM" classes
 # To avoid either tedious maintenance of a manual list 
@@ -112,6 +100,7 @@ def get_random_seed_list_for_comparisons():
     return [ 0x56, 0xea, 0x7b, 0x6d, 0xc3, 0x71, 0x20, 0x31, 0x51, 0x79, 0xae, 0x7c, 0xf6, 0x92, 0xc2, 0x12, 0x93, 0x4c, 0x7e, 0x32, 0x63, 0x4a, 0xac, 0x73, 0x9a, 0xc7, 0x69, 0x98, 0x89, 0xe1, 0x2c, 0xe7, 0x5a, 0xbd, 0x45, 0x70, 0x0d, 0x34, 0x24, 0xe6, 0x65, 0xbc, 0x50, 0x03, 0x7f, 0x28, 0x7a, 0x48, 0x67, 0xfd, 0x42, 0x59, 0xc4, 0x97, 0x3a, 0x3d, 0x83, 0xf5, 0xf2, 0xdf, 0xd7, 0x3f, 0xa9, 0x86, 0x21, 0x68, 0x94, 0x1a, 0x02, 0x23, 0x38, 0x5c, 0x8a, 0x17, 0x6a, 0xf9, 0xd8, 0xd2, 0x88, 0xa7, 0x2e, 0x00, 0x37, 0x41, 0x8f, 0xcc, 0x90, 0xf7, 0x8e, 0x4d, 0xba, 0xd3, 0x36, 0xe3, 0xb4, 0x8d, 0x4f, 0x29, 0xf4, 0x87, 0x3c, 0x58, 0x57, 0x66, 0x10, 0x9f, 0xa6, 0x75, 0x9c, 0x81, 0x09, 0xb6, 0xa8, 0x76, 0xe4, 0xbe, 0x01, 0xef, 0x07, 0x85, 0xbf, 0x18, 0xa0, 0x3e, 0x2d, 0xa4, 0x6c, 0xc8, 0x74, 0x46, 0x77, 0xfc, 0x33, 0x30, 0xb5, 0x44, 0xb8, 0xd4, 0xb9, 0x14, 0xa5, 0x78, 0xd6, 0xed, 0x15, 0x6f, 0x08, 0x7d, 0x3b, 0xc6, 0x5e, 0x0a, 0xdd, 0xe5, 0xf3, 0x2a, 0x8c, 0xec, 0xce, 0x1d, 0xb7, 0x52, 0xc0, 0xfb, 0x27, 0x13, 0xcb, 0x43, 0xd5, 0x6e, 0xd1, 0x72, 0x62, 0xad, 0x26, 0x9b, 0x2b, 0x6b, 0x84, 0xcf, 0xdc, 0x1f, 0x0c, 0x61, 0x55, 0xb2, 0x35, 0x9e, 0x54, 0x5f, 0xde, 0xca, 0x64, 0x04, 0x91, 0xe0, 0xeb, 0xaa, 0x19, 0xf8, 0xbb, 0x40, 0xf1, 0xc5, 0x82, 0x05, 0x99, 0xc1, 0xab, 0xa1, 0xa3, 0xb1, 0x5b, 0x25, 0x0f, 0xd9, 0xcd, 0x0b, 0xb0, 0x2f, 0xaf, 0x39, 0xa2, 0xda, 0x22, 0x11, 0xc9, 0xdb, 0x4b, 0x53, 0x1b, 0x16, 0xd0, 0x06, 0xfa, 0x80, 0x60, 0x95, 0xb3, 0xe2, 0x5d, 0x1c, 0xfe, 0xf0, 0xff, 0x47, 0x0e, 0x49, 0x1e, 0xee, 0x8b, 0x9d, 0xe8, 0x4e, 0xe9, 0x96 ]
 
 def get_escaped_string(input_string):
+    #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
     if input_string is None:
         return None
     result = input_string.replace("\n", "\\n")
@@ -121,7 +110,8 @@ def get_escaped_string(input_string):
     for i in range(127, 256):
         replaced_chars.append(i)
     for i in range(0, len(replaced_chars)):
-        result = result.replace(chr(i), f"\\x{i:02x}")
+        result = result.replace(chr(replaced_chars[i]), f"\\x{i:02x}")
+    #print(f"[get_escaped_string] Debug: escaped string '{input_string}' to '{result}'")
     return result
 
 def get_decoded_token(tokenizer, token):
@@ -188,11 +178,11 @@ def get_encoded_tokens(tokenizer, tokens):
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, np.integer):
+        if isinstance(obj, numpy.integer):
             return int(obj)
-        if isinstance(obj, np.floating):
+        if isinstance(obj, numpy.floating):
             return float(obj)
-        if isinstance(obj, np.ndarray):
+        if isinstance(obj, numpy.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
 
@@ -381,7 +371,46 @@ class TokenAllowAndDenyList:
         self.allowlist = []
         self.denylist = []
 
-def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
+def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, string_list, case_sensitive = True):
+    for i in range(0, len(string_list)):
+        current_string = string_list[i]
+
+        #current_string_escaped = get_encoded_string(current_string)
+        denied_toks_original = get_encoded_token(tokenizer, current_string)
+        #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
+        # If a given string was transformed into more than one token, ignore it
+        
+        if denied_toks_original is not None:
+            if isinstance(denied_toks_original, list):
+                if len(denied_toks_original) == 1:
+                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
+                    denied_toks_original = denied_toks_original[0]
+                else:
+                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
+                    denied_toks_original = None
+        if denied_toks_original is not None:
+            if denied_toks_original not in token_allow_and_denylist.denylist:
+                #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
+                token_allow_and_denylist.denylist.append(denied_toks_original)
+        # also check to see if any tokens are equivalent to the string value when decoded, 
+        # even if the encoder didn't return them
+        for j in range(0, tokenizer.vocab_size):
+            candidate_token = get_decoded_token(tokenizer, j)
+            #candidate_token_escaped = get_encoded_string(candidate_token)
+            #if candidate_token == current_string:
+            if candidate_token is not None:
+                candidate_token_comparison = candidate_token.strip()
+                current_string_comparison = current_string.strip()
+                if not case_sensitive:
+                    candidate_token_comparison = candidate_token_comparison.lower()
+                    current_string_comparison = current_string_comparison.lower()
+                if candidate_token_comparison == current_string_comparison:
+                    if j not in token_allow_and_denylist.denylist:
+                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
+                        token_allow_and_denylist.denylist.append(j)
+    return token_allow_and_denylist
+
+def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
     #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
     result = TokenAllowAndDenyList()
     
@@ -404,8 +433,6 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
             if dt is not None:
                 if dt not in result.denylist:
                     result.denylist.append(dt)
-    
-    input_string_list = []
     
     # add special tokens if requested
     # Add the token ID directly to the list
@@ -433,8 +460,8 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                                         special_token_ids.append(added_token_id)
                                     if hasattr(added_token_data, "content"):
                                         added_token_data_content = atd[added_token_id].content
-                                        if added_token_data_content not in input_string_list:
-                                            input_string_list.append(added_token_data_content)
+                                        if added_token_data_content not in additional_token_strings_case_sensitive:
+                                            additional_token_strings_case_sensitive.append(added_token_data_content)
                                     #print(f"[get_token_denylist] Debug: adding tokenizer special token ID {added_token_id} ('{added_token_data_content}') to the denylist")
                         else:
                             print(f"[get_token_denylist] Warning: the added_tokens_decoder property for the current tokenizer was in the expected format, but items within that property were not. Expected a hashtable/dictionary, got {type(added_token_data)} '{added_token_data}'")
@@ -446,8 +473,8 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                 if special_token_id not in result.denylist:
                     result.denylist.append(special_token_id)
                 decoded_token = get_decoded_token(tokenizer, special_token_id)
-                if decoded_token is not None and decoded_token not in input_string_list:
-                    input_string_list.append(decoded_token)
+                if decoded_token is not None and decoded_token not in additional_token_strings_case_sensitive:
+                    additional_token_strings_case_sensitive.append(decoded_token)
 
     if filter_whitespace_tokens:
         for j in range(0, tokenizer.vocab_size):
@@ -464,44 +491,53 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                         result.denylist.append(j)
 
     for i in range(0, len(string_list)):
-        if string_list[i] is not None and string_list[i] not in input_string_list:
-            input_string_list.append(string_list[i])
+        if string_list[i] is not None and string_list[i] not in additional_token_strings_case_sensitive:
+            additional_token_strings_case_sensitive.append(string_list[i])
 
-    for i in range(0, len(input_string_list)):
-        current_string = input_string_list[i]
+    result = add_token_ids_from_strings(result, tokenizer, additional_token_strings_case_sensitive, case_sensitive = True)
 
-        #current_string_escaped = get_encoded_string(current_string)
-        denied_toks_original = get_encoded_token(tokenizer, current_string)
-        #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
-        # If a given string was transformed into more than one token, ignore it
+    if len(additional_token_strings_case_insensitive) > 0:
+        result = add_token_ids_from_strings(result, tokenizer, additional_token_strings_case_insensitive, case_sensitive = False)
+
+    # for i in range(0, len(input_string_list)):
+        # current_string = input_string_list[i]
+
+        # #current_string_escaped = get_encoded_string(current_string)
+        # denied_toks_original = get_encoded_token(tokenizer, current_string)
+        # #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
+        # # If a given string was transformed into more than one token, ignore it
         
-        if denied_toks_original is not None:
-            if isinstance(denied_toks_original, list):
-                if len(denied_toks_original) == 1:
-                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
-                    denied_toks_original = denied_toks_original[0]
-                else:
-                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
-                    denied_toks_original = None
-        if denied_toks_original is not None:
-            if denied_toks_original not in result.denylist:
-                #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
-                result.denylist.append(denied_toks_original)
-        # also check to see if any tokens are equivalent to the string value when decoded, 
-        # even if the encoder didn't return them
-        for j in range(0, tokenizer.vocab_size):
-            candidate_token = get_decoded_token(tokenizer, j)
-            #candidate_token_escaped = get_encoded_string(candidate_token)
-            #if candidate_token == current_string:
-            if candidate_token is not None:
-                if candidate_token.strip() == current_string.strip():
-                    if j not in result.denylist:
-                        #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
-                        result.denylist.append(j)
+        # if denied_toks_original is not None:
+            # if isinstance(denied_toks_original, list):
+                # if len(denied_toks_original) == 1:
+                    # #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
+                    # denied_toks_original = denied_toks_original[0]
+                # else:
+                    # #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
+                    # denied_toks_original = None
+        # if denied_toks_original is not None:
+            # if denied_toks_original not in result.denylist:
+                # #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
+                # result.denylist.append(denied_toks_original)
+        # # also check to see if any tokens are equivalent to the string value when decoded, 
+        # # even if the encoder didn't return them
+        # for j in range(0, tokenizer.vocab_size):
+            # candidate_token = get_decoded_token(tokenizer, j)
+            # #candidate_token_escaped = get_encoded_string(candidate_token)
+            # #if candidate_token == current_string:
+            # if candidate_token is not None:
+                # if candidate_token.strip() == current_string.strip():
+                    # if j not in result.denylist:
+                        # #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
+                        # result.denylist.append(j)
+    
+        
     # finally, build the corresponding allowlist:
     for j in range(0, tokenizer.vocab_size):
         if j not in result.denylist:
             result.allowlist.append(j)
+    result.denylist.sort()
+    result.allowlist.sort()
     return result
 
 
@@ -1081,7 +1117,7 @@ class MultiPromptAttack(object):
         control_weight=None,
         anneal=True,
         anneal_from=0,
-        prev_loss=np.infty,
+        prev_loss=numpy.infty,
         stop_on_success=True,
         test_steps=50,
         log_first=False,
@@ -1162,7 +1198,7 @@ class MultiPromptAttack(object):
     def test(self, workers, prompts, include_loss=False):
         for j, worker in enumerate(workers):
             worker(prompts[j], "test", worker.model)
-        model_tests = np.array([worker.results.get() for worker in workers])
+        model_tests = numpy.array([worker.results.get() for worker in workers])
         model_tests_jb = model_tests[...,0].tolist()
         model_tests_mb = model_tests[...,1].tolist()
         model_tests_loss = []
@@ -1200,7 +1236,7 @@ class MultiPromptAttack(object):
 
     def log(self, step_num, n_steps, control, loss, runtime, model_tests, verbose=True):
 
-        prompt_tests_jb, prompt_tests_mb, model_tests_loss = list(map(np.array, model_tests))
+        prompt_tests_jb, prompt_tests_mb, model_tests_loss = list(map(numpy.array, model_tests))
         all_goal_strs = self.goals + self.test_goals
         all_workers = self.workers + self.test_workers
         tests = {
@@ -1214,7 +1250,7 @@ class MultiPromptAttack(object):
         n_passed = self.parse_results(prompt_tests_jb)
         n_em = self.parse_results(prompt_tests_mb)
         n_loss = self.parse_results(model_tests_loss)
-        total_tests = self.parse_results(np.ones(prompt_tests_jb.shape, dtype=int))
+        total_tests = self.parse_results(numpy.ones(prompt_tests_jb.shape, dtype=int))
         n_loss = [l / t if t > 0 else 0 for l, t in zip(n_loss, total_tests)]
 
         tests['n_passed'] = n_passed
@@ -1426,7 +1462,7 @@ class ProgressiveMultiPromptAttack(object):
         num_workers = 1 if self.progressive_models else len(self.workers)
         step = 0
         stop_inner_on_success = self.progressive_goals
-        loss = np.infty
+        loss = numpy.infty
 
         while step < n_steps:
             attack = self.managers['MPA'](
@@ -1466,11 +1502,11 @@ class ProgressiveMultiPromptAttack(object):
 
             if num_goals < len(self.goals):
                 num_goals += 1
-                loss = np.infty
+                loss = numpy.infty
             elif num_goals == len(self.goals):
                 if num_workers < len(self.workers):
                     num_workers += 1
-                    loss = np.infty
+                    loss = numpy.infty
                 elif num_workers == len(self.workers) and stop_on_success:
                     model_tests = attack.test_all()
                     attack.log(step, n_steps, self.control, loss, 0., model_tests, verbose=verbose)
@@ -1479,7 +1515,7 @@ class ProgressiveMultiPromptAttack(object):
                     if isinstance(control_weight, (int, float)) and incr_control:
                         if control_weight <= 0.09:
                             control_weight += 0.01
-                            loss = np.infty
+                            loss = numpy.infty
                             if verbose:
                                 print(f"Control weight increased to {control_weight:.5}")
                         else:
@@ -1682,7 +1718,7 @@ class IndividualPromptAttack(object):
                 control_weight=control_weight,
                 anneal=anneal,
                 anneal_from=0,
-                prev_loss=np.infty,
+                prev_loss=numpy.infty,
                 stop_on_success=stop_inner_on_success,
                 test_steps=test_steps,
                 log_first=True,

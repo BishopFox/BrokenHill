@@ -1,6 +1,6 @@
 import gc
 
-import numpy as np
+import numpy
 import psutil
 import re
 import torch
@@ -202,7 +202,7 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
 
     if grad is not None:
         if not_allowed_tokens is not None:
-            grad[:, not_allowed_tokens.to(grad.device)] = np.infty
+            grad[:, not_allowed_tokens.to(grad.device)] = numpy.infty
 
         top_indices = (-grad).topk(topk, dim=1).indices
         current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(grad.device)
@@ -211,18 +211,63 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
 
         #print(f"[sample_control] Debug: current_adversarial_content_token_ids_device = {current_adversarial_content_token_ids_device}, original_adversarial_content_token_ids_device = {original_adversarial_content_token_ids_device}, top_indices = {top_indices}")
 
+        num_adversarial_tokens = len(current_adversarial_content_token_ids_device)
+
         new_token_pos = torch.arange(
             0, 
-            len(current_adversarial_content_token_ids_device), 
-            len(current_adversarial_content_token_ids_device) / batch_size,
+            num_adversarial_tokens, 
+            num_adversarial_tokens / batch_size,
             device=grad.device
         ).type(torch.int64)
-        rand_ints = torch.randint(0, topk, (batch_size, 1), device=grad.device)
+        num_rand_ints = batch_size
+        #if top_indices.shape[0] < batch_size:
+        # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
+        #if top_indices.shape[0] < topk:
+        if top_indices.shape[0] < num_adversarial_tokens:
+            #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current batch size ({batch_size}). The number of random integers will be decreased to that value. This usually indicates a problem with the tokens being processed.")
+            #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current topk value ({topk}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
+            print(f"Warning: the number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
+            looped_values = []
+            looped_value_number = 0
+            #while len(looped_values) < topk:
+            while len(looped_values) < num_adversarial_tokens:
+                looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
+                looped_value_number += 1
+            top_indices = torch.tensor(looped_values, device = grad.device)
+        #rand_ints = torch.randint(0, topk, (batch_size, 1), device=grad.device)
+        rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device=grad.device)
         #print(f"[sample_control] Debug: new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
+        new_token_val = None
+        top_indices_len_1 = top_indices.shape[0] - 1
+        new_token_pos_in_bounds_values = []
+        new_token_pos_out_of_bounds_values = []
+        new_token_pos_values = new_token_pos.tolist()
+        for i in range(0, len(new_token_pos_values)):
+            if new_token_pos_values[i] > top_indices_len_1:
+                new_token_pos_out_of_bounds_values.append(new_token_pos_values[i])
+            else:
+                new_token_pos_in_bounds_values.append(new_token_pos_values[i])
+        if len(new_token_pos_out_of_bounds_values) > 0:
+            #raise Exception(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of top_indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}.")
+            print(f"Warning: new_token_pos contained the following values, which are less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}. This usually indicates a problem with the tokens being processed.")
+            #new_token_pos = torch.tensor(new_token_pos_in_bounds_values, device = grad.device)
+            looped_values = []
+            looped_value_number = 0
+            while len(looped_values) < batch_size:
+                looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
+                looped_value_number += 1
+            new_token_pos = torch.tensor(looped_values, device = grad.device)
+        # else:
+            # new_token_val = torch.gather(
+                # top_indices[new_token_pos], 1, 
+                # rand_ints
+            # )
         new_token_val = torch.gather(
             top_indices[new_token_pos], 1, 
             rand_ints
         )
+
+
         #print(f"[sample_control] Debug: new_token_val = {new_token_val}")
         new_adversarial_token_ids = original_adversarial_content_token_ids_device.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
         #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
@@ -233,22 +278,38 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
     
     result = AdversarialContentList()
     
-    for i in range(new_adversarial_token_ids.shape[0]):
-        new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager, new_adversarial_token_ids[i].tolist())
-        result.append_if_new(new_candidate)
+    if new_adversarial_token_ids is not None:
+        #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
+        for i in range(new_adversarial_token_ids.shape[0]):
+            #print(f"[sample_control] Debug: new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
+            new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager.tokenizer, adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids[i].tolist())
+            result.append_if_new(new_candidate)
 
     return result
 
-def get_filtered_cands(adversarial_content_manager, new_adversarial_content_list, previous_adversarial_values, filter_cand=True, current_adversarial_content = None, filter_regex = None, filter_repetitive_tokens = None, filter_repetitive_lines = None, filter_newline_limit = None, replace_newline_characters = None, attempt_to_keep_token_count_consistent = False, candidate_filter_tokens_min = None, candidate_filter_tokens_max = None):
+def get_filtered_cands(attack_params, adversarial_content_manager, new_adversarial_content_list, previous_adversarial_values, filter_cand=True, current_adversarial_content = None):
     result = AdversarialContentList()
+    filter_regex = attack_params.get_candidate_filter_regex()
     filtered_count = 0
+    filtered_due_to_empty_string = []
+    filtered_due_to_already_being_tested = []
+    filtered_due_to_insufficient_token_count = []
+    filtered_due_to_excessive_token_count = []
+    filtered_due_to_nonmatching_token_count = []
+    filtered_due_to_containing_newline_characters = []
+    filtered_due_to_not_matching_regex = []
+    filtered_due_to_repetitive_tokens = []
+    filtered_due_to_repetitive_lines = []
     if new_adversarial_content_list is None:
         return result
-    for i in range(len(new_adversarial_content_list.adversarial_content)):
+    len_new_adversarial_content_list = len(new_adversarial_content_list.adversarial_content)
+    for i in range(len_new_adversarial_content_list):
         #print(f"[get_filtered_cands] Debug: i = {i}")
         #print(f"[get_filtered_cands] Debug: new_adversarial_content_list.adversarial_content[i] = {new_adversarial_content_list.adversarial_content[i].get_short_description()}")
         adversarial_candidate = new_adversarial_content_list.adversarial_content[i].copy()
         if adversarial_candidate is not None and adversarial_candidate.as_string is not None:
+            #adversarial_candidate_message_represenation = adversarial_candidate.adversarial_candidate.get_short_description()
+            adversarial_candidate_message_represenation = adversarial_candidate.as_string
             #print(f"[get_filtered_cands] Debug: adversarial_candidate = '{adversarial_candidate.get_short_description()}', current_adversarial_content = '{current_adversarial_content.get_short_description()}', control_cand[i] = '{control_cand[i]}'")
             include_candidate = True
             if filter_cand:
@@ -256,69 +317,81 @@ def get_filtered_cands(adversarial_content_manager, new_adversarial_content_list
                 
                 if not adversarial_candidate.is_match(current_adversarial_content):
                     include_candidate = True
-                #else:
-                    #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because it was equivalent to the current control value '{current_adversarial_content.get_short_description()}'.")
+                else:
+                    include_candidate = False
+                    #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to the current adversarial content value '{current_adversarial_content.get_short_description()}'.")
+                    filtered_due_to_already_being_tested.append(adversarial_candidate)
+                if include_candidate:
+                    if adversarial_candidate_message_represenation.strip() == "":
+                        include_candidate = False
+                        #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because it is an empty string, or equivalent to an empty string.")
+                        filtered_due_to_empty_string.append(adversarial_candidate)
                 if include_candidate:
                     if previous_adversarial_values.contains_adversarial_content(adversarial_candidate):
                         include_candidate = False
+                        #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to a previous adversarial value.")
+                        filtered_due_to_already_being_tested.append(adversarial_candidate)
                     #else:
-                    #    print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because it was equivalent to a previous adversarial value.")
+                    #    print(f"[get_filtered_cands] Debug: candidate '{adversarial_candidate.get_short_description()}' is not equivalent to any previous adversarial values.")
                 if include_candidate:
                     #token_input_ids = adversarial_content_manager.tokenizer(decoded_str, add_special_tokens=False).input_ids
                     if include_candidate:
                         
                         candidate_token_count = len(adversarial_candidate.token_ids)
                         current_adversarial_content_token_count = len(current_adversarial_content.token_ids)
-                        if candidate_filter_tokens_min is not None:
-                            if candidate_token_count < candidate_filter_tokens_min:
+                        if attack_params.candidate_filter_tokens_min is not None:
+                            if candidate_token_count < attack_params.candidate_filter_tokens_min:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was less than the minimum value specified ({candidate_filter_tokens_min}).")
-                        if candidate_filter_tokens_max is not None:
-                            if candidate_token_count > candidate_filter_tokens_max:
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was less than the minimum value specified ({attack_params.candidate_filter_tokens_min}).")
+                                filtered_due_to_insufficient_token_count.append(adversarial_candidate)
+                        if attack_params.candidate_filter_tokens_max is not None:
+                            if candidate_token_count > attack_params.candidate_filter_tokens_max:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({candidate_filter_tokens_max}).")
-                        if attempt_to_keep_token_count_consistent:
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_params.candidate_filter_tokens_max}).")
+                                filtered_due_to_excessive_token_count.append(adversarial_candidate)
+                        if attack_params.attempt_to_keep_token_count_consistent:
                             if candidate_token_count != current_adversarial_content_token_count:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate.get_short_description()}' because its token count ({candidate_token_count}) was not equal to the length of '{current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
-                    
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
+                                filtered_due_to_nonmatching_token_count.append(adversarial_candidate)
+
                     if include_candidate:
-                    
-                        #print(f"[get_filtered_cands] Debug: appending '{adversarial_candidate.get_short_description()}' to candidate list because it passsed the filter")
-                        
-                        if filter_newline_limit is not None:
+                        if attack_params.candidate_filter_newline_limit is not None:
                             newline_character_count = 0
                             for newline_character in ["\x0a", "\x0d"]:
                                 if newline_character in current_adversarial_content.as_string:
                                     for current_char in current_adversarial_content.as_string:
                                         if current_char == newline_character:
                                             newline_character_count += 1
-                            if newline_character_count > filter_newline_limit:
+                            if newline_character_count > attack_params.candidate_filter_newline_limit:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected due to presence of newline character(s)")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' rejected due to presence of newline character(s)")
+                                filtered_due_to_containing_newline_characters.append(adversarial_candidate)
                         if include_candidate and filter_regex is not None:
                             if filter_regex.search(current_adversarial_content.as_string):
                                 dummy = 1
-                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passsed the regular expression filter")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' passsed the regular expression filter")
                             else:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' failed the regular expression filter")
-                        if include_candidate and filter_repetitive_tokens is not None and filter_repetitive_tokens > 0:
+                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because it failed to pass the regular expression filter")
+                                filtered_due_to_not_matching_regex.append(adversarial_candidate)
+                        if include_candidate and attack_params.candidate_filter_repetitive_tokens is not None and attack_params.candidate_filter_repetitive_tokens > 0:
                             token_counts = {}
                             already_notified_tokens = []
                             for c_token in token_input_ids:
                                 t_count = 1
                                 if c_token in token_counts:
                                     t_count = token_counts[c_token] + 1
-                                    if t_count >= filter_repetitive_tokens:
+                                    if t_count >= attack_params.candidate_filter_repetitive_tokens:
                                         include_candidate = False
+                                        filtered_due_to_repetitive_tokens.append(adversarial_candidate)
                                         if c_token not in already_notified_tokens:
                                             already_notified_tokens.append(c_token)
-                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected because it had more than {filter_repetitive_tokens} occurrences of the line '{c_token}'")
+                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' rejected because it had more than {attack_params.candidate_filter_repetitive_tokens} occurrences of the token '{c_token}'")
                                 token_counts[c_token] = t_count
                             #if include_candidate:
-                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passed the repetitive line filter.")
-                        if include_candidate and filter_repetitive_lines is not None and filter_repetitive_lines > 0:
+                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' passed the repetitive token filter.")
+                        if include_candidate and attack_params.candidate_filter_repetitive_lines is not None and attack_params.candidate_filter_repetitive_lines > 0:
                             candidate_lines = current_adversarial_content.as_string.splitlines()
                             token_counts = {}
                             already_notified_tokens = []
@@ -326,33 +399,34 @@ def get_filtered_cands(adversarial_content_manager, new_adversarial_content_list
                                 t_count = 1
                                 if c_line in token_counts:
                                     t_count = token_counts[c_line] + 1
-                                    if t_count >= filter_repetitive_lines:
+                                    if t_count >= attack_params.candidate_filter_repetitive_lines:
                                         include_candidate = False
+                                        filtered_due_to_repetitive_lines.append(adversarial_candidate)
                                         if c_line not in already_notified_tokens:
                                             already_notified_tokens.append(c_line)
-                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' rejected because it had more than {filter_repetitive_lines} occurrences of the line '{c_line}'")
+                                            #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' rejected because it had more than {attack_params.candidate_filter_repetitive_lines} occurrences of the line '{c_line}'")
                                 token_counts[c_line] = t_count
                             #if include_candidate:
-                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate.get_short_description()}' passed the repetitive line filter.")
+                            #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' passed the repetitive line filter.")
                             
                 
             if include_candidate:
-                if replace_newline_characters is not None:
+                if attack_params.candidate_replace_newline_characters is not None:
                     decoded_str = adversarial_candidate.as_string
-                    decoded_str = decoded_str.replace("\n", replace_newline_characters)
-                    decoded_str = decoded_str.replace("\r", replace_newline_characters)
+                    decoded_str = decoded_str.replace("\n", attack_params.candidate_replace_newline_characters)
+                    decoded_str = decoded_str.replace("\r", attack_params.candidate_replace_newline_characters)
                     if decoded_str != adversarial_candidate.as_string:
-                        adversarial_candidate = AdversarialContent.from_string(adversarial_content_manager, decoded_str)
-                #print(f"[get_filtered_cands] Debug: appending '{adversarial_candidate.get_short_description()}' to candidate list.")
+                        adversarial_candidate = AdversarialContent.from_string(adversarial_content_manager.tokenizer, adversarial_content_manager.trash_fire_tokens, decoded_str)
+                #print(f"[get_filtered_cands] Debug: appending '{adversarial_candidate_message_represenation}' to candidate list.\n")
                 result.append_if_new(adversarial_candidate)
             else:
-                #print(f"[get_filtered_cands] Debug: not appending '{adversarial_candidate.get_short_description()}' to candidate list because it was filtered out.")
+                #print(f"[get_filtered_cands] Debug: not appending '{adversarial_candidate_message_represenation}' to candidate list because it was filtered out.\n")
                 filtered_count += 1
 
     #print(f"[get_filtered_cands] Debug: control_cand = {control_cand}, cands = {cands}")
 
+    len_result_adversarial_content = len(result.adversarial_content)
     if filter_cand:
-        len_result_adversarial_content = len(result.adversarial_content)
         if len_result_adversarial_content == 0:
             dummy = 1
             #print(f"[get_filtered_cands] Warning: no candidates found")
@@ -365,6 +439,49 @@ def get_filtered_cands(adversarial_content_manager, new_adversarial_content_list
                     result.adversarial_content.append(result.adversarial_content[-1].copy())
                     
             #print(f"[get_filtered_cands] Warning: {round(filtered_count / len(control_cand), 2)} control candidates were not valid")
+
+    percent_passed = float(len_result_adversarial_content) / float(len_new_adversarial_content_list)
+    percent_rejected = float(filtered_count) / float(len_new_adversarial_content_list)
+    if percent_rejected > attack_params.warn_on_filtered_candidate_percentage:
+        filter_warning = f"Warning: {percent_rejected:.0%} of adversarial value candidates were filtered out during this iteration, which is greater than the warning threshold of {attack_params.warn_on_filtered_candidate_percentage:.0%}. This may be due to excessively strict or conflicting filtering options specified by the operator."
+        len_filtered_due_to_empty_string = len(filtered_due_to_empty_string)
+        if len_filtered_due_to_empty_string > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_empty_string} candidate(s) were filtered out because they were equivalent to an empty string."
+
+        len_filtered_due_to_already_being_tested = len(filtered_due_to_already_being_tested)
+        if len_filtered_due_to_already_being_tested > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_already_being_tested} candidate(s) were filtered out because they had already been tested in previous iterations."
+        
+        len_filtered_due_to_insufficient_token_count = len(filtered_due_to_insufficient_token_count)
+        if len_filtered_due_to_insufficient_token_count > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_insufficient_token_count} candidate(s) were filtered out because they had fewer than the minimum number of tokens specified by the operator ({attack_params.candidate_filter_tokens_min})."
+
+        len_filtered_due_to_excessive_token_count = len(filtered_due_to_excessive_token_count)
+        if len_filtered_due_to_excessive_token_count > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_excessive_token_count} candidate(s) were filtered out because they had more than the maximum number of tokens specified by the operator ({attack_params.candidate_filter_tokens_max})."
+
+        len_filtered_due_to_nonmatching_token_count = len(filtered_due_to_nonmatching_token_count)
+        if len_filtered_due_to_nonmatching_token_count > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_nonmatching_token_count} candidate(s) were filtered out because they had a different number of tokens than the current adversarial value, and the option to keep token count consistent is enabled."
+
+        len_filtered_due_to_containing_newline_characters = len(filtered_due_to_containing_newline_characters)
+        if len_filtered_due_to_containing_newline_characters > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_containing_newline_characters} candidate(s) were filtered out because they contained more than the number of allowed newline characters."
+
+        len_filtered_due_to_not_matching_regex = len(filtered_due_to_not_matching_regex)
+        if len_filtered_due_to_not_matching_regex > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_not_matching_regex} candidate(s) were filtered out because they did not match the regular expression '{attack_params.candidate_filter_regex}'."
+
+        len_filtered_due_to_repetitive_tokens = len(filtered_due_to_repetitive_tokens)
+        if len_filtered_due_to_repetitive_tokens > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_repetitive_tokens} candidate(s) were filtered out because they had had more than the operator-specified number of repetitive tokens ({attack_params.candidate_filter_repetitive_tokens})."
+
+        len_filtered_due_to_repetitive_lines = len(filtered_due_to_repetitive_lines)
+        if len_filtered_due_to_repetitive_lines > 0:
+            filter_warning = f"{filter_warning} {len_filtered_due_to_repetitive_lines} candidate(s) were filtered out because they had had more than the operator-specified number of repetitive lines ({attack_params.candidate_filter_repetitive_lines})."
+        
+        print(filter_warning)
+
     return result
 
 

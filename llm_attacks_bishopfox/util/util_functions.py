@@ -10,7 +10,7 @@ import sys
 import tempfile
 import torch
 
-import numpy as np
+import numpy
 
 from enum import StrEnum
 
@@ -202,6 +202,16 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
     return None
 
 
+def add_value_to_list_if_not_already_present(existing_list, new_value):
+    if new_value not in existing_list:
+        existing_list.append(new_value)
+    return existing_list
+    
+def add_values_to_list_if_not_already_present(existing_list, new_value_list):
+    for i in range(0, len(new_value_list)):
+        existing_list = add_value_to_list_if_not_already_present(existing_list, new_value_list[i])
+    return existing_list
+
 # regex flags are an integer, so it would work to just serialize this value as a number, but it would be a number that would have no guarantee of representing the same set of flags for a different Python version/platform/etc.
 class RegexFlagString(StrEnum):
     re_ASCII = 're.ASCII'
@@ -261,8 +271,8 @@ def regex_flags_from_list(regex_flag_list):
     return result
 
 def get_random_token_id(token_allow_and_deny_lists):
-    rng = np.random.default_rng()
-    #token_index = np.random.Generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
+    rng = numpy.random.default_rng(numpy.random.PCG64DXSM())
+    #token_index = numpy.random.Generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
     token_index = rng.integers(0, high = len(token_allow_and_deny_lists.allowlist))
     return token_allow_and_deny_lists.allowlist[token_index]
 
@@ -273,3 +283,15 @@ def get_random_token_ids(token_allow_and_deny_lists, number_of_token_ids):
         result.append(new_token_id)
     return result
 
+def slice_from_dict(property_dict):
+    start = None
+    stop = None
+    step = None
+    if "start" in property_dict.keys():
+        start = property_dict["start"]
+    if "stop" in property_dict.keys():
+        stop = property_dict["stop"]
+    if "step" in property_dict.keys():
+        step = property_dict["step"]
+    result = slice(start, stop, step)
+    return result

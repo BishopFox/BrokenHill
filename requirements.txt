@@ -7,8 +7,6 @@ torch
 transformers
 # tested with ml-collections==0.1.1
 ml_collections
-# tested with fastchat==0.1.0
-#fastchat
 #fschat==0.2.20
 # tested with fschat==0.2.36
 fschat
@@ -21,3 +19,5 @@ accelerate
 # tested with flash_attn==2.6.3
 # probably need to comment this out for Mac OS
 flash_attn
+# tested with sentencepiece==0.2.0
+sentencepiece
