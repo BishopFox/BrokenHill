@@ -100,20 +100,39 @@
 
 def get_slurs():
     result = []
-    result.append("nigger")
+    result.append("fag")
+    result.append("fags")
     result.append("faggot")
+    result.append("faggots")
     result.append("kike")
+    result.append("kikes")
+    result.append("nigger")
+    result.append("niggers")
     result.append("retard")
+    result.append("retards")
     result.append("retarded")
+    result.append("spic")
+    result.append("spics")
     
     return result
 
 def get_profanity():
     result = []
     result.append("fuck")
+    result.append("fucker")
+    result.append("fucked")
+    result.append("fucks")
     result.append("shit")
+    result.append("shits")
+    result.append("shitter")
+    result.append("shitty")
     result.append("piss")
+    result.append("pisser")
+    result.append("pisses")
+    result.append("pissy")
     result.append("cunt")
+    result.append("cunty")
+    result.append("twat")
     result.append("twat")
     
     return result

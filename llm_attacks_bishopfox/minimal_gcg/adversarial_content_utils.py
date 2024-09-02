@@ -432,7 +432,10 @@ class AdversarialContentManager:
             delimiter = f"{conversation_template.roles[0]}"
             #print(f"[get_prompt] Debug: conversation_template.roles = '{conversation_template.roles}', delimiter = '{delimiter}', toks = '{toks}', original_toks = '{original_toks}'")
             #print(f"[get_prompt] Debug: conversation_template.roles = '{conversation_template.roles}', delimiter = '{delimiter}', toks = '{toks}'")
-            result.slice_data.user_role = find_last_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks)
+            if delimiter.strip() == "":
+                print(f"[get_prompt] Eror: conversation_template.roles '{conversation_template.roles}' entry 0 ('{delimiter}') is equivalent to an empty string.")
+                sys.exit(1)
+            result.slice_data.user_role = find_last_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks, conversation_template = conversation_template)
             self.validate_slice_data('get_prompt - user_role_slice', result.slice_data)
 
             # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content

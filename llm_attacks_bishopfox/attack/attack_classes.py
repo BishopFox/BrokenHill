@@ -353,6 +353,11 @@ class AttackParams(JSONSerializableObject):
         # The target output to measure against
         self.target_output = None
         
+        # TKTK: the other type of loss function
+        
+        # TKTK: randomize an operator-specified number of tokens each round, and use only the jailbreak success count to determine the course of evolution.
+        # Would be a good comparison to make sure the loss calculation is actually beneficial.
+        
         # The initial adversarial data for different methods
         # This can't be handled up front because everything other than the string depends on loading the tokenizer
         self.initial_adversarial_string = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
@@ -368,6 +373,11 @@ class AttackParams(JSONSerializableObject):
         
         # emulate the original attack by converting the adversarial token IDs to a string and then back to token IDs at every iteration
         self.reencode_adversarial_content_every_iteration = False
+
+        # TKTK: option to set all tokens during the first iteration to the highest-scoring token out of the set of candidates *for that position*.
+        # e.g. if the set of candidates includes values at positions 1, 3, 4, and 6, set all four tokens to the value at the first place in the list of candidates where that token is not the same as the default.
+        
+        # TKTK: same as above, but at every iteration
 
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token

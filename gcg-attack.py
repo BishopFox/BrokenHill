@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.19"
-script_date = "2024-08-30"
+script_version = "0.20"
+script_date = "2024-09-01"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -285,6 +285,7 @@ def main(attack_params):
     start_dt = get_now()
     start_ts = get_time_string(start_dt)
     print(f"Starting at {start_ts}")
+    main_loop_iteration_number = 0
 
     print_stats(attack_params)
     
@@ -504,9 +505,10 @@ def main(attack_params):
         is_first_iteration = True
 
         print(f"Starting main loop")
-        
 
-        for main_loop_iteration_number in range(attack_params.max_iterations):
+        # TKTK: self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense
+
+        while main_loop_iteration_number < attack_params.max_iterations:
             is_success = False
             if user_aborted:
                 break
@@ -521,6 +523,9 @@ def main(attack_params):
                     print(f"---------")
                     
                     tested_adversarial_content.append_if_new(current_adversarial_content)
+                    
+                    # TKTK: split the actual attack step out into a separate subclass of an attack class.
+                    # Maybe TokenPermutationAttack => GreedyCoordinateGradientAttack?
                     
                     # if this is not the first iteration, and the user has enabled emulation of the original attack, encode the current string, then use those IDs for this round instead of persisting everything in token ID format
                     if main_loop_iteration_number > 0:
@@ -592,7 +597,8 @@ def main(attack_params):
                                 except RuntimeError as e:
                                     print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
                                     sys.exit(1)
-                                #print_stats(attack_params)
+ 
+ #print_stats(attack_params)
                                 #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
                                 
                                 # Note: I'm leaving this explanation here for historical reference
@@ -949,6 +955,7 @@ def main(attack_params):
                     user_aborted = True
             if is_success and attack_params.break_on_success:
                 break
+            main_loop_iteration_number += 1
 
     except KeyboardInterrupt:
         #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -962,7 +969,7 @@ def main(attack_params):
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
-    print(f"Finished at {end_ts} - elapsed time {total_elapsed_string}")
+    print(f"Finished after {main_loop_iteration_number + 1} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {successful_attack_count}")
 
 def exit_if_unauthorized_overwrite(output_file_path, attack_params):
     if os.path.isfile(output_file_path):
