@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "gcg-attack.py"
-script_version = "0.20"
-script_date = "2024-09-01"
+script_version = "0.21"
+script_date = "2024-09-03"
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
@@ -66,6 +66,7 @@ from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
@@ -83,6 +84,7 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import sample_control
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
@@ -157,11 +159,11 @@ def print_stats(attack_params):
     system_in_use_memory = system_physical_memory - system_available_memory
     #system_memory_util_percent = system_mem_info.percent
     system_memory_util_percent = float(system_in_use_memory) / float(system_physical_memory)
-    display_string += f"System:\n"
-    display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
-    display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
-    display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
-    display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
+    # display_string += f"System:\n"
+    # display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
+    # display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
+    # display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
+    # display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
 
     if "cuda"  in attack_params.device:
         for i in range(torch.cuda.device_count()):
@@ -205,7 +207,7 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
     result = GenerationResults()
     result.max_new_tokens = working_gen_config.max_new_tokens
 
-    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer, shift_loss_indices = attack_params.shift_loss_indices)
     input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
     input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
@@ -322,21 +324,21 @@ def main(attack_params):
         attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", model, tokenizer, attack_params.generation_max_new_tokens)
         attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
         
-        additional_token_strings_case_insensitive = []
+        #additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive
+        # TKTK: add a localization option for these
         if attack_params.exclude_slur_tokens:
-            additional_token_strings_case_insensitive = add_values_to_list_if_not_already_present(additional_token_strings_case_insensitive, get_slurs())
+            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_slurs())
         if attack_params.exclude_profanity_tokens:
-            additional_token_strings_case_insensitive = add_values_to_list_if_not_already_present(additional_token_strings_case_insensitive, get_profanity())
+            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_profanity())
+        if attack_params.exclude_other_highly_problematic_content:
+            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
-        #token_denylist = get_token_denylist(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
-        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, additional_token_strings_case_insensitive = additional_token_strings_case_insensitive, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
+        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
         
         #print(f"Debug: token_allow_and_deny_lists.denylist = '{token_allow_and_deny_lists.denylist}', token_allow_and_deny_lists.allowlist = '{token_allow_and_deny_lists.allowlist}'")
         not_allowed_tokens = None
         if len(token_allow_and_deny_lists.denylist) > 0:
-            #not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device=attack_params.device)
             not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device='cpu')
-        #not_allowed_tokens = get_token_list_as_tensor(tokenizer, token_allow_and_deny_lists.denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
         original_model_size = 0
@@ -395,16 +397,6 @@ def main(attack_params):
 
         trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(tokenizer, conv_template)
 
-        # create a temporary adversarial content manager to create the adversarial content that will be used to initialize the real adversarial content manager
-        # TKTK: maybe split out the trash fire token stuff into a TrashFireTokenWrangler class to avoid having to do this silly workaround
-        # adversarial_content_manager = AdversarialContentManager(tokenizer=tokenizer, 
-            # conv_template = conv_template, 
-            # instruction = attack_params.base_prompt, 
-            # target = attack_params.target_output, 
-            # adversarial_content = AdversarialContent(),
-            # trash_fire_tokens = trash_fire_token_treasury,
-            # adversarial_content_placement = attack_params.adversarial_content_placement)
-
         initial_adversarial_content = None
         if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
             initial_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_string)
@@ -460,13 +452,20 @@ def main(attack_params):
         if len(tokens_in_denylist) > 0:
             token_list_string = ""
             for i in range(0, len(tokens_in_denylist)):
-                decoded_token = get_decoded_token(tokenizer, tokens_in_denylist[i])
+                decoded_token = get_escaped_string(get_decoded_token(tokenizer, tokens_in_denylist[i]))
                 formatted_token = f"'{decoded_token}' (ID {tokens_in_denylist[i]})"
                 if token_list_string == "":
                     token_list_string = formatted_token
                 else:
                     token_list_string += ", {formatted_token}"
-            print(f"Warning: the following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content and/or your token-filtering settings to avoid the conflict.")
+            print(f"Warning: the following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
+            new_denylist = []
+            for existing_denylist_index in range(0, len(token_allow_and_deny_lists.denylist)):
+                if token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
+                    token_allow_and_deny_lists.allowlist.append(token_allow_and_deny_lists.denylist[existing_denylist_index])
+                else:
+                    new_denylist.append(token_allow_and_deny_lists.denylist[existing_denylist_index])
+            token_allow_and_deny_lists.denylist = new_denylist
         if len(tokens_not_in_tokenizer) > 0:
             print(f"Warning: the following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
         
@@ -535,15 +534,15 @@ def main(attack_params):
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with current_adversarial_content = '{current_adversarial_content.get_short_description()}'")
-                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer, shift_loss_indices = attack_params.shift_loss_indices)
                     #print_stats(attack_params)
                     
-                    #decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
-                    #decoded_full_prompt_token_ids = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids)
-                    #decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
-                    #decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target])
-                    #decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])
-                    #print(f"[input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}', decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}', decoded_control_slice = '{decoded_control_slice}', decoded_target_slice = '{decoded_target_slice}', decoded_loss_slice = '{decoded_loss_slice}'")
+                    decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
+                    decoded_full_prompt_token_ids = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids)
+                    decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
+                    decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target])
+                    decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])
+                    #print(f"[main loop - input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target = '{input_id_data.slice_data.target}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
                     #print(f"Converting input IDs to device")
                     input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
@@ -559,7 +558,6 @@ def main(attack_params):
                     if main_loop_iteration_number == 0:
                         print(f"Testing initial adversarial value '{current_adversarial_content.get_short_description()}'")
                     else:
-
                         # Step 2. Compute Coordinate Gradient
                         #print(f"Computing coordinate gradient")
                         coordinate_grad = token_gradients(model, 
@@ -998,6 +996,10 @@ if __name__=='__main__':
     
     # TKTK: --mode full (currently the only behaviour) vs --mode test-results (read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination)
     
+    # TKTK: mode to read a result JSON file, apply a different set of jailbreak detection rules, and re-output the result.
+    
+    # TKTK: option to use "mellowmax" algorithm
+    
     parser.add_argument("--model", "-m", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
         
@@ -1131,16 +1133,26 @@ if __name__=='__main__':
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of profanity.")
 
+    parser.add_argument("--exclude-other-highly-problematic-content", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of other words that are highly problematic to include in generated content.")
+
     parser.add_argument("--exclude-token", action='append', nargs='*', required=False,
         help=f"Bias the adversarial content generation data to avoid using the specified token (if it exists as a discrete value in the model). May be specified multiple times to exclude multiple tokens.")
+        
+    parser.add_argument("--excluded-tokens-from-file", type = str, required=False,
+        help=f"Equivalent to calling --exclude-token for every line in the specified file.")
+
+    parser.add_argument("--excluded-tokens-from-file-case-insensitive", type = str, required=False,
+        help=f"Equivalent to calling --exclude-token for every line in the specified file, except that matching is performed without taking upper-/lower-case characters into account.")
 
     parser.add_argument("--exclude-newline-tokens", type=str2bool, nargs='?',
         const=True, default=False,
         help="A shortcut equivalent to specifying just about any newline token variations using --exclude-token.")
 
-    parser.add_argument("--exclude-three-hashtag-tokens", type=str2bool, nargs='?',
-        const=True, default=False,
-        help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
+    #parser.add_argument("--exclude-three-hashtag-tokens", type=str2bool, nargs='?',
+    #    const=True, default=False,
+    #    help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
 
     parser.add_argument("--token-filter-regex", type=str,
         help="If specified, biases the adversarial content generation to exclude tokens that don't match the specified regular expression.")
@@ -1230,6 +1242,8 @@ if __name__=='__main__':
     # Both options should probably only allow a given token ID to be used as a random replacement once for each iteration unless there are no more to select from, to avoid results that are unlikely to be useful, like the corner case where a bunch of tokens are reverted back to "!".
     # For --gamma-garden mode, there should be a threshold value for minimum number of previously-generated tokens to select from before the mode can be triggered, for the same reason. If there are only three token IDs in the list, it doesn't make much sense to potentially replace several "good" tokens with "!". 
         
+    parser.add_argument("--no-loss-index-shift", type=str2bool, nargs='?',
+        help="This option disables shifting the start and end indices of the loss slice by -1 from the target slice. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.")
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
@@ -1407,6 +1421,10 @@ if __name__=='__main__':
     #   that would be really neat, but it's probably going to be awhile before I get around to implementing it.
     #   Seems like it would require a "queue server" that all of the instances would connect to.
 
+    if args.no_loss_index_shift:
+        attack_params.shift_loss_indices = False
+        print("Warning: --no-loss-index-shift was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
+
     attack_params.topk = args.topk
     
     if args.max_topk:
@@ -1581,20 +1599,37 @@ if __name__=='__main__':
 
     if args.exclude_profanity_tokens:
         attack_params.exclude_profanity_tokens = True
+
+    if args.exclude_other_highly_problematic_content:
+        attack_params.exclude_other_highly_problematic_content = True
                 
     # shortcut option processing
-    if args.exclude_three_hashtag_tokens:
+    #if args.exclude_three_hashtag_tokens:
         # If you want to disallow "###", you also have to disallow "#" and "##" or the generation algorithm will reconstruct "###" from them
-        attack_params.not_allowed_token_list.append("#")
-        attack_params.not_allowed_token_list.append("##")
-        attack_params.not_allowed_token_list.append("###")
+    #    attack_params.not_allowed_token_list.append("#")
+    #    attack_params.not_allowed_token_list.append("##")
+    #    attack_params.not_allowed_token_list.append("###")
 
     if args.exclude_token:
         for elem in args.exclude_token:
             for et in elem:
                 if et.strip() != "":
-                    if et not in attack_params.not_allowed_token_list:
-                        attack_params.not_allowed_token_list.append(et)
+                    attack_params.not_allowed_token_list = add_value_to_list_if_not_already_present(attack_params.not_allowed_token_list, et)
+                    #if et not in attack_params.not_allowed_token_list:
+                    #    attack_params.not_allowed_token_list.append(et)
+
+    if args.excluded_tokens_from_file:
+        excluded_token_file = os.path.abspath(args.excluded_tokens_from_file)
+        excluded_token_file_content = get_file_content(excluded_token_file, failure_is_critical = True)
+        for l in excluded_token_file_content.splitlines():
+            attack_params.not_allowed_token_list = add_value_to_list_if_not_already_present(attack_params.not_allowed_token_list, l.strip())
+
+    if args.excluded_tokens_from_file_case_insensitive:
+        excluded_token_file = os.path.abspath(args.excluded_tokens_from_file_case_insensitive)
+        excluded_token_file_content = get_file_content(excluded_token_file, failure_is_critical = True)
+        for l in excluded_token_file_content.splitlines():
+            attack_params.not_allowed_token_list_case_insensitive = add_value_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, l.strip())
+
 
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)

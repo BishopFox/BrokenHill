@@ -331,8 +331,9 @@ class AdversarialContentManager:
     
     # The length of the target and loss slices must match when passed to downstream functions or the attack will crash with an error.
         
-    # _loss_slice: as far as I can tell, this is theoretically equivalent to the target slice, and the target_loss function in opt_utils.py originally re-created its own "loss" slice from the target slice information anyway.
-    # I'm unsure why it's a separate slice, and as far as I can tell, the original logic that shifted its start and end indices -1 from the target slice indices was a workaround for a one-token difference between generated prompt and LLM output.
+    # _loss_slice: this is some LLM sorcery. The only explanation I've found wasn't in the original code at all, but in nanogcg, which has the following comment:
+    # "Shift logits so token n-1 predicts token n"
+    # It's the same as the target slice, but with the start and end indices reduced by 1.
     #
     # Reading the original paper, especially page 6 of 2307.15043v2.pdf, one might think that the "loss slice" would be the LLM output that corresponds to the "target slice" in the non-LLM-generated prompt, and that the loss being calculated was the loss between the target and what the LLM actually generated, but this is not the case, at least in the code that was released. The loss calculation is between the tokens of the adversarial content and the target string.
     #
@@ -383,7 +384,7 @@ class AdversarialContentManager:
     def get_complete_input_string(self, prompt_and_input_id_data):
         return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
 
-    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False):#, update_self_values = True):
+    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False, shift_loss_indices = True):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
@@ -479,9 +480,11 @@ class AdversarialContentManager:
             result.slice_data.target = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - target_slice', result.slice_data)
             
-            # [blincoln] Testing out my theory that the -1 offset is incorrect
             #result.slice_data.loss = slice(first_non_garbage_token - 1, last_non_garbage_token - 1)
-            result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
+            if shift_loss_indices:
+                result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(toks)) - 1)
+            else:
+                result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - loss_slice', result.slice_data)
             
         else:
@@ -556,10 +559,17 @@ class AdversarialContentManager:
                 # prompt_find_self_target_c2t - 1,
                 # prompt_combined_c2t
             # )
-            result.slice_data.loss = slice(
-                prompt_find_self_target_c2t,
-                prompt_combined_c2t + 1
-            )
+            if shift_loss_indices:
+                result.slice_data.loss = slice(
+                    prompt_find_self_target_c2t - 1,
+                    prompt_combined_c2t
+                )
+            else:
+                result.slice_data.loss = slice(
+                    prompt_find_self_target_c2t,
+                    prompt_combined_c2t + 1
+                )
+
             self.validate_slice_data('get_prompt', result.slice_data)
 
         #print(f"[get_prompt] Debug: conversation_template (after modifications) = '{conversation_template}'")

@@ -118,6 +118,9 @@ def get_slurs():
 
 def get_profanity():
     result = []
+    result.append("bitch")
+    result.append("bitched")
+    result.append("bitches")
     result.append("fuck")
     result.append("fucker")
     result.append("fucked")
@@ -134,5 +137,24 @@ def get_profanity():
     result.append("cunty")
     result.append("twat")
     result.append("twat")
+    
+    return result
+
+def get_other_highly_problematic_content():
+    result = []
+    result.append("rape")
+    result.append("raped")
+    result.append("rapes")
+    result.append("rapey")
+    result.append("raping")
+    result.append("rapist")
+    result.append("rapists")
+    result.append("slut")
+    result.append("sluts")
+    result.append("slutty")
+    result.append("whore")
+    result.append("whorehouse")
+    result.append("whorehouses")
+    result.append("whores")
     
     return result

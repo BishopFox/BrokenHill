@@ -14,6 +14,21 @@ import numpy
 
 from enum import StrEnum
 
+def get_escaped_string(input_string):
+    #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
+    if input_string is None:
+        return None
+    result = input_string.replace("\n", "\\n")
+    replaced_chars = []
+    for i in range(0, 32):
+        replaced_chars.append(i)
+    for i in range(127, 256):
+        replaced_chars.append(i)
+    for i in range(0, len(replaced_chars)):
+        result = result.replace(chr(replaced_chars[i]), f"\\x{i:02x}")
+    #print(f"[get_escaped_string] Debug: escaped string '{input_string}' to '{result}'")
+    return result
+
 def get_file_content(file_path, failure_is_critical = True):
     result = None
     try:
@@ -202,14 +217,17 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
     return None
 
 
-def add_value_to_list_if_not_already_present(existing_list, new_value):
+def add_value_to_list_if_not_already_present(existing_list, new_value, ignore_none = False):
+    if ignore_none:
+        if new_value is None:
+            return existing_list
     if new_value not in existing_list:
         existing_list.append(new_value)
     return existing_list
     
-def add_values_to_list_if_not_already_present(existing_list, new_value_list):
+def add_values_to_list_if_not_already_present(existing_list, new_value_list, ignore_none = False):
     for i in range(0, len(new_value_list)):
-        existing_list = add_value_to_list_if_not_already_present(existing_list, new_value_list[i])
+        existing_list = add_value_to_list_if_not_already_present(existing_list, new_value_list[i], ignore_none = ignore_none)
     return existing_list
 
 # regex flags are an integer, so it would work to just serialize this value as a number, but it would be a number that would have no guarantee of representing the same set of flags for a different Python version/platform/etc.

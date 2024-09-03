@@ -4,10 +4,10 @@ from llm_attacks_bishopfox import get_decoded_token
 from llm_attacks_bishopfox import get_decoded_tokens
 from llm_attacks_bishopfox import get_encoded_token
 from llm_attacks_bishopfox import get_encoded_tokens
-from llm_attacks_bishopfox import get_escaped_string
 from llm_attacks_bishopfox import get_token_allow_and_deny_lists
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 
 # methods and classes related to wrangling the planet-sized inferno of garbage that is "special" LLM tokens
 
@@ -363,7 +363,6 @@ class TrashFireTokenCollection:
         if hasattr(conversation_template, "sep2"):
             result.input_strings = append_single_or_list_members(result.input_strings, conversation_template.sep2, ignore_if_none = True)
         
-        #result.token_ids = get_token_denylist(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
         allow_and_denylists = get_token_allow_and_deny_lists(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
         result.token_ids = allow_and_denylists.denylist
         

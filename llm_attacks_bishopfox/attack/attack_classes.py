@@ -379,6 +379,10 @@ class AttackParams(JSONSerializableObject):
         
         # TKTK: same as above, but at every iteration
 
+        # If this value is False, don't subtract one from the start and end indices of the loss slice.
+        # Setting this to False will break the GCG attack. I have this option in here so people can try that for themselves to illustrate that it really is a key part of the algorithm.
+        self.shift_loss_indices = True
+
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
         self.force_python_tokenizer = False
@@ -457,6 +461,9 @@ class AttackParams(JSONSerializableObject):
             # filter out any additional tokens that are listed as profanity
             self.exclude_profanity_tokens = False
             
+            # filter out any additional tokens that are listed as being highly problematic in generated content
+            self.exclude_other_highly_problematic_content = False
+            
             # If specified, exclude tokens that don't match the following pattern
             self.token_filter_regex = None
             
@@ -469,6 +476,8 @@ class AttackParams(JSONSerializableObject):
             # "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG" is a special value that will exclude
             # any token that consists solely of whitespace
             self.not_allowed_token_list = []
+            
+            self.not_allowed_token_list_case_insensitive = []
 
         
         # Post-generation candidate adversarial data filtering
