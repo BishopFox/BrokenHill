@@ -331,9 +331,9 @@ class AdversarialContentManager:
     
     # The length of the target and loss slices must match when passed to downstream functions or the attack will crash with an error.
         
-    # _loss_slice: this is some LLM sorcery. The only explanation I've found wasn't in the original code at all, but in nanogcg, which has the following comment:
-    # "Shift logits so token n-1 predicts token n"
+    # _loss_slice: this is some LLM sorcery. The only explanation I've found wasn't in the original code at all, but in nanogcg, which has a comment to the effect of having to shift the logits so that the previous token predicts the current token.
     # It's the same as the target slice, but with the start and end indices reduced by 1.
+    # If you *don't* reduce the indices by 1, the attack will utterly fail.
     #
     # Reading the original paper, especially page 6 of 2307.15043v2.pdf, one might think that the "loss slice" would be the LLM output that corresponds to the "target slice" in the non-LLM-generated prompt, and that the loss being calculated was the loss between the target and what the LLM actually generated, but this is not the case, at least in the code that was released. The loss calculation is between the tokens of the adversarial content and the target string.
     #

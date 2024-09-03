@@ -261,7 +261,9 @@ If all candidate tokens are filtered, allow the script to decrease the number of
 
 ### --no-loss-index-shift
 
-The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens that is offset by -1. For example, if the 
+The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code this tool was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
+
+How much of the magic is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
 
 ## --adversarial-candidate-newline-replacement <string>
 

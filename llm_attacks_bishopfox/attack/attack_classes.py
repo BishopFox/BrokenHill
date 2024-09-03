@@ -1053,13 +1053,20 @@ class GenerationResults(JSONSerializableObject):
 
 class FailureCounterBehaviour(IntFlag):
     # If a rollback to a parent node is triggered, the counter is reset to 0
+    # If this flag is not set, then branches will tend to be "spiral-shaped", e.g. potentially lots of sub-branches while exploring variations, but tending to roll back to much earlier nodes when sequential failures occur.
     COUNTER_RESETS_WITH_EVERY_ROLLBACK = auto()
+
     # The counter is reset to 0 if a series of rollbacks reaches the root node
+    # In most cases other than experiments, this flag should be set.
     COUNTER_RESETS_AT_ROOT_NODE = auto()
+
     # The counter is reset to 0 when a new node is created
+    # In most cases other than experiments, this flag should be set.
     COUNTER_RESETS_AT_NODE_CREATION = auto()
+
     # The counter is reset to 0 when a new high water mark is reached
     COUNTER_RESETS_AT_NEW_HIGH_WATERMARK = auto()
+
     # The counter is reset to 0 every time the score reaches the best possible value
     COUNTER_RESETS_AT_IDEAL_SCORE = auto()
 
@@ -1070,7 +1077,7 @@ class FailureCounterBehaviour(IntFlag):
 class AssociationRebuildException(Exception):
     pass
 
-# TKTK: maybe make this a generic class, with jailbreaks and loss two subclasses, so that other scoring techniques are easier to add
+# TKTK: make this a generic class, with jailbreaks and loss two subclasses, so that other scoring techniques are easier to add
 class SearchTreeNode(JSONSerializableObject):
     def __init__(self):
         self.uuid = uuid.uuid4()
