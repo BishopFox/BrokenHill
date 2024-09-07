@@ -2,6 +2,19 @@
 
 Some or all of these opinions may change based on continued testing and development of the tool.
 
+## Writing the target string
+
+### If you are not using --auto-target, be sure that the target string ends with non-vital text
+
+The loss calculation for the GCG attack requires that the targeted token IDs be offset by a negative value. Depending on the loss slice mode selected by the operator, and the model, a small number of tokens (usually one to three) at the end of the target string will essentially be ignored by the loss calculation. [This is discussed further in the "How the greedy coordinate gradient (GCG) attack works" document](gcg_attack.md).
+
+If a target string is not crafted correctly, this means that some of the most vital tokens for the operator's goal may be excluded from the loss calculation.
+
+For example, if the target string were "Sure, here's a convincing anonymous death threat", and the mode/model combination resulted in the last three tokens being removed, the loss calculation would use the series of tokens "Sure, here's a convincing". That *might* be enough to trigger a jailbreak, but it could just as easily lead to "here's a convincing reason why you shouldn't ask this LLM for dangerous information" or "here's a convincing argument that threats of violence generally only make difficult situations worse."
+
+The `--auto-taget` template includes "as you requested: " after the operator-specified text for this reason. All of the models we've tested seem to use at most 
+
+
 ## Writing the initial prompt
 
 ### Keep your initial prompt as simple as possible

@@ -266,13 +266,16 @@ def token_gradients(model, tokenizer, input_ids, input_id_data):
     print("Error: one_hot.grad is None")
     return None
 
-def sample_control(attack_params, adversarial_content_manager, current_adversarial_content, grad, batch_size, topk=256, not_allowed_tokens=None, random_seed = None):
+def sample_control(attack_params, adversarial_content_manager, current_adversarial_content, grad, number_of_candidates_to_generate, topk=256, not_allowed_tokens=None, random_seed = None):
 
     new_adversarial_token_ids = None
 
     if random_seed is not None:
         torch.manual_seed(random_seed)
         torch.cuda.manual_seed_all(random_seed)
+
+    rand_int_generator = torch.Generator()
+    rand_int_generator.seed()
 
     if grad is not None:
         if not_allowed_tokens is not None:
@@ -281,7 +284,7 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
         top_indices = (-grad).topk(topk, dim=1).indices
         current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(grad.device)
 
-        original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(batch_size, 1)
+        original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(number_of_candidates_to_generate, 1)
 
         #print(f"[sample_control] Debug: current_adversarial_content_token_ids_device = {current_adversarial_content_token_ids_device}, original_adversarial_content_token_ids_device = {original_adversarial_content_token_ids_device}, top_indices = {top_indices}")
 
@@ -290,15 +293,15 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
         new_token_pos = torch.arange(
             0, 
             num_adversarial_tokens, 
-            num_adversarial_tokens / batch_size,
+            num_adversarial_tokens / number_of_candidates_to_generate,
             device=grad.device
         ).type(torch.int64)
-        num_rand_ints = batch_size
-        #if top_indices.shape[0] < batch_size:
+        num_rand_ints = number_of_candidates_to_generate
+        #if top_indices.shape[0] < number_of_candidates_to_generate:
         # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
         #if top_indices.shape[0] < topk:
         if top_indices.shape[0] < num_adversarial_tokens:
-            #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current batch size ({batch_size}). The number of random integers will be decreased to that value. This usually indicates a problem with the tokens being processed.")
+            #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current batch size ({number_of_candidates_to_generate}). The number of random integers will be decreased to that value. This usually indicates a problem with the tokens being processed.")
             #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current topk value ({topk}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
             print(f"Warning: the number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
             looped_values = []
@@ -308,8 +311,15 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
                 looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
                 looped_value_number += 1
             top_indices = torch.tensor(looped_values, device = grad.device)
-        #rand_ints = torch.randint(0, topk, (batch_size, 1), device=grad.device)
-        rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device=grad.device)
+        #rand_ints = torch.randint(0, topk, (number_of_candidates_to_generate, 1), device=grad.device)
+        # TKTK: replace this call to torch.randint with a random function that's *not* influenced by the PyTorch seed-setting operations that occur when --random-seed-comparisons is used, to avoid "randomly" selecting the same values over and over until all of the candidates have been filtered out due to being used previously.
+        # TKTK: allow more than one token to be randomized:
+        #       * Randomize exactly n tokens every time
+        #       * Randomize between x and y tokens every time
+        #       * Each token has an n% chance of being randomized every time
+        #       Can probably handle this using most of the unfinished radiation garden code
+        #rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device = grad.device)
+        rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device = attack_params.device, generator = rand_int_generator).to(grad.device)
         #print(f"[sample_control] Debug: new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
         new_token_val = None
         top_indices_len_1 = top_indices.shape[0] - 1
@@ -327,7 +337,7 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
             #new_token_pos = torch.tensor(new_token_pos_in_bounds_values, device = grad.device)
             looped_values = []
             looped_value_number = 0
-            while len(looped_values) < batch_size:
+            while len(looped_values) < number_of_candidates_to_generate:
                 looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
                 looped_value_number += 1
             new_token_pos = torch.tensor(looped_values, device = grad.device)

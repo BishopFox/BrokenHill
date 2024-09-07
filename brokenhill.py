@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.23"
-script_date = "2024-09-06"
+script_version = "0.24"
+script_date = "2024-09-09"
 
 def get_logo():
     result =  "                                                          \n"
@@ -553,7 +553,11 @@ def main(attack_params):
 
         print(f"Starting main loop")
 
-        # TKTK: self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense
+        # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
+        
+        # TKTK: self-test to count the number of tokens in a role-switching operation for the model.
+        
+        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using this tool's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch. 
 
         while main_loop_iteration_number < attack_params.max_iterations:
             is_success = False
@@ -568,6 +572,10 @@ def main(attack_params):
                     print(f"{current_ts} - Main loop iteration {main_loop_iteration_number + 1} of {attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {successful_attack_count}")                    
                     print_stats(attack_params)
                     print(f"---------")
+                    
+                    attack_data_previous_iteration = None
+                    if main_loop_iteration_number > 0:
+                        attack_data_previous_iteration = attack_data[len(attack_data) - 1]
                     
                     tested_adversarial_content.append_if_new(current_adversarial_content)
                     
@@ -601,6 +609,9 @@ def main(attack_params):
                     best_new_adversarial_content = None
                     attack_results_current_iteration = AttackResultInfoCollection()
                     
+                    # preserve the PyTorch RNG state because the code in this section is likely to reset it a bunch of times
+                    torch_rng_state = torch.get_rng_state()
+                    
                     # declare these here so they can be cleaned up later
                     coordinate_grad = None
                     # during the first iteration, do not generate variations - test the value that was given                    
@@ -615,8 +626,14 @@ def main(attack_params):
                                         input_id_data)
                         #print_stats(attack_params)
 
+
+                        # TKTK: add another option (--require-loss-decrease-threshold) that loops through just this with torch.no_grad() section until a candidate with a loss less than the current value + some threshold is found.
+                        # That should greatly improve the efficiency of testing candidates when multiple random seeds are tested against, because it doesn't require using the LLMs to generate any output text.
+                        # It probably makes sense to actually replace the --rollback-on-loss-increase option with that, and only use rollbacks for jailbreak count.
+                        #
                         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
                         # Notice that we only need the one that minimizes the loss.
+
                         with torch.no_grad():
                             
                             #print_stats(attack_params)
@@ -627,180 +644,217 @@ def main(attack_params):
                             
                             sample_control_random_seed = None
 
-                            while not got_candidate_list:
-                                # Step 3.2 Randomly sample a batch of replacements.
-                                #print(f"Randomly sampling a batch of replacements")
-                                new_adversarial_candidate_list = None
-                                try:
-                                    new_adversarial_candidate_list = sample_control(attack_params,
-                                                   adversarial_content_manager,
-                                                   current_adversarial_content, 
-                                                   coordinate_grad, 
-                                                   attack_params.new_adversarial_token_candidate_count, 
-                                                   topk = attack_params.topk,
-                                                   not_allowed_tokens = not_allowed_tokens,
-                                                   random_seed = sample_control_random_seed)
-                                except RuntimeError as e:
-                                    print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
-                                    sys.exit(1)
- 
- #print_stats(attack_params)
-                                #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
-                                
-                                # Note: I'm leaving this explanation here for historical reference
-                                # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
-                                # This step is necessary because tokenizers are not invertible
-                                # so Encode(Decode(tokens)) may produce a different tokenization.
-                                # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
-                                #print(f"Getting filtered candidates")
-                                new_adversarial_candidate_list_filtered = get_filtered_cands(attack_params, adversarial_content_manager, 
-                                                                    new_adversarial_candidate_list, 
-                                                                    tested_adversarial_content,
-                                                                    filter_cand=True, 
-                                                                    current_adversarial_content = current_adversarial_content)
-                                if len(new_adversarial_candidate_list_filtered.adversarial_content) > 0:
-                                    got_candidate_list = True
-                                else:
-                                    # try to find a way to increase the number of options available
-                                    something_has_changed = False
-                                    standard_explanation_intro = "The attack has failed to generate any adversarial values at this iteration that meet the specified filtering criteria and have not already been tested."
-                                    standard_explanation_outro = "You can try specifying larger values for --max-batch-size-new-adversarial-tokens and/or --max-topk to avoid this error, or enabling --add-token-when-no-candidates-returned and/or --delete-token-when-no-candidates-returned if they are not already enabled."
+                            losses = None
+                            best_new_adversarial_content_id = None
+                            best_new_adversarial_content = None
+                            current_loss = None
+                            current_loss_as_float = None
+
+                            # BEGIN: wrap in loss threshold check
+                            candidate_list_meets_loss_threshold = False
+                            num_iterations_without_acceptable_loss = 0
+                            
+                            while not candidate_list_meets_loss_threshold:
+
+                                while not got_candidate_list:                                
                                     
-                                    if attack_params.add_token_when_no_candidates_returned:
-                                        token_count_limited = True
-                                        if attack_params.candidate_filter_tokens_max is None:
-                                            token_count_limited = False
-                                        if token_count_limited:
-                                            if len(current_adversarial_content.token_ids) < attack_params.candidate_filter_tokens_max:
-                                                token_count_limited = False
-                                        current_short_description = current_adversarial_content.get_short_description()
-                                        if token_count_limited:
-                                            print(f"{standard_explanation_intro} The option to add an additional token is enabled, but the current adversarial content {current_short_description} is already at the limit of {attack_params.candidate_filter_tokens_max} tokens.")
-                                        else:
-                                            current_adversarial_content.duplicate_random_token(tokenizer)
-                                            new_short_description = current_adversarial_content.get_short_description()
-                                            something_has_changed = True
-                                            print(f"{standard_explanation_intro} Because the option to add an additional token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
-                                    #else:
-                                    #    print(f"[main loop] Debug: the option to add an additional token is disabled.")
+                                    # Step 3.2 Randomly sample a batch of replacements.
+                                    #print(f"Randomly sampling a batch of replacements")
+                                    new_adversarial_candidate_list = None
                                     
-                                    if not something_has_changed:
-                                        if attack_params.delete_token_when_no_candidates_returned:
+                                    try:
+                                        new_adversarial_candidate_list = sample_control(attack_params,
+                                                       adversarial_content_manager,
+                                                       current_adversarial_content, 
+                                                       coordinate_grad, 
+                                                       attack_params.new_adversarial_token_candidate_count, 
+                                                       topk = attack_params.topk,
+                                                       not_allowed_tokens = not_allowed_tokens,
+                                                       random_seed = sample_control_random_seed)
+                                    except RuntimeError as e:
+                                        print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
+                                        sys.exit(1)
+     
+     #print_stats(attack_params)
+                                    #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
+                                    
+                                    # Note: I'm leaving this explanation here for historical reference
+                                    # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
+                                    # This step is necessary because tokenizers are not invertible
+                                    # so Encode(Decode(tokens)) may produce a different tokenization.
+                                    # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
+                                    #print(f"Getting filtered candidates")
+                                    new_adversarial_candidate_list_filtered = get_filtered_cands(attack_params, adversarial_content_manager, 
+                                                                        new_adversarial_candidate_list, 
+                                                                        tested_adversarial_content,
+                                                                        filter_cand=True, 
+                                                                        current_adversarial_content = current_adversarial_content)
+                                    if len(new_adversarial_candidate_list_filtered.adversarial_content) > 0:
+                                        got_candidate_list = True
+                                    else:
+                                        # try to find a way to increase the number of options available
+                                        something_has_changed = False
+                                        standard_explanation_intro = "The attack has failed to generate any adversarial values at this iteration that meet the specified filtering criteria and have not already been tested."
+                                        standard_explanation_outro = "You can try specifying larger values for --max-batch-size-new-adversarial-tokens and/or --max-topk to avoid this error, or enabling --add-token-when-no-candidates-returned and/or --delete-token-when-no-candidates-returned if they are not already enabled."
+                                        
+                                        if attack_params.add_token_when_no_candidates_returned:
                                             token_count_limited = True
-                                            minimum_token_count = 1
-                                            if attack_params.candidate_filter_tokens_min is None:
+                                            if attack_params.candidate_filter_tokens_max is None:
                                                 token_count_limited = False
-                                            else:
-                                                if attack_params.candidate_filter_tokens_min > 1:
-                                                    minimum_token_count = attack_params.candidate_filter_tokens_min
-                                                if len(current_adversarial_content.token_ids) > attack_params.candidate_filter_tokens_min:
+                                            if token_count_limited:
+                                                if len(current_adversarial_content.token_ids) < attack_params.candidate_filter_tokens_max:
                                                     token_count_limited = False
-                                            if not token_count_limited:
-                                                if len(current_adversarial_content.token_ids) < 2:
-                                                    token_count_limited = True
                                             current_short_description = current_adversarial_content.get_short_description()
                                             if token_count_limited:
-                                                print(f"{standard_explanation_intro} The option to delete a random token is enabled, but the current adversarial content {current_short_description} is already at the minimum of {minimum_token_count} token(s).")
+                                                print(f"{standard_explanation_intro} The option to add an additional token is enabled, but the current adversarial content {current_short_description} is already at the limit of {attack_params.candidate_filter_tokens_max} tokens.")
                                             else:
-                                                current_adversarial_content.delete_random_token(tokenizer)
+                                                current_adversarial_content.duplicate_random_token(tokenizer)
                                                 new_short_description = current_adversarial_content.get_short_description()
                                                 something_has_changed = True
-                                                print(f"{standard_explanation_intro} Because the option to delete a random token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
+                                                print(f"{standard_explanation_intro} Because the option to add an additional token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                         #else:
-                                        #    print(f"[main loop] Debug: the option to delete a random token is disabled.")
-                                    
-                                    if not something_has_changed:
-                                        new_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count + original_new_adversarial_token_candidate_count
-                                        increase_new_adversarial_token_candidate_count = True
-                                        if attack_params.max_new_adversarial_token_candidate_count is not None:
-                                            if new_new_adversarial_token_candidate_count > attack_params.max_new_adversarial_token_candidate_count:
-                                                new_new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
-                                                if new_new_adversarial_token_candidate_count <= attack_params.new_adversarial_token_candidate_count:
-                                                    increase_new_adversarial_token_candidate_count = False
-                                                #else:
-                                                #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count > attack_params.new_adversarial_token_candidate_count.")
+                                        #    print(f"[main loop] Debug: the option to add an additional token is disabled.")
+                                        
+                                        if not something_has_changed:
+                                            if attack_params.delete_token_when_no_candidates_returned:
+                                                token_count_limited = True
+                                                minimum_token_count = 1
+                                                if attack_params.candidate_filter_tokens_min is None:
+                                                    token_count_limited = False
+                                                else:
+                                                    if attack_params.candidate_filter_tokens_min > 1:
+                                                        minimum_token_count = attack_params.candidate_filter_tokens_min
+                                                    if len(current_adversarial_content.token_ids) > attack_params.candidate_filter_tokens_min:
+                                                        token_count_limited = False
+                                                if not token_count_limited:
+                                                    if len(current_adversarial_content.token_ids) < 2:
+                                                        token_count_limited = True
+                                                current_short_description = current_adversarial_content.get_short_description()
+                                                if token_count_limited:
+                                                    print(f"{standard_explanation_intro} The option to delete a random token is enabled, but the current adversarial content {current_short_description} is already at the minimum of {minimum_token_count} token(s).")
+                                                else:
+                                                    current_adversarial_content.delete_random_token(tokenizer)
+                                                    new_short_description = current_adversarial_content.get_short_description()
+                                                    something_has_changed = True
+                                                    print(f"{standard_explanation_intro} Because the option to delete a random token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                             #else:
-                                            #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count <= attack_params.max_new_adversarial_token_candidate_count.")
-                                        #else:
-                                        #    print(f"[main loop] Debug: attack_params.max_new_adversarial_token_candidate_count is None.")
-                                        if increase_new_adversarial_token_candidate_count:
-                                            print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_token_candidate_count} to {new_new_adversarial_token_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
-                                            attack_params.new_adversarial_token_candidate_count = new_new_adversarial_token_candidate_count
-                                            something_has_changed = True
-                                        #else:
-                                        #    print(f"[main loop] Debug: not increasing the --batch-size-new-adversarial-tokens value.")
-                                    
-                                    if not something_has_changed:
-                                        new_topk = attack_params.topk + original_topk
-                                        increase_topk = True
-                                        if attack_params.max_topk is not None:
-                                            if new_topk > attack_params.max_topk:
-                                                new_topk = attack_params.max_topk
-                                                if new_topk <= attack_params.topk:
-                                                    increase_topk = False
+                                            #    print(f"[main loop] Debug: the option to delete a random token is disabled.")
+                                        
+                                        if not something_has_changed:
+                                            new_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count + original_new_adversarial_token_candidate_count
+                                            increase_new_adversarial_token_candidate_count = True
+                                            if attack_params.max_new_adversarial_token_candidate_count is not None:
+                                                if new_new_adversarial_token_candidate_count > attack_params.max_new_adversarial_token_candidate_count:
+                                                    new_new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
+                                                    if new_new_adversarial_token_candidate_count <= attack_params.new_adversarial_token_candidate_count:
+                                                        increase_new_adversarial_token_candidate_count = False
+                                                    #else:
+                                                    #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count > attack_params.new_adversarial_token_candidate_count.")
                                                 #else:
-                                                #    print(f"[main loop] Debug: new_topk > attack_params.topk.")
+                                                #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count <= attack_params.max_new_adversarial_token_candidate_count.")
                                             #else:
-                                            #    print(f"[main loop] Debug: new_topk <= attack_params.max_topk.")
-                                        #else:
-                                        #    print(f"[main loop] Debug: attack_params.max_topk is None.")
-                                        if increase_topk:
-                                            print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --topk value is being increased from {attack_params.topk} to {new_topk} to increase the number of candidate values. {standard_explanation_outro}")
-                                            attack_params.topk = new_topk
-                                            something_has_changed = True
-                                        #else:
-                                        #    print(f"[main loop] Debug: not increasing the --topk value.")
-                                    
-                                    if not something_has_changed:
-                                        print(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, the tool will now exit. {standard_explanation_outro}")
-                                        sys.exit(1)
-                                    
-                                    # temporarily also use a new random seed to help avoid getting stuck with trivial variations that don't change anything significant
-                                    if sample_control_random_seed is None:
-                                        sample_control_random_seed = attack_params.torch_manual_seed + 1
+                                            #    print(f"[main loop] Debug: attack_params.max_new_adversarial_token_candidate_count is None.")
+                                            if increase_new_adversarial_token_candidate_count:
+                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_token_candidate_count} to {new_new_adversarial_token_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
+                                                attack_params.new_adversarial_token_candidate_count = new_new_adversarial_token_candidate_count
+                                                something_has_changed = True
+                                            #else:
+                                            #    print(f"[main loop] Debug: not increasing the --batch-size-new-adversarial-tokens value.")
+                                        
+                                        if not something_has_changed:
+                                            new_topk = attack_params.topk + original_topk
+                                            increase_topk = True
+                                            if attack_params.max_topk is not None:
+                                                if new_topk > attack_params.max_topk:
+                                                    new_topk = attack_params.max_topk
+                                                    if new_topk <= attack_params.topk:
+                                                        increase_topk = False
+                                                    #else:
+                                                    #    print(f"[main loop] Debug: new_topk > attack_params.topk.")
+                                                #else:
+                                                #    print(f"[main loop] Debug: new_topk <= attack_params.max_topk.")
+                                            #else:
+                                            #    print(f"[main loop] Debug: attack_params.max_topk is None.")
+                                            if increase_topk:
+                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --topk value is being increased from {attack_params.topk} to {new_topk} to increase the number of candidate values. {standard_explanation_outro}")
+                                                attack_params.topk = new_topk
+                                                something_has_changed = True
+                                            #else:
+                                            #    print(f"[main loop] Debug: not increasing the --topk value.")
+                                        
+                                        if not something_has_changed:
+                                            print(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, the tool will now exit. {standard_explanation_outro}")
+                                            sys.exit(1)
+                                        
+                                        # temporarily also use a new random seed to help avoid getting stuck with trivial variations that don't change anything significant
+                                        if sample_control_random_seed is None:
+                                            sample_control_random_seed = attack_params.torch_manual_seed + 1
+                                        else:
+                                            sample_control_random_seed += 1
+                                        
+                                                
+                                #print_stats(attack_params)
+                                #print(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
+                                
+                                # Step 3.4 Compute loss on these candidates and take the argmin.
+                                #print(f"Getting logits")
+                                logits, ids = get_logits(model = model, 
+                                                         tokenizer = tokenizer,
+                                                         input_ids = input_ids,
+                                                         adversarial_content = current_adversarial_content, 
+                                                         adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
+                                                         return_ids = True,
+                                                         batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
+                                #print_stats(attack_params)
+
+                                #print(f"Calculating target loss")
+                                losses = target_loss(logits, ids, input_id_data, tokenizer)
+                                #print_stats(attack_params)
+
+                                #print(f"Getting losses argmin")
+                                best_new_adversarial_content_id = losses.argmin()
+                                #print_stats(attack_params)
+
+                                #print(f"Setting best new adversarial content")
+                                best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
+                                #print_stats(attack_params)
+
+                                #print(f"Getting current loss")
+                                current_loss = losses[best_new_adversarial_content_id]
+                                #print_stats(attack_params)
+                                current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
+                                
+                                if attack_params.required_loss_threshold is None or main_loop_iteration_number == 0:
+                                    candidate_list_meets_loss_threshold = True
+                                else:
+                                    if attack_data_previous_iteration is None:
+                                        candidate_list_meets_loss_threshold = True
                                     else:
-                                        sample_control_random_seed += 1
-                                    
-                                            
-                            #print_stats(attack_params)
-                            #print(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
+                                        if attack_data_previous_iteration.loss is None:
+                                            candidate_list_meets_loss_threshold = True
+                                    if candidate_list_meets_loss_threshold == False and attack_data_previous_iteration is not None:
+                                        if (current_loss_as_float + attack_params.required_loss_threshold) <= attack_data_previous_iteration.loss:
+                                            candidate_list_meets_loss_threshold = True
+                                if not candidate_list_meets_loss_threshold:
+                                    num_iterations_without_acceptable_loss += 1
+                                    print(f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) to generate a list of random candidates that has at least one candidate with a loss lower than {attack_data_previous_iteration.loss}. Best value during this attempt was {current_loss_as_float}.")
                             
-                            # Step 3.4 Compute loss on these candidates and take the argmin.
-                            #print(f"Getting logits")
-                            logits, ids = get_logits(model = model, 
-                                                     tokenizer = tokenizer,
-                                                     input_ids = input_ids,
-                                                     adversarial_content = current_adversarial_content, 
-                                                     adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                                     return_ids = True,
-                                                     batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
-                            #print_stats(attack_params)
-
-                            #print(f"Calculating target loss")
-                            losses = target_loss(logits, ids, input_id_data, tokenizer)
-                            #print_stats(attack_params)
-
-                            #print(f"Getting losses argmin")
-                            best_new_adversarial_content_id = losses.argmin()
-                            #print_stats(attack_params)
-
-                            #print(f"Setting best new adversarial content")
-                            best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
-                            #print_stats(attack_params)
-
-                            #print(f"Getting current loss")
-                            current_loss = losses[best_new_adversarial_content_id]
-                            #print_stats(attack_params)
+                            # END: wrap in loss threshold check 
 
                             # Update the running current_adversarial_content with the best candidate
                             #print(f"Updating adversarial content - was '{current_adversarial_content.get_short_description()}', now '{best_new_adversarial_content.get_short_description()}'")
                             #print_stats(attack_params)
-                            current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
+                            
                             print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {current_adversarial_content.get_short_description()} ({len(current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
                             current_adversarial_content = best_new_adversarial_content
                             print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}': {current_loss_as_float}")
+                            print(f"Debug: decoded_loss_slice = '{decoded_loss_slice}'")
+                            print(f"Debug: input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
                         
                             attack_results_current_iteration.loss = current_loss_as_float
+
+                    # restore the PyTorch RNG state
+                    torch.set_rng_state(torch_rng_state)
 
                     attack_results_current_iteration.adversarial_content = current_adversarial_content.copy()
                     

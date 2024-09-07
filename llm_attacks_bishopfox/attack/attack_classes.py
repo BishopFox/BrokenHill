@@ -537,8 +537,9 @@ class AttackParams(JSONSerializableObject):
             self.attempt_to_keep_token_count_consistent = False
             
             # Filter candidate strings by requiring that they match a regular expression
-            self.candidate_filter_regex = "[0-9A-Za-z]+"
+            #self.candidate_filter_regex = "[0-9A-Za-z]+"
             #self.candidate_filter_regex = "\w+"
+            self.candidate_filter_regex = "."
             #self.candidate_filter_regex = None
 
             # Filter candidate strings to exclude lists with more than this many repeated lines
@@ -589,7 +590,8 @@ class AttackParams(JSONSerializableObject):
         # batch sizes for various operations
         #self.new_adversarial_token_candidate_count = 16
         #self.new_adversarial_token_candidate_count = 32
-        self.new_adversarial_token_candidate_count = 64
+        self.new_adversarial_token_candidate_count = 48
+        #self.new_adversarial_token_candidate_count = 64
         #self.new_adversarial_token_candidate_count = 256
         
         # the maximum the adversarial token generation batch size is allowed to grow to when no candidates are found
@@ -620,6 +622,9 @@ class AttackParams(JSONSerializableObject):
         # maximum new tokens value when generating full output
         self.full_decoding_max_new_tokens = 16384
         #self.full_decoding_max_new_tokens = 1024
+
+        # during the candidate-generation stage, continue generating sets of random candidates until at least one is found that either has a lower loss than the current value, or increases it by no more than this amount
+        self.required_loss_threshold = 0.1
 
         # if the loss value increases between iterations, roll back to the last "good" adversarial data
         self.rollback_on_loss_increase = False
