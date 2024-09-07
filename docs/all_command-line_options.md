@@ -150,13 +150,13 @@ This will cause the tool to generate <number> additional versions of the LLM-gen
 
 When using this option, `--temperature` must also be set to a non-default value, because otherwise models that have sample-based output disabled by default will simply return <number> identical results.
 
-## Batch size controls
+## Content-generation size controls
 
-### --batch-size-new-adversarial-tokens <positive integer> and --max-batch-size-new-adversarial-tokens <positive integer>
+### --new-adversarial-token-candidate-count <positive integer> and --max-new-adversarial-token-candidate-count <positive integer>
 
-`--batch-size-new-adversarial-tokens` sets the number of candidate adversarial values to generate at each iteration. In the default configuration, the value with the lowest loss is then tested. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with all of the batch size values set to 1, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance. (default: 16)
+`--new-adversarial-token-candidate-count` sets the number of candidate adversarial values to generate at each iteration. In the default configuration, the value with the lowest loss is then tested. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with all of the batch size values set to 1, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.
 
-If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-batch-size-new-adversarial-tokens` can be used to reduce or increase that limit.
+If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-token-candidate-count` can be used to reduce or increase that limit.
 
 ### --batch-size-get-logits <positive integer>
 
@@ -172,7 +172,11 @@ Bias the adversarial content generation data to avoid using tokens that consist 
 
 ### --exclude-nonascii-tokens
 
-Bias the adversarial content generation data to avoid using tokens that are not printable ASCII text.
+Bias the adversarial content generation data to avoid using tokens that are not ASCII text. Testing is performed using Python's `.isascii()` method, which considers characters 0x00 - 0x7F "ASCII". Note that this option does not exclude the characters 0x00 - 0x1F, so you probably want to add `--exclude-nonprintable-tokens` when using this option.
+
+### --exclude-nonprintable-tokens
+
+Bias the adversarial content generation data to avoid using tokens that contain non-printable characters/glyphs. Testing is performed using Python's `.isprintable()` method, which internally uses `Py_UNICODE_ISPRINTABLE()`. [The Py_UNICODE_ISPRINTABLE specification](https://peps.pythondiscord.com/pep-3138/#specification) is somewhat complex, but is probably at least close to what you have in mind when you imagine "non-printable" characters. The ASCII space (0x20) character is considered printable.
 
 ### --exclude-profanity-tokens, --exclude-slur-tokens, and --exclude-other-highly-problematic-content
 
@@ -247,6 +251,30 @@ If this value is specified, candidate adversarial strings will be filtered out i
 
 Enable the check from the original authors' code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are generally much better options.
 
+## Controlling the data that's used to calculate loss at every iteration
+
+The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code this tool was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
+
+How much of the magic is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
+
+### --loss-slice-is-llm-role-and-truncated-target-slice
+
+This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change. This is the default mode.
+
+### --loss-slice-is-llm-role-and-full-target-slice
+
+This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string. 
+
+Using this option is not currently recommended, because it requires padding the list of tokens used to calculate the loss, and the current padding method generally causes less useful results.
+    
+### --loss-slice-is-index-shifted-target-slice
+
+This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice usually includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and is included for comparison with other techniques.
+
+### --loss-slice-is-target-slice
+
+This option uses the list of target token IDs without any modifications when calculating the loss. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.
+
 ## Other controls for adversarial content generation
 
 ### --add-token-when-no-candidates-returned
@@ -258,12 +286,6 @@ Important: avoid combining this option with an `--adversarial-candidate-filter-r
 ### --delete-token-when-no-candidates-returned
 
 If all candidate tokens are filtered, allow the script to decrease the number of tokens by one in the hope of generating values that are not filtered. If this occurs, a random token in the adversarial content will be deleted. If `--adversarial-candidate-filter-tokens-min` is also specified, the number of tokens will never be decreased below that value.
-
-### --no-loss-index-shift
-
-The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code this tool was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
-
-How much of the magic is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
 
 ## --adversarial-candidate-newline-replacement <string>
 

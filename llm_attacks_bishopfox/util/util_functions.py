@@ -14,6 +14,9 @@ import numpy
 
 from enum import StrEnum
 
+class RequiredValueIsNoneException(Exception):
+    pass
+
 def get_escaped_string(input_string):
     #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
     if input_string is None:

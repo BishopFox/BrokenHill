@@ -197,6 +197,8 @@ def get_embedding_layer(model):
         return model.model.decoder.embed_tokens
     elif isinstance(model, GemmaForCausalLM):
         return model.base_model.get_input_embeddings()
+    elif isinstance(model, Gemma2ForCausalLM):
+        return model.base_model.get_input_embeddings()
     elif isinstance(model, GPTNeoForCausalLM):
         return model.base_model.wte
     elif isinstance(model, GPTNeoXForCausalLM):
@@ -283,7 +285,7 @@ def get_nonprintable_token_list(tokenizer):
     for i in range(3, tokenizer.vocab_size):
         decoded_token = tokenizer.decode([i])
         if decoded_token is not None:
-            if not is_ascii(decoded_token):
+            if not is_printable(decoded_token):
                 if i not in result:
                     result.append(i)
     
@@ -417,14 +419,15 @@ def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, string_list,
                         # token_allow_and_denylist.denylist.append(j)
     return token_allow_and_denylist
 
-def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
+def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_nonprintable_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
     #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
     result = TokenAllowAndDenyList()
     
-    # add non-ASCII tokens if requested
     if filter_nonascii_tokens:
         result.denylist = add_values_to_list_if_not_already_present(result.denylist, get_nonascii_token_list(tokenizer))
-        #result.denylist = get_nonascii_token_list(tokenizer)
+
+    if filter_nonprintable_tokens:
+        result.denylist = add_values_to_list_if_not_already_present(result.denylist, get_nonprintable_token_list(tokenizer))
     
     if token_regex is not None:
         denied_toks2 = get_nonmatching_token_list(tokenizer, token_regex)

@@ -1,13 +1,27 @@
 #!/bin/env python3
 
-script_name = "gcg-attack.py"
-script_version = "0.21"
-script_date = "2024-09-03"
+script_name = "brokenhill.py"
+script_version = "0.23"
+script_date = "2024-09-06"
+
+def get_logo():
+    result =  "                                                          \n"
+    result += ".oO                                                    Oo.\n"
+    result += ".                                                        .\n"
+    result += "                        Broken Hill                       \n"
+    result += "                                                          \n"
+    result += "    a tool for attacking LLMs, presented by Bishop Fox    \n"
+    result += "                                                          \n"
+    result += "          https://github.com/BishopFox/BrokenHill         \n"
+    result += "'                                                        '\n"
+    result += "'^O                                                    O^'\n"
+    result += "                                                          \n"
+    return result
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
     result += "\n"
-    result += "Originally based on the demo.ipynb notebook included in the https://github.com/llm-attacks/llm-attacks repository."
+    result += "Originally based on the demo.ipynb notebook and associated llm-attacks library from https://github.com/llm-attacks/llm-attacks"
     result += "\n"
     result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     result += "\n"
@@ -62,6 +76,7 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackState
 from llm_attacks_bishopfox.attack.attack_classes import FakeException
 from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
+from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
@@ -207,7 +222,7 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
     result = GenerationResults()
     result.max_new_tokens = working_gen_config.max_new_tokens
 
-    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer, shift_loss_indices = attack_params.shift_loss_indices)
+    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
     input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
     input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
@@ -308,7 +323,10 @@ def main(attack_params):
     random_seed_values = get_random_seed_list_for_comparisons()
     
     try:
-        print(f"Loading model from '{attack_params.model_path}'")
+        model_load_message = f"Loading model and tokenizer from '{attack_params.model_path}'."
+        if attack_params.tokenizer_path is not None:
+            model_load_message = f"Loading model from '{attack_params.model_path}' and tokenizer from {attack_params.tokenizer_path}."
+        print(model_load_message)
         model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
                                 tokenizer_path = attack_params.tokenizer_path,
                                 low_cpu_mem_usage = attack_params.low_cpu_mem_usage, 
@@ -321,29 +339,52 @@ def main(attack_params):
                                 device=attack_params.device)
         print_stats(attack_params)
         
+        if tokenizer.pad_token_id is None:
+            if attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+                print("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
+                sys.exit(1)
+        
+        #print(f"[main] Debug: getting max effective token value for model and tokenizer.")
+        
         attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", model, tokenizer, attack_params.generation_max_new_tokens)
         attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
         
         #additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive
         # TKTK: add a localization option for these
         if attack_params.exclude_slur_tokens:
+            #print(f"[main] Debug: adding slurs to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_slurs())
         if attack_params.exclude_profanity_tokens:
+            #print(f"[main] Debug: adding profanity to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_profanity())
         if attack_params.exclude_other_highly_problematic_content:
+            #print(f"[main] Debug: adding other highly-problematic content to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
-        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, attack_params.not_allowed_token_list, device=attack_params.device, additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive, filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, filter_special_tokens = attack_params.exclude_special_tokens, filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, token_regex = attack_params.get_token_filter_regex())        
+        #print(f"[main] Debug: building token allowlist and denylist.")
+        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, 
+            attack_params.not_allowed_token_list, 
+            device=attack_params.device, 
+            additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive, 
+            filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, 
+            filter_nonprintable_tokens = attack_params.exclude_nonprintable_tokens, 
+            filter_special_tokens = attack_params.exclude_special_tokens, 
+            filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, 
+            filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, 
+            token_regex = attack_params.get_token_filter_regex()
+            )        
         
         #print(f"Debug: token_allow_and_deny_lists.denylist = '{token_allow_and_deny_lists.denylist}', token_allow_and_deny_lists.allowlist = '{token_allow_and_deny_lists.allowlist}'")
         not_allowed_tokens = None
         if len(token_allow_and_deny_lists.denylist) > 0:
+            #print(f"[main] Debug: getting not_allowed_tokens from token allowlist and denylist.")
             not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
         original_model_size = 0
 
         if attack_params.display_model_size:
+            #print(f"[main] Debug: Determining model size.")
             original_model_size = get_model_size(model)
             print(f"Model size: {original_model_size}")
 
@@ -369,6 +410,7 @@ def main(attack_params):
             model = tq.convert(model, inplace=True)
 
         if attack_params.conversion_dtype:
+            #print(f"[main] Debug: converting model dtype to {attack_params.conversion_dtype}.")
             model = model.to(attack_params.conversion_dtype)
 
         if attack_params.quantization_dtype or attack_params.enable_static_quantization or attack_params.conversion_dtype:
@@ -378,9 +420,10 @@ def main(attack_params):
                 size_factor = float(quantized_model_size) / float(original_model_size) * 100.0
                 size_factor_formatted = f"{size_factor:.2f}%"
                 print(f"Model size after reduction: {quantized_model_size} ({size_factor_formatted} of original size)")
-            
+        
+        #print(f"[main] Debug: registering missing conversation templates.")
         register_missing_conversation_templates()
-        #print(f"Loading conversation template '{attack_params.template_name}'")
+        #print(f"[main] Debug: loading conversation template '{attack_params.template_name}'.")
         #conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         conv_template = load_conversation_template(attack_params.model_path, template_name = attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         if attack_params.template_name is not None:
@@ -395,8 +438,11 @@ def main(attack_params):
         print(f"Conversation template messages: '{messages}'")
         #print_stats(attack_params)
 
+        #print(f"[main] Debug: creating a meticulously-curated treasury of trash fire tokens.")
         trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(tokenizer, conv_template)
 
+        #print(f"[main] Debug: setting initial adversarial content.")
+        
         initial_adversarial_content = None
         if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
             initial_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_string)
@@ -437,6 +483,7 @@ def main(attack_params):
             print("Error: no initial adversarial content was specified.")
             sys.exit(1)
         
+        #print(f"[main] Debug: determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
         tokens_in_denylist = []
         tokens_not_in_tokenizer = []
         for i in range(0, len(initial_adversarial_content.token_ids)):
@@ -473,13 +520,14 @@ def main(attack_params):
 
         current_adversarial_content = initial_adversarial_content.copy()
 
-        #print(f"Creating suffix manager")
+        #print(f"[main] Debug: creating suffix manager.")
         adversarial_content_manager = AdversarialContentManager(tokenizer=tokenizer, 
                       conv_template = conv_template, 
                       instruction = attack_params.base_prompt, 
                       target = attack_params.target_output, 
                       adversarial_content = initial_adversarial_content.copy(),
                       trash_fire_tokens = trash_fire_token_treasury,
+                      loss_slice_mode = attack_params.loss_slice_mode,
                       adversarial_content_placement = attack_params.adversarial_content_placement)
         #print_stats(attack_params)
          
@@ -499,7 +547,7 @@ def main(attack_params):
         last_known_good_adversarial_content.as_string = None
         best_loss_value = None
         best_jailbreak_count = None
-        original_batch_size_new_adversarial_tokens = attack_params.batch_size_new_adversarial_tokens
+        original_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count
         original_topk = attack_params.topk
         is_first_iteration = True
 
@@ -534,7 +582,7 @@ def main(attack_params):
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with current_adversarial_content = '{current_adversarial_content.get_short_description()}'")
-                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer, shift_loss_indices = attack_params.shift_loss_indices)
+                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
                     #print_stats(attack_params)
                     
                     decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
@@ -542,6 +590,7 @@ def main(attack_params):
                     decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
                     decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target])
                     decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])
+                    decoded_loss_slice_string = get_escaped_string(tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     #print(f"[main loop - input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target = '{input_id_data.slice_data.target}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
                     #print(f"Converting input IDs to device")
@@ -561,10 +610,9 @@ def main(attack_params):
                         # Step 2. Compute Coordinate Gradient
                         #print(f"Computing coordinate gradient")
                         coordinate_grad = token_gradients(model, 
-                                        input_ids, 
-                                        input_id_data.slice_data.control, 
-                                        input_id_data.slice_data.target, 
-                                        input_id_data.slice_data.loss)
+                                        tokenizer,
+                                        input_ids,
+                                        input_id_data)
                         #print_stats(attack_params)
 
                         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
@@ -588,7 +636,7 @@ def main(attack_params):
                                                    adversarial_content_manager,
                                                    current_adversarial_content, 
                                                    coordinate_grad, 
-                                                   attack_params.batch_size_new_adversarial_tokens, 
+                                                   attack_params.new_adversarial_token_candidate_count, 
                                                    topk = attack_params.topk,
                                                    not_allowed_tokens = not_allowed_tokens,
                                                    random_seed = sample_control_random_seed)
@@ -662,22 +710,22 @@ def main(attack_params):
                                         #    print(f"[main loop] Debug: the option to delete a random token is disabled.")
                                     
                                     if not something_has_changed:
-                                        new_batch_size_new_adversarial_tokens = attack_params.batch_size_new_adversarial_tokens + original_batch_size_new_adversarial_tokens
-                                        increase_batch_size_new_adversarial_tokens = True
-                                        if attack_params.max_batch_size_new_adversarial_tokens is not None:
-                                            if new_batch_size_new_adversarial_tokens > attack_params.max_batch_size_new_adversarial_tokens:
-                                                new_batch_size_new_adversarial_tokens = attack_params.max_batch_size_new_adversarial_tokens
-                                                if new_batch_size_new_adversarial_tokens <= attack_params.batch_size_new_adversarial_tokens:
-                                                    increase_batch_size_new_adversarial_tokens = False
+                                        new_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count + original_new_adversarial_token_candidate_count
+                                        increase_new_adversarial_token_candidate_count = True
+                                        if attack_params.max_new_adversarial_token_candidate_count is not None:
+                                            if new_new_adversarial_token_candidate_count > attack_params.max_new_adversarial_token_candidate_count:
+                                                new_new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
+                                                if new_new_adversarial_token_candidate_count <= attack_params.new_adversarial_token_candidate_count:
+                                                    increase_new_adversarial_token_candidate_count = False
                                                 #else:
-                                                #    print(f"[main loop] Debug: new_batch_size_new_adversarial_tokens > attack_params.batch_size_new_adversarial_tokens.")
+                                                #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count > attack_params.new_adversarial_token_candidate_count.")
                                             #else:
-                                            #    print(f"[main loop] Debug: new_batch_size_new_adversarial_tokens <= attack_params.max_batch_size_new_adversarial_tokens.")
+                                            #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count <= attack_params.max_new_adversarial_token_candidate_count.")
                                         #else:
-                                        #    print(f"[main loop] Debug: attack_params.max_batch_size_new_adversarial_tokens is None.")
-                                        if increase_batch_size_new_adversarial_tokens:
-                                            print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.batch_size_new_adversarial_tokens} to {new_batch_size_new_adversarial_tokens} to increase the number of candidate values. {standard_explanation_outro}")
-                                            attack_params.batch_size_new_adversarial_tokens = new_batch_size_new_adversarial_tokens
+                                        #    print(f"[main loop] Debug: attack_params.max_new_adversarial_token_candidate_count is None.")
+                                        if increase_new_adversarial_token_candidate_count:
+                                            print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_token_candidate_count} to {new_new_adversarial_token_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
+                                            attack_params.new_adversarial_token_candidate_count = new_new_adversarial_token_candidate_count
                                             something_has_changed = True
                                         #else:
                                         #    print(f"[main loop] Debug: not increasing the --batch-size-new-adversarial-tokens value.")
@@ -750,7 +798,7 @@ def main(attack_params):
                             current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
                             print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {current_adversarial_content.get_short_description()} ({len(current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
                             current_adversarial_content = best_new_adversarial_content
-                            print(f"Loss value for the new permutation: {current_loss_as_float}")
+                            print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}': {current_loss_as_float}")
                         
                             attack_results_current_iteration.loss = current_loss_as_float
 
@@ -967,7 +1015,7 @@ def main(attack_params):
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
-    print(f"Finished after {main_loop_iteration_number + 1} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {successful_attack_count}")
+    print(f"Finished after {main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {successful_attack_count}")
 
 def exit_if_unauthorized_overwrite(output_file_path, attack_params):
     if os.path.isfile(output_file_path):
@@ -978,6 +1026,7 @@ def exit_if_unauthorized_overwrite(output_file_path, attack_params):
             sys.exit(1)
 
 if __name__=='__main__':
+    print(get_logo())
     short_description = get_short_script_description()
     print(f"{script_name} version {script_version}, {script_date}\n{short_description}")
     
@@ -997,6 +1046,12 @@ if __name__=='__main__':
     # TKTK: --mode full (currently the only behaviour) vs --mode test-results (read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination)
     
     # TKTK: mode to read a result JSON file, apply a different set of jailbreak detection rules, and re-output the result.
+    
+    # TKTK: stats-output modes:
+        # Histogram of jailbreak success
+        # Time-series graph of jailbreak count
+        # Export adversarial content by jailbreak success and/or loss thresholds (without having to use jq)
+        # etc.
     
     # TKTK: option to use "mellowmax" algorithm
     
@@ -1089,13 +1144,13 @@ if __name__=='__main__':
         default=attack_params.max_iterations,
         help=f"Maximum number of times to iterate on the adversarial data")
 
-    parser.add_argument("--batch-size-new-adversarial-tokens", type=numeric_string_to_int,
-        default=attack_params.batch_size_new_adversarial_tokens,
-        help=f"The PyTorch batch size to use when generating new adversarial tokens. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with all of the batch size values set to 1, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.")
+    parser.add_argument("--new-adversarial-token-candidate-count", type=numeric_string_to_int,
+        default=attack_params.new_adversarial_token_candidate_count,
+        help=f"The number of candidate adversarial values to generate at every iteration. If you are running out of memory and this value is greater than 1, try reducing it. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.")
         
-    parser.add_argument("--max-batch-size-new-adversarial-tokens", type=numeric_string_to_int,
-        default=attack_params.max_batch_size_new_adversarial_tokens,
-        help=f"The maximum amount that the batch size value used to generate new adversarial tokens is allowed to grow to when no new candidates are found.")
+    parser.add_argument("--max-new-adversarial-token-candidate-count", type=numeric_string_to_int,
+        default=attack_params.max_new_adversarial_token_candidate_count,
+        help=f"The maximum amount that the number of candidate adversarial tokens is allowed to grow to when no new candidates are found.")
 
     parser.add_argument("--batch-size-get-logits", type=numeric_string_to_int,
         default=attack_params.batch_size_get_logits,
@@ -1111,7 +1166,11 @@ if __name__=='__main__':
 
     parser.add_argument("--exclude-nonascii-tokens", type=str2bool, nargs='?',
         const=True, default=attack_params.exclude_nonascii_tokens,
-        help="Bias the adversarial content generation data to avoid using tokens that are not printable ASCII text.")
+        help="Bias the adversarial content generation data to avoid using tokens that are not ASCII text.")
+
+    parser.add_argument("--exclude-nonprintable-tokens", type=str2bool, nargs='?',
+        const=True, default=attack_params.exclude_nonprintable_tokens,
+        help="Bias the adversarial content generation data to avoid using tokens that are not printable.")
 
     parser.add_argument("--exclude-special-tokens", type=str2bool, nargs='?',
         const=True, default=attack_params.exclude_special_tokens,
@@ -1242,8 +1301,25 @@ if __name__=='__main__':
     # Both options should probably only allow a given token ID to be used as a random replacement once for each iteration unless there are no more to select from, to avoid results that are unlikely to be useful, like the corner case where a bunch of tokens are reverted back to "!".
     # For --gamma-garden mode, there should be a threshold value for minimum number of previously-generated tokens to select from before the mode can be triggered, for the same reason. If there are only three token IDs in the list, it doesn't make much sense to potentially replace several "good" tokens with "!". 
         
-    parser.add_argument("--no-loss-index-shift", type=str2bool, nargs='?',
+        
+    # how to determine the loss slice
+    
+    parser.add_argument("--loss-slice-is-llm-role-and-full-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string. Using this option is currently not recommended.")
+
+    parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change. This is the default mode.")
+    
+    parser.add_argument("--loss-slice-is-index-shifted-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice usually includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and is included for comparison with other techniques.")
+
+    parser.add_argument("--loss-slice-is-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
         help="This option disables shifting the start and end indices of the loss slice by -1 from the target slice. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.")
+        
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
@@ -1421,9 +1497,19 @@ if __name__=='__main__':
     #   that would be really neat, but it's probably going to be awhile before I get around to implementing it.
     #   Seems like it would require a "queue server" that all of the instances would connect to.
 
-    if args.no_loss_index_shift:
-        attack_params.shift_loss_indices = False
-        print("Warning: --no-loss-index-shift was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
+    if args.loss_slice_is_llm_role_and_full_target_slice:
+        attack_params.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE        
+        
+    if args.loss_slice_is_llm_role_and_truncated_target_slice:
+        attack_params.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
+
+    if args.loss_slice_is_index_shifted_target_slice:
+        attack_params.loss_slice_mode = LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES
+        print("Warning: --loss-slice-is-index-shifted-target-slice was specified. This will work as expected with some LLMs, but likely fail to generate useful results for LLMs that have multi-token role indicators, such as Gemma and Llama.")
+
+    if args.loss_slice_is_target_slice:
+        attack_params.loss_slice_mode = LossSliceMode.SAME_AS_TARGET_SLICE
+        print("Warning: --loss-slice-is-target-slice was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
 
     attack_params.topk = args.topk
     
@@ -1440,13 +1526,13 @@ if __name__=='__main__':
 
     attack_params.max_iterations = args.max_iterations
 
-    attack_params.batch_size_new_adversarial_tokens = args.batch_size_new_adversarial_tokens
+    attack_params.new_adversarial_token_candidate_count = args.new_adversarial_token_candidate_count
     
-    attack_params.max_batch_size_new_adversarial_tokens = args.max_batch_size_new_adversarial_tokens
+    attack_params.max_new_adversarial_token_candidate_count = args.max_new_adversarial_token_candidate_count
     
-    if attack_params.max_batch_size_new_adversarial_tokens < attack_params.batch_size_new_adversarial_tokens:
-        print(f"Warning: the value specified for --max-batch-size-new-adversarial-tokens ({attack_params.max_batch_size_new_adversarial_tokens}) was less than the value specified for --batch-size-new-adversarial-tokens ({attack_params.batch_size_new_adversarial_tokens}). Both values will be set to {attack_params.max_batch_size_new_adversarial_tokens}.")
-        attack_params.batch_size_new_adversarial_tokens = attack_params.max_batch_size_new_adversarial_tokens
+    if attack_params.max_new_adversarial_token_candidate_count < attack_params.new_adversarial_token_candidate_count:
+        print(f"Warning: the value specified for --max-new-adversarial-token-candidate-count ({attack_params.max_new_adversarial_token_candidate_count}) was less than the value specified for --new-adversarial-token-candidate-count ({attack_params.new_adversarial_token_candidate_count}). Both values will be set to {attack_params.max_new_adversarial_token_candidate_count}.")
+        attack_params.new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
 
     attack_params.batch_size_get_logits = args.batch_size_get_logits
     
@@ -1455,6 +1541,8 @@ if __name__=='__main__':
     attack_params.full_decoding_max_new_tokens = args.max_new_tokens_final
 
     attack_params.exclude_nonascii_tokens = args.exclude_nonascii_tokens
+    
+    attack_params.exclude_nonprintable_tokens = args.exclude_nonprintable_tokens
     
     attack_params.exclude_special_tokens = args.exclude_special_tokens
     

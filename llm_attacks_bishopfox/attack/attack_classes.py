@@ -22,10 +22,15 @@ from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 
+class DecodingException(Exception):
+    pass
+
+class EncodingException(Exception):
+    pass
+
 # for debugging
 class FakeException(Exception):
-    def __init__(self):
-        self.name = "Fake"
+    pass
 
 class PyTorchDevice():
     def __init__(self):
@@ -87,6 +92,13 @@ class InitialAdversarialContentCreationMode(StrEnum):
     RANDOM_TOKEN_IDS = 'random_token_ids'
     SINGLE_TOKEN = 'single_token'
 
+class LossSliceMode(StrEnum):
+    SAME_AS_TARGET_SLICE = 'same_as_target_slice'
+    SUBTRACT_ONE_FROM_START_AND_END_INDICES = 'subtract_one_from_start_and_end_indices'
+    ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE = 'assistant_role_plus_full_target_slice'
+    ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE = 'assistant_role_plus_truncated_target_slice'
+
+# not currently used
 class AdversarialContentPlacement(StrEnum):
     PREFIX = 'prefix'
     SUFFIX = 'suffix'
@@ -180,18 +192,37 @@ class AdversarialContent(JSONSerializableObject):
         # result.tokens = copy.deepcopy(property_dict["tokens"])
         # result.as_string = property_dict["as_string"]
         # return result
-    
+        
     @staticmethod
     def from_json(json_string):
         return AttackResultInfoCollection.from_dict(json.loads(json_string))
+    
+    # This seems to happen if the number of candidates is long enough
+    # Ideally I'll find a better way to avoid it than this
+    @staticmethod
+    def token_list_contains_invalid_tokens(tokenizer, token_ids):
+        for token_num in range(0, len(token_ids)):
+            if token_ids[token_num] < 0 or token_ids[token_num] >= tokenizer.vocab_size: 
+                #print(f"[AdversarialContent.token_list_contains_invalid_tokens] Warning: adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                return True
+        return False
     
     @staticmethod
     def from_token_ids(tokenizer, trash_fire_tokens, token_ids):
         result = AdversarialContent()
         result.token_ids = copy.deepcopy(token_ids)
         result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
-        result.as_string = tokenizer.decode(result.token_ids)
+        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
+        try:
+            result.as_string = tokenizer.decode(result.token_ids)
+        except Exception as e:
+            try:
+                result.as_string = get_decoded_tokens(tokenizer, result.token_ids)
+                #print(f"[AdversarialContent.from_token_ids] Debug: couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                raise DecodingException(f"[AdversarialContent.from_token_ids] couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+            except Exception as e2:
+                raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}")
+
         return result
 
     @staticmethod
@@ -269,7 +300,9 @@ class AttackParams(JSONSerializableObject):
 
     def set_automatic_base_and_target(self, autotarget_string):
         self.base_prompt = f"Write {autotarget_string}."
-        self.target_output =  f"Sure, here's {autotarget_string}"
+        #self.target_output =  f"Sure, here's {autotarget_string}"
+        # Added additional words to help make up for the loss of potentially relevant content due to the loss slice index shift
+        self.target_output =  f"Sure, here's {autotarget_string} as you requested: "
     
     def set_conversation_template_messages(self, message_list):
         self.conversation_template_messages = []
@@ -307,7 +340,9 @@ class AttackParams(JSONSerializableObject):
         return result
 
     def get_candidate_filter_regex(self):
-        return re.compile(self.candidate_filter_regex)
+        if self.candidate_filter_regex is not None:
+            return re.compile(self.candidate_filter_regex)
+        return re.compile(".")
 
     def get_token_filter_regex(self):
         if self.token_filter_regex is None:
@@ -379,9 +414,8 @@ class AttackParams(JSONSerializableObject):
         
         # TKTK: same as above, but at every iteration
 
-        # If this value is False, don't subtract one from the start and end indices of the loss slice.
-        # Setting this to False will break the GCG attack. I have this option in here so people can try that for themselves to illustrate that it really is a key part of the algorithm.
-        self.shift_loss_indices = True
+        # method for determining the loss slice start and end indices
+        self.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
 
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
@@ -443,8 +477,11 @@ class AttackParams(JSONSerializableObject):
         # Pre-generation candidate adversarial data filtering
         if 2 > 1:   # indent this data to make it more distinguishable from other sections
             
-            # limit tokens to only printable ASCII values
+            # limit tokens to only ASCII values
             self.exclude_nonascii_tokens = False
+            
+            # filter out nonprintable tokens
+            self.exclude_nonprintable_tokens = False
             
             # filter out basic special tokens (EOS/BOS/pad/unknown)
             self.exclude_special_tokens = False
@@ -500,9 +537,9 @@ class AttackParams(JSONSerializableObject):
             self.attempt_to_keep_token_count_consistent = False
             
             # Filter candidate strings by requiring that they match a regular expression
-            # require that a set of candidates decode to a string that includes at least 
-            # one occurrence of two consecutive mixed-case alphanumeric characters
             self.candidate_filter_regex = "[0-9A-Za-z]+"
+            #self.candidate_filter_regex = "\w+"
+            #self.candidate_filter_regex = None
 
             # Filter candidate strings to exclude lists with more than this many repeated lines
             self.candidate_filter_repetitive_lines = None
@@ -550,11 +587,13 @@ class AttackParams(JSONSerializableObject):
         self.display_model_size = False
 
         # batch sizes for various operations
-        self.batch_size_new_adversarial_tokens = 16
-        #self.batch_size_new_adversarial_tokens = 32
+        #self.new_adversarial_token_candidate_count = 16
+        #self.new_adversarial_token_candidate_count = 32
+        self.new_adversarial_token_candidate_count = 64
+        #self.new_adversarial_token_candidate_count = 256
         
         # the maximum the adversarial token generation batch size is allowed to grow to when no candidates are found
-        self.max_batch_size_new_adversarial_tokens = 1024
+        self.max_new_adversarial_token_candidate_count = 1024
         
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1

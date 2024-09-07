@@ -9,13 +9,18 @@ from llm_attacks_bishopfox import get_encoded_tokens
 
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
-from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_non_garbage_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_index_of_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_non_garbage_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_occurrence_of_array_in_array
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import is_disastrous_dumpster_fire_token
+from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+from llm_attacks_bishopfox.util.util_functions import RequiredValueIsNoneException
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
+
+class PromptGenerationException(Exception):
+    pass
 
 def get_default_generic_role_indicator_template():
     # note: using "### {role}:" instead will cause issues 
@@ -42,13 +47,33 @@ DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
 def get_default_conversation_template():
     return fastchat.conversation.get_conv_template(DEFAULT_CONVERSATION_TEMPLATE_NAME)
 
+def get_gemma_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="gemma"
+    conv_template.system_message="<bos>"
+    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep="<end_of_turn>\n"
+    conv_template.stop_str="<end_of_turn>"
+    return conv_template
+    
+def get_gemma_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="gemma"
+    conv_template.system_message="<bos>"
+    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep="<end_of_turn>\n"
+    conv_template.stop_str="<end_of_turn>"
+    return conv_template
+
 def get_phi2_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name="phi2"
     conv_template.system_template = "System: {system_message}\n"
     conv_template.system_message="A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
     conv_template.roles = tuple(["User", "Assistant"])
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    #conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep = '\n'
     conv_template.sep2 = '\n'
     return conv_template
@@ -63,32 +88,64 @@ def get_phi3_conversation_template():
     conv_template.sep = '\n'
     return conv_template
 
-def get_gemma_conversation_template():
+def get_qwen_conversation_template():
+    conv_template = fastchat.conversation.get_conv_template("qwen-7b-chat").copy()
+    conv_template.name="qwen"
+    return conv_template
+
+def get_qwen2_conversation_template():
+    conv_template = get_qwen_conversation_template().copy()
+    conv_template.name="qwen2"
+    return conv_template
+
+def get_stablelm2_conversation_template():
     conv_template = get_default_conversation_template().copy()
-    conv_template.name="gemma"
-    conv_template.system_message="<bos>"
-    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-    conv_template.sep="<end_of_turn>\n"
-    conv_template.stop_str="<end_of_turn>"
+    conv_template.name="stablelm2"
+    conv_template.system_template = """<|im_start|>system
+{system_message}"""
+    conv_template.system_message="You are a helpful assistant."
+    conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep = "<|im_end|>"
     return conv_template
 
 # TKTK: allow overriding templates if they're added later
 # override = True is required because otherwise adding a missing template will fail with an assertion
 def register_missing_conversation_templates():
     fschat_added_support = []
-    if "phi2" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("phi2")
-    else:
-        fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
-    if "phi3" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("phi3")
-    else:
-        fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
+
     if "gemma" in fastchat.conversation.conv_templates.keys():
         fschat_added_support.append("gemma")
     else:
         fastchat.conversation.register_conv_template(template = get_gemma_conversation_template(), override = True)
+
+    if "phi2" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("phi2")
+    else:
+        fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
+
+    if "phi3" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("phi3")
+    else:
+        fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
+
+    # For some reason, fschat calls their "qwen" template "qwen-7b-chat" specifically, so this code adds a shortcut
+    if "qwen" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("qwen")
+    else:        
+        fastchat.conversation.register_conv_template(template = get_qwen_conversation_template(), override = True)
+
+    # Qwen2 *seems* to use the same chat template format at Qwen
+    if "qwen2" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("qwen2")
+    else:        
+        fastchat.conversation.register_conv_template(template = get_qwen2_conversation_template(), override = True)
+        
+    if "stablelm2" in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append("stablelm2")
+    else:
+        fastchat.conversation.register_conv_template(template = get_stablelm2_conversation_template(), override = True)
+
     if len(fschat_added_support) > 0:
         print(f"[register_missing_conversation_templates] Warning: the fschat (fastchat) library appears to have added support for the following model(s), which previously required custom definitions: {fschat_added_support}. This may cause differences in results generated by this tool.")
 
@@ -130,8 +187,8 @@ def load_conversation_template(model_path, template_name = None, generic_role_in
         conv_template.sep2 = "\n "
     if generic_role_indicator_template is not None:
         conv_template.roles = tuple([generic_role_template.format(role=r) for r in conv_template.roles])
-    if conv_template.name == 'llama-2':
-        conv_template.sep2 = conv_template.sep2.strip()
+    #if conv_template.name == 'llama-2':
+    #    conv_template.sep2 = conv_template.sep2.strip()
     if system_prompt is not None:
         if hasattr(conv_template, "system_message"):
             original_system_message = conv_template.system_message
@@ -244,9 +301,10 @@ class PromptAndInputIDCollection(JSONSerializableObject):
     def from_json(json_string):
         return PromptAndInputIDCollection.from_dict(json.loads(json_string))
 
+
 # TKTK: expand to prefix/suffix attack, and also interleaving the tokens into the base string.
 class AdversarialContentManager:
-    def __init__(self, *, tokenizer, conv_template, instruction, target, adversarial_content, trash_fire_tokens, adversarial_content_placement = AdversarialContentPlacement.SUFFIX):
+    def __init__(self, *, tokenizer, conv_template, instruction, target, adversarial_content, trash_fire_tokens, loss_slice_mode = None, adversarial_content_placement = AdversarialContentPlacement.SUFFIX):
 
         self.tokenizer = tokenizer
         self.conv_template = conv_template
@@ -254,6 +312,9 @@ class AdversarialContentManager:
         self.target = target
         self.adversarial_content = adversarial_content
         self.adversarial_content_placement = adversarial_content_placement
+        self.loss_slice_mode = loss_slice_mode
+        if loss_slice_mode is None:
+            raise RequiredValueIsNoneException("loss_slice_mode cannot be None")
         self.trash_fire_tokens = trash_fire_tokens
     
     # For debugging / creating handlers for new conversation templates
@@ -277,7 +338,8 @@ class AdversarialContentManager:
         slice_info = self.get_slice_info(slice_data, tokens)
         slice_dictionary = slice_data.get_slice_dictionary()
         for slice_name in slice_info.keys():
-            print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}'")
+            #print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}'")
+            print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}', tokens = {tokens[slice_dictionary[slice_name]]}")
 
     def validate_slice_data(self, source_method_name, slice_data):
         invalid_slice_dictionary = {}
@@ -331,42 +393,34 @@ class AdversarialContentManager:
     
     # The length of the target and loss slices must match when passed to downstream functions or the attack will crash with an error.
         
-    # _loss_slice: this is some LLM sorcery. The only explanation I've found wasn't in the original code at all, but in nanogcg, which has a comment to the effect of having to shift the logits so that the previous token predicts the current token.
-    # It's the same as the target slice, but with the start and end indices reduced by 1.
+    # _loss_slice: this is some LLM sorcery.
+    # Reading the original paper, especially page 6 of 2307.15043v2.pdf, one might think that the "loss slice" would be the LLM output that corresponds to the "target slice" in the non-LLM-generated prompt, and that the loss being calculated was the loss between the target and what the LLM actually generated, but this is not the case.
+    #
+    # The loss slice is the same as the target slice, but with the start and end indices reduced by 1.
     # If you *don't* reduce the indices by 1, the attack will utterly fail.
     #
-    # Reading the original paper, especially page 6 of 2307.15043v2.pdf, one might think that the "loss slice" would be the LLM output that corresponds to the "target slice" in the non-LLM-generated prompt, and that the loss being calculated was the loss between the target and what the LLM actually generated, but this is not the case, at least in the code that was released. The loss calculation is between the tokens of the adversarial content and the target string.
+    # Here's the official semi-explanation from the original paper:
+    # "The intuition of this approach is that if the language model can be put into a 'state' where this completion is the most likely response, as opposed to refusing to answer the query, then it likely will continue the completion with precisely the desired objectionable behavior"
     #
-    # I assume the idea is that the target string is essentially a coordinate or set of coordinates (a "shape") in ML hyperspace, and the goal is to find the random adversarial content that is closest to that target in ML hyperspace, not necessarily any other representation of the target. That would seem to match following the description from the paper:
+    # nanogcg has a comment to the effect of having to shift the logits so that the previous token predicts the current token.
     #
-    #   "The intuition of this approach is that if the language model can be put into a 'state' where this completion is the most likely response, as opposed to refusing to answer the query, then it likely will continue the completion with precisely the desired objectionable behavior"
+    # If you're like me, you might wonder why this doesn't just optimize over time for adversarial content that matches the target string. Actually, that's very close to what's going on.
     #
-    # I'm not an ML sorceror, so I couldn't tell you (yet) why this doesn't just optimize over time for adversarial content that matches the target string.
+    # The loss calculation is between the tokens of the adversarial content and the tokens that represents the role-switch from user to LLM plus all but the last token of the target string. The only reason (AFAIK) that the last token isn't included is that the length of the loss slice would then no longer match the target slice, and that causes some issues.
     #
-    # I also still feel like it would make more sense and be more effective to compute the loss between (output of the LLM when given the base prompt + adversarial content) and (target output). But maybe my opinion will change as I learn more about the low-level operation of the attack.
+    # In other words, the GCG attack tries to discover a sequence of tokens that cause the LLM to predict that the next thing it should do is to switch contexts from reading your input to responding, then issue (most of) the target string. If it does that, then clearly the most likely thing for it to do is to give you the information you asked for, because by that point, the response *already contains the LLM's indication that it's happy to provide that information*. Go back and re-read the semi-explanation again if it didn't make sense the first time. It probably will now.
     # 
+    # Once you make that connection, a lot of the potential failure modes of this tool start to make more sense. For example, sending the conversations to the LLM in the correct format (including using the correct token *IDs*, not just identical text) is vital, because otherwise you're either not going to escape out of the user-input context, *or* you're going to cause the LLM to generate a pseudo-conversation between a human and an LLM, without responding as itself. Adversarial content generated in this way is unlikely to work against other implementations of the same LLM, because those implementations will most likely send conversations to the LLM in the correct format.
 
-    # TKTK: implement two handling modes:
+    # In the original demonstration code's Llama-2 code path, the user role, goal, and control slices were incorrectly calculated.
+    # This was because some of the code didn't take into account that the tokenizer considered "[INST]" three tokens instead of one.
+    # I eventually sort of fixed this by making the code flexible enough to handle Llama-2 without a separate branch.
+    
+    # TKTK (maybe): implement two handling modes:
     # Truncate the slices to the shorter of the two
     # Pad the shorter data to match the length of the longer data
     #   Option to pad the shorter data with different tokens, e.g. padding, unknown, the tokenized version of a string, etc.
     # 
-
-    # For some LLMs, e.g. Llama-2, the distinction between speaking roles is handled differently, but the parsing logic should still produce equivalent results.
-    # In the case of Llama-2, the standard conversation template wraps user input in [INST] [/INST] tags, and anything else is the LLM's response.
-    # The parser handles this by treating "[INST]" as equivalent to something like "Human:" and "[/INST]" as equivalent to something like "Assistant:".
-    # There is probably a way to exploit that inherent to the model, e.g. with inbalanced "[INST]" and/or "[/INST]" tags.
-
-    
-    # I don't have a PhD in machine learning or anything, but I observed the following behaviours that seemed to be incorrect and fixed them:
-    
-    # For the Llama-2 code path, the user role, goal, and control slices were incorrectly calculated.
-    # I think this was because some of the code didn't take into account that the tokenizer considered "[INST]" three tokens instead of one.
-    # I eventually fixed this by making the code flexible enough to handle Llama-2 without a separate branch.
-
-
-
-
 
     #prompt_and_input_id_data should be a PromptAndInputIDCollection
     def get_complete_input_token_ids(self, prompt_and_input_id_data):
@@ -384,7 +438,7 @@ class AdversarialContentManager:
     def get_complete_input_string(self, prompt_and_input_id_data):
         return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
 
-    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False, shift_loss_indices = True):#, update_self_values = True):
+    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
@@ -434,7 +488,7 @@ class AdversarialContentManager:
             #print(f"[get_prompt] Debug: conversation_template.roles = '{conversation_template.roles}', delimiter = '{delimiter}', toks = '{toks}', original_toks = '{original_toks}'")
             #print(f"[get_prompt] Debug: conversation_template.roles = '{conversation_template.roles}', delimiter = '{delimiter}', toks = '{toks}'")
             if delimiter.strip() == "":
-                print(f"[get_prompt] Eror: conversation_template.roles '{conversation_template.roles}' entry 0 ('{delimiter}') is equivalent to an empty string.")
+                print(f"[get_prompt] Error: conversation_template.roles '{conversation_template.roles}' entry 0 ('{delimiter}') is equivalent to an empty string.")
                 sys.exit(1)
             result.slice_data.user_role = find_last_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks, conversation_template = conversation_template)
             self.validate_slice_data('get_prompt - user_role_slice', result.slice_data)
@@ -480,11 +534,23 @@ class AdversarialContentManager:
             result.slice_data.target = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - target_slice', result.slice_data)
             
-            #result.slice_data.loss = slice(first_non_garbage_token - 1, last_non_garbage_token - 1)
-            if shift_loss_indices:
+            #print(f"[get_prompt] Debug: getting loss slice using mode {self.loss_slice_mode}")
+            if self.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
+                result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(toks)))
+
+            if self.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+                len_target_slice = result.slice_data.target.stop - result.slice_data.target.start
+                result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
+                
+            if self.loss_slice_mode == LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES:
                 result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(toks)) - 1)
-            else:
+
+            if self.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
                 result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
+            
+            if result.slice_data.loss is None:
+                raise PromptGenerationException("Did not find a valid loss slice mode")
+
             self.validate_slice_data('get_prompt - loss_slice', result.slice_data)
             
         else:
@@ -554,21 +620,28 @@ class AdversarialContentManager:
             )
             self.validate_slice_data('get_prompt', result.slice_data)
             
-            # [blincoln] Testing out my theory that the -1 offset is incorrect
-            # result.slice_data.loss = slice(
-                # prompt_find_self_target_c2t - 1,
-                # prompt_combined_c2t
-            # )
-            if shift_loss_indices:
+            #print(f"[get_prompt] Debug: getting loss slice using mode {self.loss_slice_mode}")
+            if self.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+                result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(toks)))
+
+            if self.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+                len_target_slice = result.slice_data.target.stop - result.slice_data.target.start
+                result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
+                
+            if self.loss_slice_mode == LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES:
                 result.slice_data.loss = slice(
                     prompt_find_self_target_c2t - 1,
                     prompt_combined_c2t
                 )
-            else:
+
+            if self.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE :
                 result.slice_data.loss = slice(
                     prompt_find_self_target_c2t,
                     prompt_combined_c2t + 1
                 )
+            
+            if result.slice_data.loss is None:
+                raise PromptGenerationException("Did not find a valid loss slice mode")
 
             self.validate_slice_data('get_prompt', result.slice_data)
 

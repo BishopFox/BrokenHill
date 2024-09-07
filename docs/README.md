@@ -1,8 +1,12 @@
-# TKTK_Final_Tool_Name documentation
+# Broken Hill documentation
+
+## Frequently-asked questions (FAQ)
+
+[Please see the separate list of frequently-asked questions](FAQ.md).
 
 ## Prerequisites
 
-* You should run this tool on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).
+* You should run Broken Hill on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).
 * Your Linux system should have some sort of reasonably modern Nvidia GPU. Using the tool against most popular/common LLMs will require at least 24GiB of VRAM. [It has been tested on an RTX 4090, but other Nvidia GPUs with 24GiB or more of VRAM should work at least as well](other_graphics_hardware.md).
 * You should have your Linux system set up with a working, reasonbly current version of Nvidia's drivers. One way to validate that the drivers are working correctly is to try running [hashcat](https://hashcat.net/) in benchmarking mode. If you get results that are more or less like the results other hashcat users report for the same hardware, your drivers are probably working more or less correctly.
 
@@ -12,8 +16,6 @@ Clone the repository, then:
 
 ```
 $ python -m venv ./
-
-$ bin/pip install -r llm-attacks-bf/requirements.txt
 
 $ bin/pip install ./llm-attacks-bf/
 ```

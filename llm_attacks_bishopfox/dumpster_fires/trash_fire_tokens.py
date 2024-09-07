@@ -255,19 +255,21 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
             processed_token = decoded_tokens[i].strip()
             decoded_tokens_processed_1.append(processed_token)
             decoded_tokens_processed_2.append(decoded_tokens[i])
-        result_start = find_last_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_1, start_index=start_index, stop_index=stop_index)
+        # look for the first word as one string as well as individual decoded token IDs
+        for search_array in [ string_to_search_for_array, decoded_string_tokens ]:
+            for in_array in [ decoded_tokens_processed_1, decoded_tokens_processed_2 ]:
+                if result_start is None:
+                    result_start = find_last_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
+                else:
+                    break
+            if result_start is not None:
+                break
         if result_start is None:
-            result_start = find_last_occurrence_of_array_in_array(string_to_search_for_array, decoded_tokens_processed_2, start_index=start_index, stop_index=stop_index)
-            if result_start is None:
-                raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
-            else:
-                result_stop = result_start + len(string_to_search_for_array)
-                # This issue is so frequent that enabling this error is too noisy
-                #print(f"[find_last_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+            raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
         else:
             result_stop = result_start + len(string_to_search_for_array)
             # This issue is so frequent that enabling this error is too noisy
-            #print(f"[find_last_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+            #print(f"[find_last_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
             
     else:
         result_stop = result_start + len(string_tokens)

@@ -1,5 +1,9 @@
 # Frequently-asked questions
 
+## Why "Broken Hill"?
+
+It's a reference to [*Lexicon*, by Max Barry](https://maxbarry.com/lexicon/). Saying any more than that would involve spoiling key plot elements from that novel.
+
 ## Can I run this using something other than an Nvidia GPU?
 
 You can use the PyTorch `cpu` device if you really want to, but it will literally take hundreds of times longer to run, e.g. 2+ hours for a single iteration of the main loop.

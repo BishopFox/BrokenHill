@@ -18,6 +18,11 @@ from llm_attacks_bishopfox import get_encoded_tokens
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
 
+class PaddingException(Exception):
+    pass
+
+class NullPaddingTokenException(PaddingException):
+    pass
 
 def print_stats(function_name):
     print(f"---")
@@ -50,9 +55,66 @@ def get_first_value_from_tensor(t):
         if len(tensor_item) > 1:
             tensor_item = tensor_item[0]
         return get_first_value_from_tensor(tensor_item)
-    return t    
+    return t
+    
+def get_padded_target_token_ids(tokenizer, loss_slice, target_ids):
+    #print(f"[get_padded_target_token_ids] Debug: target_ids = {target_ids}, loss_slice = {loss_slice}")
+    result = target_ids
+    return_tensor = None
+    input_is_list_of_lists = False
+    
+    original_target_ids_length = len(target_ids)
+    
+    target_ids_as_list = None
+    if isinstance(target_ids, list):
+        target_ids_as_list = copy.deepcopy(target_ids)
+        return_tensor = False
+    if isinstance(target_ids, torch.Tensor):
+        target_ids_as_list = target_ids.tolist()
+        return_tensor = True
+    
+    if return_tensor is None:
+        raise PaddingException(f"Couldn't pad the object '{target_ids}' because it was not a list or a tensor.")
+    
+    if len(target_ids_as_list) == 0:
+        return result
+    
+    len_loss_slice = loss_slice.stop - loss_slice.start
+    len_comparison = len(target_ids_as_list)
 
-def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
+    # Calls to this function with output from e.g. get_logits are passing a multidimensional array of values that need to be padded
+    if isinstance(target_ids_as_list[0], list):
+        #print(f"[get_padded_target_token_ids] Debug: target_ids_as_list is a multidimensional array")
+        input_is_list_of_lists = True
+        len_comparison = len(target_ids_as_list[0])
+
+    #print(f"[get_padded_target_token_ids] Debug: target_ids_as_list = {target_ids_as_list}, len_loss_slice = {len_loss_slice}")
+    
+    if len_loss_slice > len_comparison:
+        if tokenizer.pad_token_id is None:
+            # This should never occur unless someone is calling this function directly, outside of the tool
+            raise NullPaddingTokenException("The current target slice must be padded to match the length of the loss slice, but the tokenizer's padding token ID is None.")
+        
+        if input_is_list_of_lists:
+            for list_entry_num in range(0, len(target_ids_as_list)):
+                #print(f"[get_padded_target_token_ids] Debug: target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' before padding.")
+                while len_loss_slice > len(target_ids_as_list[list_entry_num]):
+                    target_ids_as_list[list_entry_num].append(tokenizer.pad_token_id)
+                #print(f"[get_padded_target_token_ids] Debug: target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' after padding.")
+        else:
+            while len_loss_slice > len(target_ids_as_list):
+                target_ids_as_list.append(tokenizer.pad_token_id)
+        result = target_ids_as_list
+    
+    if return_tensor:
+        result = torch.tensor(result, device = target_ids.device)
+    
+    #print(f"[get_padded_target_token_ids] Debug: original_target_ids_length = {original_target_ids_length}, len(result) = {len(result)}, len(target_ids_as_list) = {len(target_ids_as_list)}, len_loss_slice = {len_loss_slice}, result = '{result}', target_ids_as_list = '{target_ids_as_list}'")
+    
+    return result
+
+#def token_gradients(model, tokenizer, input_ids, input_slice, target_slice, loss_slice):
+def token_gradients(model, tokenizer, input_ids, input_id_data):
 
     """
     Computes gradients of the loss with respect to the coordinates.
@@ -63,17 +125,17 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
         The transformer model to be used.
     input_ids : torch.Tensor
         The input sequence in the form of token ids.
-    input_slice : slice
+    input_id_data.slice_data.control : slice
         The slice of the input sequence for which gradients need to be computed.
-    target_slice : slice
+    input_id_data.slice_data.target : slice
         The slice of the input sequence to be used as targets.
-    loss_slice : slice
+    input_id_data.slice_data.loss : slice
         The slice of the logits to be used for computing the loss.
 
     Returns
     -------
     torch.Tensor
-        The gradients of each token in the input_slice with respect to the loss.
+        The gradients of each token in input_id_data.slice_data.control with respect to the loss.
     """
 
     #print_stats("token_gradients")
@@ -107,11 +169,11 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
         scales_value = get_first_value_from_tensor(scales)
         pczp_value = int(get_first_value_from_tensor(pczp))
         #print(f"[token_gradients] Debug: scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
-#        one_hot = torch.randint(0, 1, size=(input_ids[input_slice].shape[0],embed_weights.shape[0]), device=model.device, dtype=embed_weights.dtype)
-        one_hot = create_new_quantized_tensor(0, (input_ids[input_slice].shape[0],embed_weights.shape[0]), model.device, embed_weights.data.dtype, scales_value, pczp_value)
+#        one_hot = torch.randint(0, 1, size=(input_ids[input_id_data.slice_data.control].shape[0],embed_weights.shape[0]), device=model.device, dtype=embed_weights.dtype)
+        one_hot = create_new_quantized_tensor(0, (input_ids[input_id_data.slice_data.control].shape[0],embed_weights.shape[0]), model.device, embed_weights.data.dtype, scales_value, pczp_value)
     else:
         one_hot = torch.zeros(
-            input_ids[input_slice].shape[0],
+            input_ids[input_id_data.slice_data.control].shape[0],
             embed_weights.shape[0],
             device=model.device,
             dtype=embed_weights.dtype
@@ -129,7 +191,7 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
 
     one_hot.scatter_(
         1, 
-        input_ids[input_slice].unsqueeze(1),
+        input_ids[input_id_data.slice_data.control].unsqueeze(1),
         one_hot_ones
     )
     #print_stats("token_gradients")
@@ -150,9 +212,9 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
     #print("[token_gradients] Getting full_embeds")
     full_embeds = torch.cat(
         [
-            embeds[:,:input_slice.start,:], 
+            embeds[:,:input_id_data.slice_data.control.start,:], 
             input_embeds, 
-            embeds[:,input_slice.stop:,:]
+            embeds[:,input_id_data.slice_data.control.stop:,:]
         ], 
         dim=1)
     #print_stats("token_gradients")
@@ -168,11 +230,23 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
     #print_stats("token_gradients")
 
     #print("[token_gradients] Getting targets")
-    targets = input_ids[target_slice]
+    targets = input_ids[input_id_data.slice_data.target]
     #print_stats("token_gradients")
+    
+    # pad the target token IDs, if necessary
+    targets = get_padded_target_token_ids(tokenizer, input_id_data.slice_data.loss, targets)
+    # len_loss_slice = input_id_data.slice_data.loss.stop - input_id_data.slice_data.loss.start
+    # if len_loss_slice > len(targets):
+        # if tokenizer.pad_token_id is None:
+            # # This should never occur unless someone is calling this function directly, outside of the tool
+            # raise NullPaddingTokenException("The current target slice must be padded to match the length of the loss slice, but the tokenizer's padding token ID is None.")
+        # targets_as_list = targets.tolist()
+        # while len_loss_slice > len(targets_as_list):
+            # targets_as_list.append(tokenizer.pad_token_id)
+        # targets = torch.tensor(targets_as_list, device = targets.device)
 
     #print("[token_gradients] Getting loss")
-    loss = nn.CrossEntropyLoss()(logits[0,loss_slice,:], targets)
+    loss = nn.CrossEntropyLoss()(logits[0,input_id_data.slice_data.loss,:], targets)
     #print_stats("token_gradients")
 
     #print("[token_gradients] loss.backward()")
@@ -282,9 +356,13 @@ def sample_control(attack_params, adversarial_content_manager, current_adversari
         #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
         for i in range(new_adversarial_token_ids.shape[0]):
             #print(f"[sample_control] Debug: new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
-            new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager.tokenizer, adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids[i].tolist())
-            result.append_if_new(new_candidate)
-
+            new_adversarial_token_ids_as_list = new_adversarial_token_ids[i].tolist()
+            if AdversarialContent.token_list_contains_invalid_tokens(adversarial_content_manager.tokenizer, new_adversarial_token_ids_as_list):
+                dummy = 1
+                #print(f"[sample_control] Warning: adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {adversarial_content_manager.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+            else:
+                new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager.tokenizer, adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
+                result.append_if_new(new_candidate)
     return result
 
 def get_filtered_cands(attack_params, adversarial_content_manager, new_adversarial_content_list, previous_adversarial_values, filter_cand=True, current_adversarial_content = None):
@@ -312,7 +390,11 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
             adversarial_candidate_message_represenation = adversarial_candidate.as_string
             #print(f"[get_filtered_cands] Debug: adversarial_candidate = '{adversarial_candidate.get_short_description()}', current_adversarial_content = '{current_adversarial_content.get_short_description()}', control_cand[i] = '{control_cand[i]}'")
             include_candidate = True
-            if filter_cand:
+            # make sure the LLM sorcery hasn't accidentally introduced a token ID that's outside of the valid range
+            if AdversarialContent.token_list_contains_invalid_tokens(adversarial_content_manager.tokenizer, adversarial_candidate.token_ids):
+                    include_candidate = False
+                    #print(f"[get_filtered_cands] Warning: adversarial_candidate '{adversarial_candidate.get_short_description()}' contains token ID {adversarial_candidate.token_ids[candidate_token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {adversarial_content_manager.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+            if include_candidate and filter_cand:
                 include_candidate = False
                 
                 if not adversarial_candidate.is_match(current_adversarial_content):
@@ -359,8 +441,8 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
                         if attack_params.candidate_filter_newline_limit is not None:
                             newline_character_count = 0
                             for newline_character in ["\x0a", "\x0d"]:
-                                if newline_character in current_adversarial_content.as_string:
-                                    for current_char in current_adversarial_content.as_string:
+                                if newline_character in adversarial_candidate.as_string:
+                                    for current_char in adversarial_candidate.as_string:
                                         if current_char == newline_character:
                                             newline_character_count += 1
                             if newline_character_count > attack_params.candidate_filter_newline_limit:
@@ -368,12 +450,12 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
                                 #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' rejected due to presence of newline character(s)")
                                 filtered_due_to_containing_newline_characters.append(adversarial_candidate)
                         if include_candidate and filter_regex is not None:
-                            if filter_regex.search(current_adversarial_content.as_string):
+                            if filter_regex.search(adversarial_candidate.as_string):
                                 dummy = 1
-                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' passsed the regular expression filter")
+                                #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' represented as '{adversarial_candidate.as_string}' passed the regular expression filter")
                             else:
                                 include_candidate = False
-                                #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because it failed to pass the regular expression filter")
+                                print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_params.token_filter_regex}'.")
                                 filtered_due_to_not_matching_regex.append(adversarial_candidate)
                         if include_candidate and attack_params.candidate_filter_repetitive_tokens is not None and attack_params.candidate_filter_repetitive_tokens > 0:
                             token_counts = {}
@@ -392,7 +474,7 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
                             #if include_candidate:
                             #    print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' passed the repetitive token filter.")
                         if include_candidate and attack_params.candidate_filter_repetitive_lines is not None and attack_params.candidate_filter_repetitive_lines > 0:
-                            candidate_lines = current_adversarial_content.as_string.splitlines()
+                            candidate_lines = adversarial_candidate.as_string.splitlines()
                             token_counts = {}
                             already_notified_tokens = []
                             for c_line in candidate_lines:
@@ -425,25 +507,24 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
 
     #print(f"[get_filtered_cands] Debug: control_cand = {control_cand}, cands = {cands}")
 
-    len_result_adversarial_content = len(result.adversarial_content)
     if filter_cand:
-        if len_result_adversarial_content == 0:
+        if len(result.adversarial_content) == 0:
             dummy = 1
             #print(f"[get_filtered_cands] Warning: no candidates found")
         else:
             # I *think* this step is supposed to append copies of the last entry in the list enough times to make the new list as long as the original list
             #cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
             # TKTK: try taking this out, because it seems weird to have to do this
-            if len_result_adversarial_content < len(new_adversarial_content_list.adversarial_content):
+            if len(result.adversarial_content) < len(new_adversarial_content_list.adversarial_content):
                 while len(result.adversarial_content) < len(new_adversarial_content_list.adversarial_content):
                     result.adversarial_content.append(result.adversarial_content[-1].copy())
                     
             #print(f"[get_filtered_cands] Warning: {round(filtered_count / len(control_cand), 2)} control candidates were not valid")
 
-    percent_passed = float(len_result_adversarial_content) / float(len_new_adversarial_content_list)
+    percent_passed = float(len(result.adversarial_content)) / float(len_new_adversarial_content_list)
     percent_rejected = float(filtered_count) / float(len_new_adversarial_content_list)
     if percent_rejected > attack_params.warn_on_filtered_candidate_percentage:
-        filter_warning = f"Warning: {percent_rejected:.0%} of adversarial value candidates were filtered out during this iteration, which is greater than the warning threshold of {attack_params.warn_on_filtered_candidate_percentage:.0%}. This may be due to excessively strict or conflicting filtering options specified by the operator."
+        filter_warning = f"Warning: {len(result.adversarial_content)}/{len_new_adversarial_content_list} ({percent_rejected:.0%}) of adversarial value candidates were filtered out during this iteration, which is greater than the warning threshold of {attack_params.warn_on_filtered_candidate_percentage:.0%}. This may be due to excessively strict or conflicting filtering options specified by the operator."
         len_filtered_due_to_empty_string = len(filtered_due_to_empty_string)
         if len_filtered_due_to_empty_string > 0:
             filter_warning = f"{filter_warning} {len_filtered_due_to_empty_string} candidate(s) were filtered out because they were equivalent to an empty string."
@@ -585,6 +666,18 @@ def target_loss(logits, ids, input_id_data, tokenizer):
     logits_sliced_transposed = logits_sliced.transpose(1,2)
     ids_sliced = ids[:,input_id_data.slice_data.target]
     
+    # pad the target token IDs, if necessary
+    ids_sliced = get_padded_target_token_ids(tokenizer, input_id_data.slice_data.loss, ids_sliced)
+    # len_loss_slice = loss_slice.stop - loss_slice.start
+    # if len_loss_slice > len(ids_sliced):
+        # if tokenizer.pad_token_id is None:
+            # # This should never occur unless someone is calling this function directly, outside of the tool
+            # raise NullPaddingTokenException("The current target slice must be padded to match the length of the loss slice, but the tokenizer's padding token ID is None.")
+        # targets_as_list = ids_sliced.tolist()
+        # while len_loss_slice > len(targets_as_list):
+            # targets_as_list.append(tokenizer.pad_token_id)
+        # ids_sliced = torch.tensor(targets_as_list, device = targets.device)
+    
     ids_sliced_decoded = get_decoded_tokens(tokenizer, ids_sliced)
     #print(f"[target_loss] Debug: calculating cross-entropy loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")
 
@@ -603,11 +696,12 @@ def get_missing_pad_token_replacement(tokenizer, replacement_name):
         raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
     result = None
     if replacement_name == "bos":
-        result = tokenizer.bos_token
+        result = tokenizer.bos_token_id, tokenizer.bos_token
     if replacement_name == "eos":
-        result = tokenizer.eos_token
+        result = tokenizer.eos_token_id, tokenizer.eos_token
     if replacement_name == "unk":
-        result = tokenizer.unk_token
+        result = tokenizer.unk_token_id, tokenizer.unk_token
+    return result
 
 def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype=torch.float16, trust_remote_code=True, ignore_mismatched_sizes=False, enable_hardcoded_tokenizer_workarounds = False, missing_pad_token_replacement = None, **kwargs):
     #print(f"[load_model_and_tokenizer] Debug: model_path = '{model_path}', tokenizer_path = '{tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
@@ -677,7 +771,7 @@ def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', d
             
     if not tokenizer.pad_token:
         if missing_pad_token_replacement is not None:
-            tokenizer.pad_token = get_missing_pad_token_replacement(tokenizer, missing_pad_token_replacement)
+            tokenizer.pad_token_id, tokenizer.pad_token = get_missing_pad_token_replacement(tokenizer, missing_pad_token_replacement)
             print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{missing_pad_token_replacement}' specified by the operator. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
         else:
             print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value on the command line.")

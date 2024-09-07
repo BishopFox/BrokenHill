@@ -21,3 +21,10 @@ accelerate
 flash_attn
 # tested with sentencepiece==0.2.0
 sentencepiece
+# tested with causal-conv1d==1.4.0
+causal-conv1d>=1.2.0
+# mamba-ssm is recommended by the state-spaces for the Mamba LLM family, but doesn't install correctly on my system.
+#mamba-ssm
+# needed for Tiny-Llama
+# tested with protobuf==xxxxx
+protobuf

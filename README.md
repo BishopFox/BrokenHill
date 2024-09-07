@@ -1,8 +1,8 @@
-# TKTK_Final_Tool_Name
+# Broken Hill
 
-TKTK_Final_Tool_Name generates crafted prompts that bypass restrictions in large language models (LLMs) using the greedy coordinate gradient (GCG) attack described in [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson](https://arxiv.org/abs/2307.15043).
+Broken Hill is a productionized, ready-to-use automated attack tool that generates crafted prompts to bypass restrictions in large language models (LLMs) using the greedy coordinate gradient (GCG) attack described in [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson](https://arxiv.org/abs/2307.15043).
 
-TKTK_Final_Tool_Name is a productionized, ready-to-use automated attack tool. It can generate robust prompts that successfully jailbreak LLMs configured differently than the one used to generate the prompts. For example:
+Broken Hill can generate robust prompts that successfully jailbreak LLMs configured differently than the one used to generate the prompts. For example:
 
 * The same model with more or fewer parameters
 ** e.g. the prompts were generated using the 2-billion-parameter version of Gemma, but are used against an implementation based on the 7-billion-parameter version of Gemma.
@@ -32,31 +32,32 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 ## Changes from the code in the original repository
 
 * Full command-line interface
-* Supports many more models, most of which are available in sizes small enough to run on an RTX 4090
-  * Original authors' version, some of these were more supported than others:
+* Supports many more model families, most of which are available in sizes small enough to run on an RTX 4090
+  * Original authors' version:
     * Falcon (too large for the attack on an RTX 4090)
     * GPT-J (too large for the attack on an RTX 4090)
     * GPT Neo X (base model is too large for the attack on an RTX 4090)
-	* Guanaco
+	* Guanaco (too large for the attack on an RTX 4090)
     * Llama-2 (too large for the attack on an RTX 4090)
-    * Pythia (more or less)
-  * This version also supports:
+    * Pythia
+  * This version also supports testing the following model families:
 	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* BigBirdPegasus
-	* BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower)) (or lower)
+	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
 	* Gemma
-	* GPT 2 (note: currently requires `--max-new-tokens-final 512` (or lower))
-	* GPT Neo
+	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
+	* GPT-Neo
 	* OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
-	* Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))
+	* <s>Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))</s>
 	* Phi-1
 	* Phi-2
 	* Phi-3 (note: currently requires the `--trust-remote-code` option)
-	* Pythia (for real this time)
 	* RoBERTa
-	* Qwen2
+	* Qwen
+	* Qwen 2
 	* StableLM
 	* StableLM 2
+	* TinyLlama
 * The ability to test each iteration of adversarial data against the same LLM with different randomization, to help weed out fragile results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
 * Filters and other controls to improve the results
