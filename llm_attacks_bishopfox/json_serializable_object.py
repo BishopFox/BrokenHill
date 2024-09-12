@@ -49,7 +49,7 @@ class JSONSerializableObject:
                 handled = True
             if not handled and isinstance(value_to_serialize, str):
                 handled = True
-            if not handled and value_to_serialize is None:
+            if not handled and isinstance(value_to_serialize, type(None)):
                 handled = True
         # if the object still hasn't been handled, but it has a to_dict() method, use that
         # this is useful for third-party code that follows the to_dict() convention, but also enums and whatnot that probably shouldn't be subclasses of this one.

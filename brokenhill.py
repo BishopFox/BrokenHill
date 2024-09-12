@@ -1,29 +1,96 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.24"
-script_date = "2024-09-09"
+script_version = "0.25"
+script_date = "2024-09-11"
+
+# def get_logo():
+    # result =  "                                                          \n"
+    # result += ".oO                                                    Oo.\n"
+    # result += ".                                                        .\n"
+    # result += "                        Broken Hill                       \n"
+    # result += "                                                          \n"
+    # result += "    a tool for attacking LLMs, presented by Bishop Fox    \n"
+    # result += "                                                          \n"
+    # result += "          https://github.com/BishopFox/BrokenHill         \n"
+    # result += "'                                                        '\n"
+    # result += "'^O                                                    O^'\n"
+    # result += "                                                          \n"
+    # return result
+
+# def get_logo():
+    # result =  "                                                                                \n"
+    # #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
+    # result += " .                                                                            . \n"
+    # result += "   .oO________________________________    ________________________________Oo.   \n"
+    # result += "   .                                  \__/                                  .   \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                             Broken Hill                              |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
+    # result += "    |                                                                      |    \n"    
+    # result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
+    # result += "    |                                  __                                  |    \n"
+    # result += "   '  ________________________________/  \________________________________  '   \n"
+    # result += "   '^O                                                                    O^'   \n"
+    # result += " '                                                                            ' \n"
+    # result += "                                                                                \n"
+    # return result
+
+# def get_logo():
+    # result =  "                                                                                \n"
+    # #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
+    # result += " .                                                                            . \n"
+    # result += "   .oO___________                                              ___________Oo.   \n"
+    # result += "   .             \____________________________________________/             .   \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                             Broken Hill                              |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
+    # result += "    |                                                                      |    \n"    
+    # result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                   ________________________________                   |    \n"
+    # result += "   '  _________________/                                \_________________  '   \n"
+    # result += "   '^O                                                                    O^'   \n"
+    # result += " '                                                                            ' \n"
+    # result += "                                                                                \n"
+    # return result
+
 
 def get_logo():
-    result =  "                                                          \n"
-    result += ".oO                                                    Oo.\n"
-    result += ".                                                        .\n"
-    result += "                        Broken Hill                       \n"
-    result += "                                                          \n"
-    result += "    a tool for attacking LLMs, presented by Bishop Fox    \n"
-    result += "                                                          \n"
-    result += "          https://github.com/BishopFox/BrokenHill         \n"
-    result += "'                                                        '\n"
-    result += "'^O                                                    O^'\n"
-    result += "                                                          \n"
+    result =  "                                                                                \n"
+    #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
+    result += " .                                                                            . \n"
+    result += "   .oO_________________                                  _________________Oo.   \n"
+    result += "   .                   \________________________________/                   .   \n"
+    result += "    |                                                                      |    \n"
+    result += "    |                                                                      |    \n"
+    result += "    |                             Broken Hill                              |    \n"
+    result += "    |                                                                      |    \n"
+    result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
+    result += "    |                                                                      |    \n"    
+    result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
+    result += "    |                                                                      |    \n"
+    result += "    |             ____________________________________________             |    \n"
+    result += "   '  ___________/                                            \___________  '   \n"
+    result += "   '^O                                                                    O^'   \n"
+    result += " '                                                                            ' \n"
+    result += "                                                                                \n"
     return result
+
+
+
 
 def get_script_description():
     result = 'Performs a "Greedy Coordinate Gradient" (GCG) attack against various large language models (LLMs), as described in the paper "Universal and Transferable Adversarial Attacks on Aligned Language Models" by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson, representing Carnegie Mellon University, the Center for AI Safety, Google DeepMind, and the Bosch Center for AI.'
     result += "\n"
     result += "Originally based on the demo.ipynb notebook and associated llm-attacks library from https://github.com/llm-attacks/llm-attacks"
     result += "\n"
-    result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
+    result += "Also incorporates gradient-sampling code and mellowmax loss function from nanoGCG - https://github.com/GraySwanAI/nanoGCG"
+    result += "\n"
+    result += "This tool created and all other post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     result += "\n"
     result += f"version {script_version}, {script_date}"    
     return result
@@ -31,12 +98,14 @@ def get_script_description():
 def get_short_script_description():
     result = 'Based on code and research by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson.'
     result += "\n"
-    result += "This tool created and all post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
+    result += "Also incorporates gradient-sampling code and mellowmax loss function from nanoGCG - https://github.com/GraySwanAI/nanoGCG"
+    result += "\n"
+    result += "This tool created and all other post-fork changes to the associated library by Ben Lincoln, Bishop Fox."
     return result
 
 import argparse
 import datetime
-import fastchat.conversation as fcc
+import fastchat.conversation
 import gc
 import locale
 import json
@@ -76,6 +145,7 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackState
 from llm_attacks_bishopfox.attack.attack_classes import FakeException
 from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
+from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
@@ -95,10 +165,11 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_logits
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_missing_pad_token_names
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer
-from llm_attacks_bishopfox.minimal_gcg.opt_utils import sample_control
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_adversarial_content_candidates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
 from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
@@ -298,6 +369,10 @@ def main(attack_params):
     torch.manual_seed(attack_params.torch_manual_seed)
     # CUDA
     torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
+    
+    random_generator_attack_params_device = torch.Generator(device = attack_params.device).manual_seed(attack_params.torch_manual_seed)
+    random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_params.torch_manual_seed)
+    random_generator_gradient = None
 
     start_dt = get_now()
     start_ts = get_time_string(start_dt)
@@ -339,7 +414,7 @@ def main(attack_params):
                                 device=attack_params.device)
         print_stats(attack_params)
         
-        if tokenizer.pad_token_id is None:
+        if isinstance(tokenizer.pad_token_id, type(None)):
             if attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                 print("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
                 sys.exit(1)
@@ -357,7 +432,7 @@ def main(attack_params):
         if attack_params.exclude_profanity_tokens:
             #print(f"[main] Debug: adding profanity to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_profanity())
-        if attack_params.exclude_other_highly_problematic_content:
+        if attack_params.exclude_other_offensive_tokens:
             #print(f"[main] Debug: adding other highly-problematic content to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
@@ -454,7 +529,7 @@ def main(attack_params):
             except Exception as e:
                 print(f"Error: encoding string '{attack_params.initial_adversarial_token_string}' to token: {e}.")
                 sys.exit(1)
-            if single_token_id is None:
+            if isinstance(single_token_id, type(None)):
                     print(f"Error: the selected tokenizer encoded the string '{attack_params.initial_adversarial_token_string}' to a null value.")
                     sys.exit(1)
             if isinstance(single_token_id, list):
@@ -613,19 +688,22 @@ def main(attack_params):
                     torch_rng_state = torch.get_rng_state()
                     
                     # declare these here so they can be cleaned up later
-                    coordinate_grad = None
+                    coordinate_gradient = None
                     # during the first iteration, do not generate variations - test the value that was given                    
                     if main_loop_iteration_number == 0:
                         print(f"Testing initial adversarial value '{current_adversarial_content.get_short_description()}'")
                     else:
                         # Step 2. Compute Coordinate Gradient
                         #print(f"Computing coordinate gradient")
-                        coordinate_grad = token_gradients(model, 
+                        coordinate_gradient = token_gradients(attack_params,
+                                        model, 
                                         tokenizer,
                                         input_ids,
                                         input_id_data)
                         #print_stats(attack_params)
 
+                        if isinstance(random_generator_gradient, type(None)):
+                            random_generator_gradient = torch.Generator(device = coordinate_gradient.device).manual_seed(attack_params.torch_manual_seed)
 
                         # TKTK: add another option (--require-loss-decrease-threshold) that loops through just this with torch.no_grad() section until a candidate with a loss less than the current value + some threshold is found.
                         # That should greatly improve the efficiency of testing candidates when multiple random seeds are tested against, because it doesn't require using the LLMs to generate any output text.
@@ -642,8 +720,6 @@ def main(attack_params):
                             new_adversarial_candidate_list = None
                             new_adversarial_candidate_list_filtered = None
                             
-                            sample_control_random_seed = None
-
                             losses = None
                             best_new_adversarial_content_id = None
                             best_new_adversarial_content = None
@@ -654,7 +730,12 @@ def main(attack_params):
                             candidate_list_meets_loss_threshold = False
                             num_iterations_without_acceptable_loss = 0
                             
+                            # store the best value from each attempt in case no value is found that meets the threshold
+                            best_failed_attempts = AdversarialContentList()                            
+                            
                             while not candidate_list_meets_loss_threshold:
+
+                                got_candidate_list = False
 
                                 while not got_candidate_list:                                
                                     
@@ -663,19 +744,19 @@ def main(attack_params):
                                     new_adversarial_candidate_list = None
                                     
                                     try:
-                                        new_adversarial_candidate_list = sample_control(attack_params,
+                                        new_adversarial_candidate_list = get_adversarial_content_candidates(attack_params,
                                                        adversarial_content_manager,
                                                        current_adversarial_content, 
-                                                       coordinate_grad, 
-                                                       attack_params.new_adversarial_token_candidate_count, 
-                                                       topk = attack_params.topk,
-                                                       not_allowed_tokens = not_allowed_tokens,
-                                                       random_seed = sample_control_random_seed)
+                                                       coordinate_gradient, 
+                                                       random_generator_gradient,
+                                                       random_generator_cpu,
+                                                       random_generator_attack_params_device,
+                                                       not_allowed_tokens = not_allowed_tokens)
                                     except RuntimeError as e:
                                         print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
                                         sys.exit(1)
      
-     #print_stats(attack_params)
+                                    #print_stats(attack_params)
                                     #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
                                     
                                     # Note: I'm leaving this explanation here for historical reference
@@ -699,7 +780,7 @@ def main(attack_params):
                                         
                                         if attack_params.add_token_when_no_candidates_returned:
                                             token_count_limited = True
-                                            if attack_params.candidate_filter_tokens_max is None:
+                                            if isinstance(attack_params.candidate_filter_tokens_max, type(None)):
                                                 token_count_limited = False
                                             if token_count_limited:
                                                 if len(current_adversarial_content.token_ids) < attack_params.candidate_filter_tokens_max:
@@ -719,7 +800,7 @@ def main(attack_params):
                                             if attack_params.delete_token_when_no_candidates_returned:
                                                 token_count_limited = True
                                                 minimum_token_count = 1
-                                                if attack_params.candidate_filter_tokens_min is None:
+                                                if isinstance(attack_params.candidate_filter_tokens_min, type(None)):
                                                     token_count_limited = False
                                                 else:
                                                     if attack_params.candidate_filter_tokens_min > 1:
@@ -743,7 +824,7 @@ def main(attack_params):
                                         if not something_has_changed:
                                             new_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count + original_new_adversarial_token_candidate_count
                                             increase_new_adversarial_token_candidate_count = True
-                                            if attack_params.max_new_adversarial_token_candidate_count is not None:
+                                            if not isinstance(attack_params.max_new_adversarial_token_candidate_count, type(None)):
                                                 if new_new_adversarial_token_candidate_count > attack_params.max_new_adversarial_token_candidate_count:
                                                     new_new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
                                                     if new_new_adversarial_token_candidate_count <= attack_params.new_adversarial_token_candidate_count:
@@ -764,7 +845,7 @@ def main(attack_params):
                                         if not something_has_changed:
                                             new_topk = attack_params.topk + original_topk
                                             increase_topk = True
-                                            if attack_params.max_topk is not None:
+                                            if not isinstance(attack_params.max_topk, type(None)):
                                                 if new_topk > attack_params.max_topk:
                                                     new_topk = attack_params.max_topk
                                                     if new_topk <= attack_params.topk:
@@ -786,11 +867,7 @@ def main(attack_params):
                                             print(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, the tool will now exit. {standard_explanation_outro}")
                                             sys.exit(1)
                                         
-                                        # temporarily also use a new random seed to help avoid getting stuck with trivial variations that don't change anything significant
-                                        if sample_control_random_seed is None:
-                                            sample_control_random_seed = attack_params.torch_manual_seed + 1
-                                        else:
-                                            sample_control_random_seed += 1
+
                                         
                                                 
                                 #print_stats(attack_params)
@@ -808,12 +885,14 @@ def main(attack_params):
                                 #print_stats(attack_params)
 
                                 #print(f"Calculating target loss")
-                                losses = target_loss(logits, ids, input_id_data, tokenizer)
+                                losses = target_loss(attack_params, logits, ids, input_id_data, tokenizer)
                                 #print_stats(attack_params)
+                                #print(f"[main loop] Debug: losses = {losses}")
 
                                 #print(f"Getting losses argmin")
                                 best_new_adversarial_content_id = losses.argmin()
                                 #print_stats(attack_params)
+                                #print(f"[main loop] Debug: best_new_adversarial_content_id = {best_new_adversarial_content_id}")
 
                                 #print(f"Setting best new adversarial content")
                                 best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
@@ -823,21 +902,46 @@ def main(attack_params):
                                 current_loss = losses[best_new_adversarial_content_id]
                                 #print_stats(attack_params)
                                 current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
+                                best_new_adversarial_content.original_loss = current_loss_as_float
                                 
-                                if attack_params.required_loss_threshold is None or main_loop_iteration_number == 0:
+                                if isinstance(attack_params.required_loss_threshold, type(None)) or main_loop_iteration_number == 0:
                                     candidate_list_meets_loss_threshold = True
                                 else:
                                     if attack_data_previous_iteration is None:
                                         candidate_list_meets_loss_threshold = True
                                     else:
-                                        if attack_data_previous_iteration.loss is None:
+                                        if isinstance(attack_data_previous_iteration.loss, type(None)):
                                             candidate_list_meets_loss_threshold = True
-                                    if candidate_list_meets_loss_threshold == False and attack_data_previous_iteration is not None:
-                                        if (current_loss_as_float + attack_params.required_loss_threshold) <= attack_data_previous_iteration.loss:
-                                            candidate_list_meets_loss_threshold = True
+                                        if not candidate_list_meets_loss_threshold:
+                                            if best_new_adversarial_content.original_loss <= (attack_data_previous_iteration.loss + attack_params.required_loss_threshold):
+                                                candidate_list_meets_loss_threshold = True
                                 if not candidate_list_meets_loss_threshold:
                                     num_iterations_without_acceptable_loss += 1
-                                    print(f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) to generate a list of random candidates that has at least one candidate with a loss lower than {attack_data_previous_iteration.loss}. Best value during this attempt was {current_loss_as_float}.")
+                                    best_failed_attempts.append_if_new(best_new_adversarial_content)
+                                    loss_attempt_stats_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) to generate a list of random candidates that has at least one candidate with a loss lower than {(attack_data_previous_iteration.loss + attack_params.required_loss_threshold)}"
+                                    if not isinstance(attack_params.required_loss_threshold, type(None)):
+                                        if attack_params.required_loss_threshold != 0.0:
+                                            loss_attempt_stats_message += f" (previous loss of {attack_data_previous_iteration.loss} plus the specified threshold value {attack_params.required_loss_threshold})" 
+                                    loss_attempt_stats_message += f". Best value during this attempt was {current_loss_as_float}."
+                                    print(loss_attempt_stats_message)
+                                    if not isinstance(attack_params.loss_threshold_max_attempts, type(None)):
+                                        if num_iterations_without_acceptable_loss >= attack_params.loss_threshold_max_attempts:
+                                            loss_attempt_result_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) has reached the limit of {attack_params.loss_threshold_max_attempts} attempts."
+                                            if attack_params.exit_on_loss_threshold_failure:
+                                                loss_attempt_result_message += " Broken Hill has been configured to exit when this condition occurs."
+                                                print(loss_attempt_result_message)
+                                                sys.exit(1)
+                                            else:
+                                                best_new_adversarial_content = best_failed_attempts.get_content_with_lowest_loss()
+                                                candidate_list_meets_loss_threshold = True
+                                                loss_attempt_result_message += f" Broken Hill has been configured to use the adversarial content with the lowest loss discovered during this iteration when this condition occurs. Out of {len(best_failed_attempts.adversarial_content)} unique set(s) of tokens discovered during this iteration, the lowest loss value was {best_new_adversarial_content.original_loss} versus the previous loss of {attack_data_previous_iteration.loss}"
+                                                if not isinstance(attack_params.required_loss_threshold, type(None)):
+                                                    if attack_params.required_loss_threshold != 0.0:
+                                                        loss_attempt_result_message += f" and threshold {attack_params.required_loss_threshold}"
+                                                loss_attempt_result_message += ". The adversarial content with that loss value will be used."
+                                                print(loss_attempt_result_message)
+                                                
+                                        
                             
                             # END: wrap in loss threshold check 
 
@@ -847,14 +951,19 @@ def main(attack_params):
                             
                             print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {current_adversarial_content.get_short_description()} ({len(current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
                             current_adversarial_content = best_new_adversarial_content
-                            print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}': {current_loss_as_float}")
-                            print(f"Debug: decoded_loss_slice = '{decoded_loss_slice}'")
-                            print(f"Debug: input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
+                            print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {current_adversarial_content.original_loss}")
+                            #print(f"Debug: decoded_loss_slice = '{decoded_loss_slice}'")
+                            #print(f"Debug: input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
                         
-                            attack_results_current_iteration.loss = current_loss_as_float
+                            #attack_results_current_iteration.loss = current_loss_as_float
+                            attack_results_current_iteration.loss = current_adversarial_content.original_loss
 
                     # restore the PyTorch RNG state
-                    torch.set_rng_state(torch_rng_state)
+                    #torch.set_rng_state(torch_rng_state)
+                    # preserve the PyTorch RNG state because the code in this section is likely to reset it a bunch of times
+                    # it's preserved twice because this is inside a block that may not occur
+                    # but if it is tampered with, it will be in the next section
+                    torch_rng_state = torch.get_rng_state()
 
                     attack_results_current_iteration.adversarial_content = current_adversarial_content.copy()
                     
@@ -930,7 +1039,7 @@ def main(attack_params):
                             # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that.
                             generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, do_sample = do_sample, generate_full_output = True)
                           
-                            full_output_data.set_values(tokenizer, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+                            full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
                         
@@ -949,7 +1058,9 @@ def main(attack_params):
                         torch.manual_seed(attack_params.torch_manual_seed)
                         # CUDA
                         torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
-                        
+                    
+                    # restore the PyTorch RNG state
+                    torch.set_rng_state(torch_rng_state)
                     
                     attack_results_current_iteration.update_unique_output_values()
                     iteration_status_message = f"-----------------\n"
@@ -1017,11 +1128,11 @@ def main(attack_params):
                         # only update these if they're improvements - they should work as a high water mark to avoid gradually decreasing quality over time when the rollback thresholds are enabled
                         update_loss = False
                         
-                        if best_loss_value is None:
-                            if attack_results_current_iteration.loss is not None:
+                        if isinstance(best_loss_value, type(None)):
+                            if not isinstance(attack_results_current_iteration.loss, type(None)):
                                 update_loss = True
                         else:
-                            if attack_results_current_iteration.loss is not None:
+                            if not isinstance(attack_results_current_iteration.loss, type(None)):
                                 if attack_results_current_iteration.loss < best_loss_value:
                                     update_loss = True
                         if update_loss:
@@ -1029,11 +1140,11 @@ def main(attack_params):
                             best_loss_value = attack_results_current_iteration.loss
                         
                         update_jailbreak_count = False
-                        if best_jailbreak_count is None:
-                            if attack_results_current_iteration.jailbreak_detection_count is not None:
+                        if isinstance(best_jailbreak_count, type(None)):
+                            if not isinstance(attack_results_current_iteration.jailbreak_detection_count, type(None)):
                                 update_jailbreak_count = True
                         else:
-                            if attack_results_current_iteration.jailbreak_detection_count is not None:
+                            if not isinstance(attack_results_current_iteration.jailbreak_detection_count, type(None)):
                                 if attack_results_current_iteration.jailbreak_detection_count > best_jailbreak_count:
                                     update_jailbreak_count = True
                         if update_jailbreak_count:
@@ -1042,8 +1153,8 @@ def main(attack_params):
                         
                     # (Optional) Clean up the cache.
                     #print(f"Cleaning up the cache")
-                    if coordinate_grad is not None:
-                        del coordinate_grad
+                    if coordinate_gradient is not None:
+                        del coordinate_gradient
                     gc.collect()
                     #if "cuda" in attack_params.device:
                     #    torch.cuda.empty_cache()
@@ -1097,17 +1208,17 @@ if __name__=='__main__':
     
     parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
-    # TKTK: --mode full (currently the only behaviour) vs --mode test-results (read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination)
+    # TKTK: --mode full (currently the only behaviour) 
+    # TKTK: --mode test-results - read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination
+    # TKTK: --mode minimize-length - start with the specified adversarial content and remove any tokens that can be removed without causing the number of jailbreak successes to fall below a user-specified threshold, or the loss to increase above a user-specified threshold
     
-    # TKTK: mode to read a result JSON file, apply a different set of jailbreak detection rules, and re-output the result.
+    # TKTK: --mode test-jailbreak-rules - reads a result JSON file, apply a different set of jailbreak detection rules, and re-output the result.
     
-    # TKTK: stats-output modes:
+    # TKTK: --mode stats - reads a result JSON file and outputs useful statistics, without having to remember jq syntax
         # Histogram of jailbreak success
         # Time-series graph of jailbreak count
         # Export adversarial content by jailbreak success and/or loss thresholds (without having to use jq)
         # etc.
-    
-    # TKTK: option to use "mellowmax" algorithm
     
     parser.add_argument("--model", "-m", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
@@ -1198,6 +1309,14 @@ if __name__=='__main__':
         default=attack_params.max_iterations,
         help=f"Maximum number of times to iterate on the adversarial data")
 
+    parser.add_argument("--number-of-tokens-to-update-every-iteration", type=numeric_string_to_int,
+        default=attack_params.number_of_tokens_to_update_every_iteration,
+        help="The number of tokens to randomly alter in candidate adversarial content during every iteration. If this option is set to 1 (the default), the gradient-sampling algorithm from the original authors' code is used. If it is set to any other value, the nanoGCG gradient-sampling algorithm is used instead.")
+        
+    parser.add_argument("--always-use-nanogcg-sampling-algorithm", type=str2bool, nargs='?',
+        const=True, default=attack_params.always_use_nanogcg_sampling_algorithm,
+        help="If this option is specified, the nanoGCG gradient-sampling algorithm is used even when --number-of-tokens-to-update-every-iteration is 1.")
+
     parser.add_argument("--new-adversarial-token-candidate-count", type=numeric_string_to_int,
         default=attack_params.new_adversarial_token_candidate_count,
         help=f"The number of candidate adversarial values to generate at every iteration. If you are running out of memory and this value is greater than 1, try reducing it. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.")
@@ -1226,6 +1345,7 @@ if __name__=='__main__':
         const=True, default=attack_params.exclude_nonprintable_tokens,
         help="Bias the adversarial content generation data to avoid using tokens that are not printable.")
 
+    # TKTK: make this --exclude-basic-special-tokens, add another --exclude-all-special-tokens if --exclude-additional-special-tokens doesn't do that already
     parser.add_argument("--exclude-special-tokens", type=str2bool, nargs='?',
         const=True, default=attack_params.exclude_special_tokens,
         help="Bias the adversarial content generation data to avoid using basic special tokens (begin/end of string, padding, unknown).")
@@ -1246,9 +1366,9 @@ if __name__=='__main__':
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of profanity.")
 
-    parser.add_argument("--exclude-other-highly-problematic-content", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-other-offensive-tokens", type=str2bool, nargs='?',
         const=True, default=False,
-        help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of other words that are highly problematic to include in generated content.")
+        help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of other highly-offensive words.")
 
     parser.add_argument("--exclude-token", action='append', nargs='*', required=False,
         help=f"Bias the adversarial content generation data to avoid using the specified token (if it exists as a discrete value in the model). May be specified multiple times to exclude multiple tokens.")
@@ -1330,6 +1450,18 @@ if __name__=='__main__':
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
 
+    parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
+        default=attack_params.required_loss_threshold,
+        help=f"During the candidate adversarial content generation stage, require that the loss for the best value be lower than the previous loss plus this amount.")
+
+    parser.add_argument("--loss-threshold-max-attempts", type=numeric_string_to_int,
+        default=attack_params.loss_threshold_max_attempts,
+        help=f"If --required-loss-threshold has been specified, make this many attempts at finding a value that meets the threshold before giving up. If --exit-on-loss-threshold-failure is *not* specified, Broken Hill will use the value with the lowest loss found during the attempt to find a value that met the threshold. If --exit-on-loss-threshold-failure is specified, Broken Hill will exit if it is unable to find a value that meets the requirement.")
+
+    parser.add_argument("--exit-on-loss-threshold-failure", type=str2bool, nargs='?',
+        const=True, default=attack_params.exit_on_loss_threshold_failure,
+        help=f"During the candidate adversarial content generation stage, require that the loss for the best value be lower than the previous loss plus this amount.")
+
     parser.add_argument("--rollback-on-loss-increase", type=str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_loss_increase,
         help="If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only.")
@@ -1358,22 +1490,30 @@ if __name__=='__main__':
         
     # how to determine the loss slice
     
-    parser.add_argument("--loss-slice-is-llm-role-and-full-target-slice", type=str2bool, nargs='?',
-        const=True, default=False,
-        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string. Using this option is currently not recommended.")
-
-    parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type=str2bool, nargs='?',
-        const=True, default=False,
-        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change. This is the default mode.")
-    
     parser.add_argument("--loss-slice-is-index-shifted-target-slice", type=str2bool, nargs='?',
         const=True, default=False,
-        help="This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice usually includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and is included for comparison with other techniques.")
+        help="This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice sometimes includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and it is the default mode.")
+    
+    parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change.")
+
+    parser.add_argument("--loss-slice-is-llm-role-and-full-target-slice", type=str2bool, nargs='?',
+        const=True, default=False,
+        help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string.")
 
     parser.add_argument("--loss-slice-is-target-slice", type=str2bool, nargs='?',
         const=True, default=False,
-        help="This option disables shifting the start and end indices of the loss slice by -1 from the target slice. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.")
-        
+        help="This option makes the loss slice identical to the target slice. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.")
+
+    # parser.add_argument("--mellowmax", type=str2bool, nargs='?',
+        # const=True, default=False,
+        # help="If this option is specified, the attack will use the mellowmax loss algorithm (borrowed from nanoGCG) instead of the cross-entropy loss from the original authors' code.")
+
+    # parser.add_argument("--mellowmax-alpha", type=numeric_string_to_float,
+        # default=attack_params.mellowmax_alpha,
+        # help=f"If --loss-mellowmax is specified, this setting controls the 'alpha' value (default: 1.0).")
+
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
@@ -1404,7 +1544,7 @@ if __name__=='__main__':
 
     if args.list_templates:
         fc_template_list = []
-        for fct_name in fcc.conv_templates.keys():
+        for fct_name in fastchat.conversation.conv_templates.keys():
             fc_template_list.append(fct_name)
         fc_template_list.sort()
         list_string = "Templates tested more or less successfully by Bishop Fox:\n"
@@ -1491,7 +1631,7 @@ if __name__=='__main__':
         initial_data_method_count += 1
         attack_params.initial_adversarial_token_ids = comma_delimited_string_to_integer_array(args.initial_adversarial_token_ids)
         attack_params.initial_adversarial_content_creation_mode = InitialAdversarialContentCreationMode.FROM_TOKEN_IDS
-        if len(initial_adversarial_token_ids) < 1:
+        if len(attack_params.initial_adversarial_token_ids) < 1:
             print("Error: At least one adversarial token ID must be specified when using --initial-adversarial-token-ids.")
             sys.exit(1)
 
@@ -1551,23 +1691,29 @@ if __name__=='__main__':
     #   that would be really neat, but it's probably going to be awhile before I get around to implementing it.
     #   Seems like it would require a "queue server" that all of the instances would connect to.
 
-    if args.loss_slice_is_llm_role_and_full_target_slice:
+    if not isinstance(args.loss_slice_is_llm_role_and_full_target_slice, type(None)) and args.loss_slice_is_llm_role_and_full_target_slice == True:
         attack_params.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE        
         
-    if args.loss_slice_is_llm_role_and_truncated_target_slice:
+    if not isinstance(args.loss_slice_is_llm_role_and_truncated_target_slice, type(None)) and args.loss_slice_is_llm_role_and_truncated_target_slice == True:
         attack_params.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
 
-    if args.loss_slice_is_index_shifted_target_slice:
+    if not isinstance(args.loss_slice_is_index_shifted_target_slice, type(None)) and args.loss_slice_is_index_shifted_target_slice == True:
         attack_params.loss_slice_mode = LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES
-        print("Warning: --loss-slice-is-index-shifted-target-slice was specified. This will work as expected with some LLMs, but likely fail to generate useful results for LLMs that have multi-token role indicators, such as Gemma and Llama.")
+        #print("Warning: --loss-slice-is-index-shifted-target-slice was specified. This will work as expected with some LLMs, but likely fail to generate useful results for LLMs that have multi-token role indicators, such as Gemma and Llama.")
 
-    if args.loss_slice_is_target_slice:
+    if not isinstance(args.loss_slice_is_target_slice, type(None)) and args.loss_slice_is_target_slice == True:
         attack_params.loss_slice_mode = LossSliceMode.SAME_AS_TARGET_SLICE
         print("Warning: --loss-slice-is-target-slice was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
 
+    # if not isinstance(args.mellowmax, type(None)) and args.mellowmax == True:
+        # attack_params.loss_algorithm = LossAlgorithm.MELLOWMAX  
+
+    # if not isinstance(args.mellowmax_alpha, type(None)):
+        # attack_params.mellowmax_alpha = args.mellowmax_alpha
+
     attack_params.topk = args.topk
     
-    if args.max_topk:
+    if not isinstance(args.max_topk, type(None)):
         attack_params.max_topk = args.max_topk
 
     attack_params.model_temperature = args.temperature
@@ -1579,6 +1725,13 @@ if __name__=='__main__':
     attack_params.torch_cuda_manual_seed_all = args.random_seed_cuda
 
     attack_params.max_iterations = args.max_iterations
+    
+    attack_params.number_of_tokens_to_update_every_iteration = args.number_of_tokens_to_update_every_iteration
+
+    if not isinstance(args.always_use_nanogcg_sampling_algorithm, type(None)) and args.always_use_nanogcg_sampling_algorithm == True:
+        attack_params.always_use_nanogcg_sampling_algorithm = True
+        if attack_params.number_of_tokens_to_update_every_iteration == 1:
+            print("Using the nanoGCG gradient-sampling algorithm even though only one token will be updated during each iteration.")
 
     attack_params.new_adversarial_token_candidate_count = args.new_adversarial_token_candidate_count
     
@@ -1607,13 +1760,13 @@ if __name__=='__main__':
     
     attack_params.candidate_filter_regex = args.adversarial_candidate_filter_regex
     
-    if args.adversarial_candidate_filter_tokens_min:
+    if not isinstance(args.adversarial_candidate_filter_tokens_min, type(None)):
         if args.adversarial_candidate_filter_tokens_min < 1:
             print("--adversarial-candidate-filter-tokens-min must be a positive integer.")
             sys.exit(1)
         attack_params.candidate_filter_tokens_min = args.adversarial_candidate_filter_tokens_min
     
-    if args.adversarial_candidate_filter_tokens_max:
+    if not isinstance(args.adversarial_candidate_filter_tokens_max, type(None)):
         if args.adversarial_candidate_filter_tokens_max < 1:
             print("--adversarial-candidate-filter-tokens-max must be a positive integer.")
             sys.exit(1)
@@ -1643,19 +1796,19 @@ if __name__=='__main__':
     # if args.scoring_mode == "maximum":
         # attack_params.random_seed_scoring_mode = OverallScoringFunction.MAXIMUM    
     
-    if args.adversarial_candidate_repetitive_line_limit:
+    if not isinstance(args.adversarial_candidate_repetitive_line_limit, type(None)):
         if args.adversarial_candidate_repetitive_line_limit < 1:
             print("--adversarial-candidate-repetitive-line-limit must be a positive integer.")
             sys.exit(1)
         attack_params.candidate_filter_repetitive_lines = args.adversarial_candidate_repetitive_line_limit
         
-    if args.adversarial_candidate_repetitive_token_limit:
+    if not isinstance(args.adversarial_candidate_repetitive_token_limit, type(None)):
         if args.adversarial_candidate_repetitive_token_limit < 1:
             print("--adversarial-candidate-repetitive-token-limit must be a positive integer.")
             sys.exit(1)
         attack_params.candidate_filter_repetitive_tokens = args.adversarial_candidate_repetitive_token_limit
     
-    if args.adversarial_candidate_newline_limit:
+    if not isinstance(args.adversarial_candidate_newline_limit, type(None)):
         if args.adversarial_candidate_newline_limit < 0:
             print("--adversarial-candidate-newline-limit must be an integer greater than or equal to 0.")
             sys.exit(1)
@@ -1702,13 +1855,28 @@ if __name__=='__main__':
     
     attack_params.rollback_on_loss_increase = args.rollback_on_loss_increase
     
-    if args.rollback_on_loss_threshold:
+    if not isinstance(args.required_loss_threshold, type(None)):
+        attack_params.required_loss_threshold = args.required_loss_threshold
+
+    if not isinstance(args.loss_threshold_max_attempts, type(None)):
+        attack_params.loss_threshold_max_attempts = args.loss_threshold_max_attempts
+
+    if not isinstance(args.required_loss_threshold, type(None)) and isinstance(args.loss_threshold_max_attempts, type(None)):
+        print(f"Warning: --required-loss-threshold was specified without also specifying a maximum number of attempts using --loss-threshold-max-attempts. This will cause Broken Hill to potentially loop forever if it cannot find a value that meets the specified loss threshold.")
+
+    if not isinstance(args.loss_threshold_max_attempts, type(None)) and isinstance(args.required_loss_threshold, type(None)):
+        print(f"Warning: --loss-threshold-max-attempts was specified without also specifying --required-loss-threshold. --loss-threshold-max-attempts has no effect unless a threshold is also specified using --required-loss-threshold.")
+
+    if args.exit_on_loss_threshold_failure:
+        attack_params.exit_on_loss_threshold_failure = True
+
+    if not isinstance(args.rollback_on_loss_threshold, type(None)):
         attack_params.rollback_on_loss_increase = True
         attack_params.rollback_on_loss_threshold = args.rollback_on_loss_threshold
     
     attack_params.rollback_on_jailbreak_count_decrease = args.rollback_on_jailbreak_count_decrease
     
-    if args.rollback_on_jailbreak_count_threshold:
+    if not isinstance(args.rollback_on_jailbreak_count_threshold, type(None)):
         attack_params.rollback_on_jailbreak_count_decrease = True
         attack_params.rollback_on_jailbreak_count_threshold = args.rollback_on_jailbreak_count_threshold
     
@@ -1742,8 +1910,8 @@ if __name__=='__main__':
     if args.exclude_profanity_tokens:
         attack_params.exclude_profanity_tokens = True
 
-    if args.exclude_other_highly_problematic_content:
-        attack_params.exclude_other_highly_problematic_content = True
+    if args.exclude_other_offensive_tokens:
+        attack_params.exclude_other_offensive_tokens = True
                 
     # shortcut option processing
     #if args.exclude_three_hashtag_tokens:

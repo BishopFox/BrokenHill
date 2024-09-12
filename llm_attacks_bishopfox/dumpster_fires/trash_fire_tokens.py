@@ -53,7 +53,7 @@ from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 
 def append_single_or_list_members(existing_list, value_or_list_to_add, ignore_if_none = False):
     if ignore_if_none:
-        if value_or_list_to_add is None:
+        if isinstance(value_or_list_to_add, type(None)):
             return existing_list
     if isinstance(value_or_list_to_add, list):
         for list_member in value_or_list_to_add:
@@ -69,7 +69,7 @@ def find_first_occurrence_of_array_in_array(inner_array, outer_array, start_inde
     len_inner = len(inner_array)
     len_outer = len(outer_array)
     range_end = len_outer
-    if stop_index is not None:
+    if not isinstance(stop_index, type(None)):
         range_end = stop_index
     #print(f"[find_first_occurrence_of_array_in_array] Debug: searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
     for i in range(start_index, range_end):
@@ -96,7 +96,7 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
         print(f"[find_last_occurrence_of_array_in_array] Warning: cannot search for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index} - returning {result}")
         return result
     range_start = len_outer - len_inner
-    if stop_index is not None:
+    if not isinstance(stop_index, type(None)):
         range_start = stop_index - len_inner
     range_end = start_index - 1
     if range_end < -1 or range_end > len_outer or range_start > len_outer or range_start < -1:
@@ -118,7 +118,7 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
 
 # so many spaghetti code special cases to handle madness like 'This is a special token, but you can't treat it as 100% trash fire because it's also a sentinel that the parser has to look for'
 def is_conversation_role_token(conversation_template, token):
-    if token is not None:
+    if not isinstance(token, type(None)):
         if token.strip() != "":
             for c_role in conversation_template.roles:
                 if token in c_role:
@@ -154,7 +154,7 @@ def is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, 
     if conversation_template is not None:
         if token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             if is_conversation_role_token(conversation_template, decoded_token.strip()):
-                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as not being a flaming dumpster floating down the river because the decoded token was in the list of that are conversation roles for the current conversation template, even though it is still a flaming dumpster floating down the river.")
+                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as not being a flaming dumpster floating down the river because the decoded token was in the list of tokens that indicate conversation role changes for the current conversation template, even though it is still a flaming dumpster floating down the river.")
                 token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
     
     #if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
@@ -247,7 +247,7 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
     #print(f"[find_last_index_of_token] Debug: searching for last occurrence of '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
     result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
     result_stop = None
-    if result_start is None:
+    if isinstance(result_start, type(None)):
         # try to find cases where tokens have spaces on either side or not at all
         decoded_tokens_processed_1 = []
         decoded_tokens_processed_2 = []
@@ -258,13 +258,13 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
         # look for the first word as one string as well as individual decoded token IDs
         for search_array in [ string_to_search_for_array, decoded_string_tokens ]:
             for in_array in [ decoded_tokens_processed_1, decoded_tokens_processed_2 ]:
-                if result_start is None:
+                if isinstance(result_start, type(None)):
                     result_start = find_last_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
                 else:
                     break
-            if result_start is not None:
+            if not isinstance(result_start, type(None)):
                 break
-        if result_start is None:
+        if isinstance(result_start, type(None)):
             raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
         else:
             result_stop = result_start + len(string_to_search_for_array)
@@ -283,32 +283,30 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
 # that get_prompt should consider
 # like '</s>', '<s>', '\n', '###', or ' '
 def find_last_non_garbage_token(conversation_template, tokens, decoded_tokens, trash_fire_tokens, start_index = 0, stop_index = None):
-    #decoded_tokens = get_decoded_tokens(tokenizer, tokens)
     result = None
     range_end = len(tokens)
-    if stop_index is not None:
+    if not isinstance(stop_index, type(None)):
         range_end = stop_index
     for i in range(start_index, range_end):
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
         if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             result = i
-    if result is None:
+    if isinstance(result, type(None)):
         raise Exception(f"[find_last_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
     #print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
     return result
 
 def find_first_non_garbage_token(conversation_template, tokens, decoded_tokens, trash_fire_tokens, start_index = 0, stop_index = None):
-    #decoded_tokens = get_decoded_tokens(tokenizer, tokens)
     result = None
     range_end = len(tokens)
-    if stop_index is not None:
+    if not isinstance(stop_index, type(None)):
         range_end = stop_index
     for i in range(start_index, range_end):
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
         if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             #print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
             return i
-    if result is None:
+    if isinstance(result, type(None)):
         raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
     return result
 

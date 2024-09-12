@@ -47,22 +47,24 @@ DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
 def get_default_conversation_template():
     return fastchat.conversation.get_conv_template(DEFAULT_CONVERSATION_TEMPLATE_NAME)
 
-def get_gemma_conversation_template():
-    conv_template = get_default_conversation_template().copy()
-    conv_template.name="gemma"
-    conv_template.system_message="<bos>"
-    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-    conv_template.sep="<end_of_turn>\n"
-    conv_template.stop_str="<end_of_turn>"
-    return conv_template
+# def get_gemma_conversation_template():
+    # conv_template = get_default_conversation_template().copy()
+    # conv_template.name="gemma"
+    # conv_template.system_message="<bos>"
+    # conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
+    # conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    # conv_template.sep="<end_of_turn>\n"
+    # conv_template.stop_str="<end_of_turn>"
+    # return conv_template
     
 def get_gemma_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name="gemma"
     conv_template.system_message="<bos>"
-    conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    #conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
+    conv_template.roles=("<start_of_turn>user", "<start_of_turn>model")
+    #conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.ADD_NEW_LINE_SINGLE
     conv_template.sep="<end_of_turn>\n"
     conv_template.stop_str="<end_of_turn>"
     return conv_template
@@ -313,7 +315,7 @@ class AdversarialContentManager:
         self.adversarial_content = adversarial_content
         self.adversarial_content_placement = adversarial_content_placement
         self.loss_slice_mode = loss_slice_mode
-        if loss_slice_mode is None:
+        if isinstance(loss_slice_mode, type(None)):
             raise RequiredValueIsNoneException("loss_slice_mode cannot be None")
         self.trash_fire_tokens = trash_fire_tokens
     
@@ -348,12 +350,12 @@ class AdversarialContentManager:
             sl = slice_dictionary[slice_name]
             if sl is not None:
                 is_valid = True
-                if sl.start is None or sl.stop is None:
+                if isinstance(sl.start, type(None)) or isinstance(sl.stop, type(None)):
                     is_valid = False
                 if not is_valid:
                     # The system slice having a start of None is expected
                     if slice_name == "system":
-                        if sl.start is None and sl.stop is not None:
+                        if isinstance(sl.start, type(None)) and not isinstance(sl.stop, type(None)):
                             is_valid = True
                 if not is_valid:
                     invalid_slice_dictionary[slice_name] = sl
@@ -601,12 +603,12 @@ class AdversarialContentManager:
             prompt_find_self_target = result.prompt.find(self.target)
             #print(f"[get_prompt] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
             prompt_find_self_target_c2t = encoding.char_to_token(prompt_find_self_target)
-            if prompt_find_self_target_c2t is None:
+            if isinstance(prompt_find_self_target_c2t, type(None)):
                 print(f"[get_prompt] Warning: got None for encoding.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.target}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                 prompt_find_self_target_c2t = result.slice_data.assistant.stop
             prompt_combined_c2t = None
             add_length = len(self.target) + 1
-            while prompt_combined_c2t is None:
+            while isinstance(prompt_combined_c2t, type(None)):
                 prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
                 add_length -= 1
                 if add_length < 0:

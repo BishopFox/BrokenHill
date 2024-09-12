@@ -39,7 +39,9 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
     * GPT Neo X (base model is too large for the attack on an RTX 4090)
 	* Guanaco (too large for the attack on an RTX 4090)
     * Llama-2 (too large for the attack on an RTX 4090)
+	* MPT
     * Pythia
+	* Vicuna
   * This version also supports testing the following model families:
 	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* BigBirdPegasus

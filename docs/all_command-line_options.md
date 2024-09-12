@@ -164,6 +164,8 @@ When using this option, `--temperature` must also be set to a non-default value,
 
 This value technically only needs to be a positive integer, but if you set it to 1, your attack will likely take a *very* long time, because that will cause the attack to operate entirely randomly, with no benefit from the GCG algorithm.
 
+You can help make up for a low `--new-adversarial-token-candidate-count` value by using `--required-loss-threshold` and related options, which are discussed later in this document.
+
 If you are running out of memory and have already set `--batch-size-get-logits` to 1, and `--new-adversarial-token-candidate-count` is greater than 16, try reducing it. If you still run out of memory with this value set to 16 and `--batch-size-get-logits` set to 1, you're probably out of luck without more VRAM.
 
 If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-token-candidate-count` can be used to reduce or increase that limit.
@@ -188,16 +190,16 @@ Bias the adversarial content generation data to avoid using tokens that are not 
 
 Bias the adversarial content generation data to avoid using tokens that contain non-printable characters/glyphs. Testing is performed using Python's `.isprintable()` method, which internally uses `Py_UNICODE_ISPRINTABLE()`. [The Py_UNICODE_ISPRINTABLE specification](https://peps.pythondiscord.com/pep-3138/#specification) is somewhat complex, but is probably at least close to what you have in mind when you imagine "non-printable" characters. The ASCII space (0x20) character is considered printable.
 
-### --exclude-profanity-tokens, --exclude-slur-tokens, and --exclude-other-highly-problematic-content
+### --exclude-profanity-tokens, --exclude-slur-tokens, and --exclude-other-offensive-tokens
 
-`--exclude-profanity-tokens` biases the adversarial content generation data to avoid using tokens that match a hardcoded list of profane words. `--exclude-slur-tokens` does the same except using a hardcoded list of slurs. `--exclude-other-highly-problematic-content` does the same except using a hardcoded list of other words that are generally always problematic to include in any sort of professional report.
+`--exclude-profanity-tokens` biases the adversarial content generation data to avoid using tokens that match a hardcoded list of profane words. `--exclude-slur-tokens` does the same except using a hardcoded list of slurs. `--exclude-other-offensive-tokens` does the same except using a hardcoded list of other words that are generally always problematic to include in any sort of professional report.
 
 These are useful for several reasons:
 
 * If you are pen testing an LLM for someone else, your report will almost certainly be perceived more positively if it doesn't contain offensive language.
 * Some systems are configured to ignore input containing offensive terms. There's no point spending a bunch of GPU cycles generating adversarial values that will be filtered before even reaching the LLM.
 
-If you have feedback on the existing lists, please feel free to get in touch. Our criteria is currently that words on the list are used exclusively or nearly exclusively in a way that is likely to offend the reader. For example, "banana" or "spook" may be genuinely offensive in certain edge- or corner-case contexts, but generally refer to an edible fruit and a ghost, respectively, and are therefore not on the list.
+If you have feedback on the existing lists, please feel free to get in touch. Our criteria is currently that words on the list are used exclusively or nearly exclusively in a way that is likely to offend the reader. For example, "banana" or "spook" may be genuinely offensive in certain edge- or corner-case contexts, but generally refer to a delicious fruit and a ghost (or member of the intelligence community), respectively, and are therefore not on the list.
 
 The lists currently do not support internationalization. This will be added in a future release.
 
@@ -325,19 +327,39 @@ The maximum number of tokens to generate when testing output for a successful ja
 
 The maximum number of tokens to generate when generating final output for display. Shorter values will cause the output to be truncated, so it's set very high by default. The script will attempt to read the actual maximum value from the model and tokenizer and reduce this value dynamically to whichever of those two is lower if necessary. (default: 16384)
 
-## --rollback-on-jailbreak-count-decrease
+## Restricting candidate adversarial content to values that are an improvement, or at least not a significant deterioration
+
+
+
+These options are intended to help make up for a `--new-adversarial-token-candidate-count` that has been limited by the amount of device memory available, by making an arbitrary number of attempts to find a candidate with a lower loss (or at least a loss that isn't significantly worse) than the current value.
+
+### --required-loss-threshold <floating-point number>
+
+During the candidate adversarial content generation stage, require that the loss for the best value be lower than the previous loss plus this amount.
+
+### --loss-threshold-max-attempts <integer>
+
+If --required-loss-threshold has been specified, make this many attempts at finding a value that meets the threshold before giving up. If this option is not specified, Broken Hill will never stop searching, so using the two options in combination is strongly encouraged.
+
+### --exit-on-loss-threshold-failure
+
+If --exit-on-loss-threshold-failure is *not* specified, Broken Hill will use the value with the lowest loss found during the attempt to find a value that met the threshold. If --exit-on-loss-threshold-failure is specified, Broken Hill will exit if it is unable to find a value that meets the requirement.
+
+## Rolling back to previous "known good" checkpoints
+
+### --rollback-on-jailbreak-count-decrease
 
 If the number of jailbreaks detected decreases between iterations, roll back to the previous adversarial content.
 
-## --rollback-on-jailbreak-count-threshold <integer>
+### --rollback-on-jailbreak-count-threshold <integer>
 
 Same as `--rollback-on-jailbreak-count-decrease`, but allows the jailbreak count to decrease by up to this many jailbreaks without triggering a rollback. The 'last known good' values are only updated if the jailbreak count has not decreased versus the best value, though.
 
-## --rollback-on-loss-increase
+### --rollback-on-loss-increase
 
 If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only. Rolling back on loss increase is not recommended because the "loss" being tested is for the adversarial tokens versus the desired output, *not* the current LLM output, so it is not a good direct indicator of the strength of the attack.
 
-## --rollback-on-loss-threshold <floating-point number>
+### --rollback-on-loss-threshold <floating-point number>
 
 Same as `--rollback-on-loss-increase`, but allows the loss to increase by up to this value without triggering a rollback. The 'last known good' values are only updated if the loss value has not increased versus the best value, though.
 

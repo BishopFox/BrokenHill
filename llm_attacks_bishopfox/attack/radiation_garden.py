@@ -44,7 +44,7 @@ class RadiationGarden(JSONSerializableObject):
         result = RadiationGarden()
         super(RadiationGarden, result).set_properties_from_dict(result, property_dict)
         radiation_garden_behaviour_flags = RadiationGardenBehaviour(0)
-        if result.radiation_garden_behaviour_flags is not None:
+        if not isinstance(result.radiation_garden_behaviour_flags, type(None)):
             radiation_garden_behaviour_flags = RadiationGardenBehaviour(result.radiation_garden_behaviour_flags)
         result.radiation_garden_behaviour_flags = RadiationGardenBehaviour(0)
         return result

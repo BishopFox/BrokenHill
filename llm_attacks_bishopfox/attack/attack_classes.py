@@ -97,6 +97,10 @@ class LossSliceMode(StrEnum):
     SUBTRACT_ONE_FROM_START_AND_END_INDICES = 'subtract_one_from_start_and_end_indices'
     ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE = 'assistant_role_plus_full_target_slice'
     ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE = 'assistant_role_plus_truncated_target_slice'
+    
+class LossAlgorithm(StrEnum):
+    CROSS_ENTROPY = 'cross_entropy'
+    MELLOWMAX = 'mellowmax'
 
 # not currently used
 class AdversarialContentPlacement(StrEnum):
@@ -110,6 +114,7 @@ class AdversarialContent(JSONSerializableObject):
         self.token_ids = []
         self.tokens = []
         self.as_string = None
+        self.original_loss = None
     
     def copy(self):
         result = AdversarialContent()
@@ -251,6 +256,20 @@ class AdversarialContentList(JSONSerializableObject):
                 return True
         return False
     
+    def get_content_with_lowest_loss(self):
+        result = None
+        for i in range(0, len(self.adversarial_content)):
+            if result is None:
+                result = self.adversarial_content[i]
+            else:
+                if isinstance(result.original_loss, type(None)):
+                    result = self.adversarial_content[i]
+                else:
+                    if not isinstance(self.adversarial_content[i].original_loss, type(None)):
+                        if self.adversarial_content[i].original_loss < result.original_loss:
+                            result = self.adversarial_content[i]
+        return result
+    
     def append_if_new(self, new_adversarial_content):
         if not self.contains_adversarial_content(new_adversarial_content):
             self.adversarial_content.append(new_adversarial_content)
@@ -389,7 +408,7 @@ class AttackParams(JSONSerializableObject):
         self.target_output = None
         
         # TKTK: the other type of loss function
-        
+              
         # TKTK: randomize an operator-specified number of tokens each round, and use only the jailbreak success count to determine the course of evolution.
         # Would be a good comparison to make sure the loss calculation is actually beneficial.
         
@@ -409,6 +428,11 @@ class AttackParams(JSONSerializableObject):
         # emulate the original attack by converting the adversarial token IDs to a string and then back to token IDs at every iteration
         self.reencode_adversarial_content_every_iteration = False
 
+        self.number_of_tokens_to_update_every_iteration = 1
+        
+        # If this option is False, and self.number_of_tokens_to_update_every_iteration is 1, the algorithm from the original code is used. Otherwise, the nanoGCG algorithm is used.
+        self.always_use_nanogcg_sampling_algorithm = False
+
         # TKTK: option to set all tokens during the first iteration to the highest-scoring token out of the set of candidates *for that position*.
         # e.g. if the set of candidates includes values at positions 1, 3, 4, and 6, set all four tokens to the value at the first place in the list of candidates where that token is not the same as the default.
         
@@ -416,6 +440,12 @@ class AttackParams(JSONSerializableObject):
 
         # method for determining the loss slice start and end indices
         self.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
+
+        # which loss algorithm to use
+        self.loss_algorithm = LossAlgorithm.CROSS_ENTROPY
+
+        # mellowmax "alpha" value to use if the mellowmax loss function is in use
+        self.mellowmax_alpha = 1.0
 
         # workaround for models that have non-Python tokenizers
         # but return None for every call to functions like char_to_token
@@ -499,7 +529,7 @@ class AttackParams(JSONSerializableObject):
             self.exclude_profanity_tokens = False
             
             # filter out any additional tokens that are listed as being highly problematic in generated content
-            self.exclude_other_highly_problematic_content = False
+            self.exclude_other_offensive_tokens = False
             
             # If specified, exclude tokens that don't match the following pattern
             self.token_filter_regex = None
@@ -624,7 +654,14 @@ class AttackParams(JSONSerializableObject):
         #self.full_decoding_max_new_tokens = 1024
 
         # during the candidate-generation stage, continue generating sets of random candidates until at least one is found that either has a lower loss than the current value, or increases it by no more than this amount
-        self.required_loss_threshold = 0.1
+        self.required_loss_threshold = None
+        
+        # if self.required_loss_threshold is not None, and this value is not None, make this many attempts at finding a candidate that meets the required threshold before giving up
+        self.loss_threshold_max_attempts = None
+        
+        # exit the tool entirely if the loss threshold is not met after the maximum attempt count is reached.
+        # If this value is False, the tool will use the "best best" value determined during the attempt to find a value that met the threshold.
+        self.exit_on_loss_threshold_failure = False
 
         # if the loss value increases between iterations, roll back to the last "good" adversarial data
         self.rollback_on_loss_increase = False

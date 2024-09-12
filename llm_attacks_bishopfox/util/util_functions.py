@@ -92,7 +92,7 @@ def comma_delimited_string_to_integer_array(input_string):
     input_array = input_string.split(",")
     for i in range(0, len(input_array)):
         current_value = input_array[i]
-        if current_value is not None:
+        if not isinstance(current_value, type(None)):
             current_value = current_value.strip()
             if current_value != "":
                 current_integer = numeric_string_to_int(current_value)
@@ -222,7 +222,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
 
 def add_value_to_list_if_not_already_present(existing_list, new_value, ignore_none = False):
     if ignore_none:
-        if new_value is None:
+        if isinstance(new_value, type(None)):
             return existing_list
     if new_value not in existing_list:
         existing_list.append(new_value)

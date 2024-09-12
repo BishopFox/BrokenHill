@@ -38,7 +38,7 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
     def set_regex(self, pattern = None, regex_flags = None):
         if pattern is not None:
             self.pattern = pattern
-        if regex_flags is not None:
+        if not isinstance(regex_flags, type(None)):
             self.regex_flags = regex_flags
         if self.pattern is not None:
             self.regex_object = re.compile(self.pattern, flags = self.regex_flags)

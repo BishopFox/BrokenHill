@@ -204,7 +204,6 @@ $ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-valid.json |
     536 5
     758 6
       2 7
-
 ```
 
 Pick a threshold you're comfortable with, and export only those results that meet or exceed that count. e.g. to limit results to only content that resulted in 6 or more jailbreak detections:
