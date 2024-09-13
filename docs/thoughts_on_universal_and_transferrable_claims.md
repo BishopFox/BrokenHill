@@ -121,7 +121,7 @@ User
 
 TKTK: tool output
 
-It is possible that the authors of the paper actually used one of the chat-tuned derivatives of Pythia-12B produced by other organizations, but they cite the original, non-tuned version in their appendix.
+It is possible that the authors of the paper actually used one of the chat-tuned derivatives of Pythia-12B produced by other organizations. They refer to the name of the base model consistently ("Pythia-12B"), and cite the original, non-tuned version in their appendix. Their code refers to the `oasst_pythia` template in `fschat`, which is intended for use with [the OpenAssistant models derived from Pythia](https://huggingface.co/OpenAssistant), not the base Pythia model, but there do not appear to be any references to OpenAssistant in the paper.
 
 ### ChatGLM
 

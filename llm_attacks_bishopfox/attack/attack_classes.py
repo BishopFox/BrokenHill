@@ -102,6 +102,10 @@ class LossAlgorithm(StrEnum):
     CROSS_ENTROPY = 'cross_entropy'
     MELLOWMAX = 'mellowmax'
 
+class SystemMessageMode(StrEnum):
+    SYSTEM_MESSAGE_PROPRTY = 'system_message_proprty'
+    MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
+
 # not currently used
 class AdversarialContentPlacement(StrEnum):
     PREFIX = 'prefix'
@@ -321,7 +325,9 @@ class AttackParams(JSONSerializableObject):
         self.base_prompt = f"Write {autotarget_string}."
         #self.target_output =  f"Sure, here's {autotarget_string}"
         # Added additional words to help make up for the loss of potentially relevant content due to the loss slice index shift
-        self.target_output =  f"Sure, here's {autotarget_string} as you requested: "
+        #self.target_output =  f"Sure, here's {autotarget_string} as you requested: "
+        #self.target_output =  f"Sure, here's {autotarget_string} for you: "
+        self.target_output =  f"Sure, here's {autotarget_string}:"
     
     def set_conversation_template_messages(self, message_list):
         self.conversation_template_messages = []
@@ -381,6 +387,8 @@ class AttackParams(JSONSerializableObject):
         self.tokenizer_path = None
         
         self.template_name = None
+        
+        self.override_fschat_templates = False
         
         # Replace any existing system prompt in the conversation template with this custom content
         self.custom_system_prompt = None

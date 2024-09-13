@@ -1,41 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.25"
-script_date = "2024-09-11"
-
-# def get_logo():
-    # result =  "                                                          \n"
-    # result += ".oO                                                    Oo.\n"
-    # result += ".                                                        .\n"
-    # result += "                        Broken Hill                       \n"
-    # result += "                                                          \n"
-    # result += "    a tool for attacking LLMs, presented by Bishop Fox    \n"
-    # result += "                                                          \n"
-    # result += "          https://github.com/BishopFox/BrokenHill         \n"
-    # result += "'                                                        '\n"
-    # result += "'^O                                                    O^'\n"
-    # result += "                                                          \n"
-    # return result
-
-# def get_logo():
-    # result =  "                                                                                \n"
-    # #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
-    # result += " .                                                                            . \n"
-    # result += "   .oO________________________________    ________________________________Oo.   \n"
-    # result += "   .                                  \__/                                  .   \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |                             Broken Hill                              |    \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
-    # result += "    |                                                                      |    \n"    
-    # result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
-    # result += "    |                                  __                                  |    \n"
-    # result += "   '  ________________________________/  \________________________________  '   \n"
-    # result += "   '^O                                                                    O^'   \n"
-    # result += " '                                                                            ' \n"
-    # result += "                                                                                \n"
-    # return result
+script_version = "0.26"
+script_date = "2024-09-12"
 
 # def get_logo():
     # result =  "                                                                                \n"
@@ -104,6 +71,7 @@ def get_short_script_description():
     return result
 
 import argparse
+import base64
 import datetime
 import fastchat.conversation
 import gc
@@ -125,15 +93,6 @@ import torch.nn as nn
 import torch.quantization as tq
 import traceback
 
-from llm_attacks_bishopfox import get_decoded_token
-from llm_attacks_bishopfox import get_decoded_tokens
-from llm_attacks_bishopfox import get_effective_max_token_value_for_model_and_tokenizer
-from llm_attacks_bishopfox import get_embedding_layer
-from llm_attacks_bishopfox import get_encoded_token
-from llm_attacks_bishopfox import get_nonascii_token_list
-from llm_attacks_bishopfox import get_random_seed_list_for_comparisons
-from llm_attacks_bishopfox import get_token_allow_and_deny_lists
-from llm_attacks_bishopfox import get_token_list_as_tensor
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
@@ -149,6 +108,18 @@ from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
+from llm_attacks_bishopfox.base.attack_manager import get_decoded_token
+from llm_attacks_bishopfox.base.attack_manager import get_decoded_tokens
+from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
+from llm_attacks_bishopfox.base.attack_manager import get_encoded_token
+from llm_attacks_bishopfox.base.attack_manager import get_nonascii_token_list
+from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
+from llm_attacks_bishopfox.base.attack_manager import get_token_allow_and_deny_lists
+from llm_attacks_bishopfox.base.attack_manager import get_token_list_as_tensor
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
@@ -271,7 +242,7 @@ def print_stats(attack_params):
     display_string += "---\n"
     print(display_string)
 
-def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, gen_config=None, do_sample = True, generate_full_output = False):
+def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
     working_gen_config = gen_config
     # Copy the generation config to avoid changing the original
     if gen_config is None:
@@ -295,7 +266,9 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
 
     result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
     input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
-    input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
+    input_ids_sliced = input_ids
+    if not include_target_content:
+        input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
     attn_masks = torch.ones_like(input_ids_converted).to(model.device)
         
@@ -312,7 +285,7 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
     
     return result
     
-def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, jailbreak_detector, gen_config=None, do_sample = True):
+def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
     #input_id_data, input_token_ids, output_ids_llm_output_only, output_token_ids = generate(attack_params,
     generation_results = generate(attack_params,
                                         model, 
@@ -320,7 +293,8 @@ def check_for_attack_success(attack_params, model, tokenizer, adversarial_conten
                                         adversarial_content_manager, 
                                         adversarial_content, 
                                         gen_config=gen_config,
-                                        do_sample = do_sample)
+                                        do_sample = do_sample,
+                                        include_target_content = include_target_content)
                                         
     #gen_str = tokenizer.decode(generated_tokens).strip()
     
@@ -497,20 +471,20 @@ def main(attack_params):
                 print(f"Model size after reduction: {quantized_model_size} ({size_factor_formatted} of original size)")
         
         #print(f"[main] Debug: registering missing conversation templates.")
-        register_missing_conversation_templates()
+        register_missing_conversation_templates(attack_params)
         #print(f"[main] Debug: loading conversation template '{attack_params.template_name}'.")
         #conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         conv_template = load_conversation_template(attack_params.model_path, template_name = attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
         if attack_params.template_name is not None:
             if conv_template.name != attack_params.template_name:
                 print(f"Warning: the template '{attack_params.template_name}' was specified, but fschat returned the template '{conv_template.name}' in response to that value.")
-        print(f"Conversation template: '{conv_template.name}'")
-        print(f"Conversation template sep: '{conv_template.sep}'")
-        print(f"Conversation template sep2: '{conv_template.sep2}'")
-        print(f"Conversation template roles: '{conv_template.roles}'")
-        print(f"Conversation template system message: '{conv_template.system_message}'")
-        messages = json.dumps(conv_template.messages, indent=4)
-        print(f"Conversation template messages: '{messages}'")
+        #print(f"Conversation template: '{conv_template.name}'")
+        #print(f"Conversation template sep: '{conv_template.sep}'")
+        #print(f"Conversation template sep2: '{conv_template.sep2}'")
+        #print(f"Conversation template roles: '{conv_template.roles}'")
+        #print(f"Conversation template system message: '{conv_template.system_message}'")
+        #messages = json.dumps(conv_template.messages, indent=4)
+        #print(f"Conversation template messages: '{messages}'")
         #print_stats(attack_params)
 
         #print(f"[main] Debug: creating a meticulously-curated treasury of trash fire tokens.")
@@ -625,6 +599,41 @@ def main(attack_params):
         original_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count
         original_topk = attack_params.topk
         is_first_iteration = True
+
+        #print(f"Debug: testing conversation template")
+        conversation_template_tester = ConversationTemplateTester(adversarial_content_manager, model)
+        conversation_template_test_results = conversation_template_tester.test_templates()
+        if len(conversation_template_test_results.result_messages) > 0:
+            for i in range(0, len(conversation_template_test_results.result_messages)):
+                print(conversation_template_test_results.result_messages[i])
+        
+        #print(f"Debug: testing for jailbreak with no adversarial content")
+        empty_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, "")
+        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
+                                                model, 
+                                                tokenizer,
+                                                adversarial_content_manager, 
+                                                empty_adversarial_content,
+                                                jailbreak_detector,
+                                                do_sample = False)
+        if nac_jailbreak_result:
+            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
+        else:
+            print("Validated that a jailbreak was not detected for the given configuration when adversarial content was not included.")
+        
+        #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
+        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
+                                                model, 
+                                                tokenizer,
+                                                adversarial_content_manager, 
+                                                empty_adversarial_content,
+                                                jailbreak_detector,
+                                                do_sample = False,
+                                                include_target_content = True)
+        if target_jailbreak_result:
+            print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+        else:            
+            print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
 
         print(f"Starting main loop")
 
@@ -1209,7 +1218,8 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     # TKTK: --mode full (currently the only behaviour) 
-    # TKTK: --mode test-results - read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination
+    # TKTK: --mode test-results - read an existing result file and test each of the generated values against a different processing engine / model / tokenizer / random seed / etc. combination. Should ignore any combinations that have already been performed
+    # TKTK: --mode retest - rerun the same tests in an existing result file, without changing the model/tokenizer/seed/etc.
     # TKTK: --mode minimize-length - start with the specified adversarial content and remove any tokens that can be removed without causing the number of jailbreak successes to fall below a user-specified threshold, or the loss to increase above a user-specified threshold
     
     # TKTK: --mode test-jailbreak-rules - reads a result JSON file, apply a different set of jailbreak detection rules, and re-output the result.
@@ -1219,6 +1229,15 @@ if __name__=='__main__':
         # Time-series graph of jailbreak count
         # Export adversarial content by jailbreak success and/or loss thresholds (without having to use jq)
         # etc.
+
+    # TKTK: --attack gcg (currently the only behaviour, should remain the default)
+    # TKTK: --attack tbtf ("token-by-token forward" brute-force attack that starts with one adversarial content token, tests literally every allowlisted token in the tokenizer, finds the one with the lowest loss, adds another token after the first, etc.)
+    # TKTK: --attack tbtr ("token-by-token reverse" - same as tbtf, except it adds each adversarial content token before the previous token)
+    
+    #TKTK: load / save configuration from / to JSON
+    #TKTK: save attack state to JSON at the beginning of every iteration
+    #TKTK: load attack state from JSON
+    #TKTK: save/load custom conversation template
     
     parser.add_argument("--model", "-m", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
@@ -1234,6 +1253,10 @@ if __name__=='__main__':
     parser.add_argument("--list-templates", type=str2bool, nargs='?',
         const=True,
         help="Output a list of all template names for the version of the fastchat library you have installed (to use with --template), then exit.")
+        
+    parser.add_argument("--override-fschat-templates", type=str2bool, nargs='?',
+        const=True,
+        help="If .")
         
     parser.add_argument("--system-prompt", type=str, 
         help=f"Specify a custom value to use instead of the default system prompt for the conversation template.")
@@ -1262,6 +1285,9 @@ if __name__=='__main__':
 
     parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type=str, 
         help="The initial string to iterate on. Leave this as the default to perform the attack described in the original paper. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
+    
+    parser.add_argument("--initial-adversarial-string-base64", type=str, 
+        help="Identical to --initial-adversarial-string, except that the value should be specified in Base64-encoded form. This allows easily specifying an initial adversarial string that includes newlines or other characters that are difficult to represent as arguments on the command line.")
 
     parser.add_argument("--initial-adversarial-token", type = str, 
         nargs = 2,
@@ -1579,6 +1605,9 @@ if __name__=='__main__':
     if args.template:
         attack_params.template_name = args.template
 
+    if args.override_fschat_templates:
+        attack_params.override_fschat_templates = args.override_fschat_templates
+
     if args.clear_existing_conversation:
         attack_params.clear_existing_template_conversation = True
     
@@ -1605,6 +1634,10 @@ if __name__=='__main__':
     if args.initial_adversarial_string != attack_params.initial_adversarial_string:
         initial_data_method_count += 1
     attack_params.initial_adversarial_string = args.initial_adversarial_string
+    
+    if args.initial_adversarial_string_base64:
+        initial_data_method_count += 1
+        attack_params.initial_adversarial_string = base64.b64decode(args.initial_adversarial_string_base64).decode("utf-8")
     
     if args.initial_adversarial_token:
         initial_data_method_count += 1
@@ -1653,7 +1686,7 @@ if __name__=='__main__':
 
     
     if initial_data_method_count > 1:
-        print("Error: only one of the following options may be specified: --initial-adversarial-string, --initial-adversarial-token, --initial-adversarial-token-id, --initial-adversarial-token-ids, --random-adversarial-tokens.")
+        print("Error: only one of the following options may be specified: --initial-adversarial-string, --initial-adversarial-string-base64, --initial-adversarial-token, --initial-adversarial-token-id, --initial-adversarial-token-ids, --random-adversarial-tokens.")
         sys.exit(1)
     
     if args.reencode_every_iteration:

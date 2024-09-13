@@ -61,10 +61,12 @@ def get_gemma_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name="gemma"
     conv_template.system_message="<bos>"
+    #conv_template.system_message=""
     #conv_template.roles=("<start_of_turn>user\n", "<start_of_turn>model\n")
-    conv_template.roles=("<start_of_turn>user", "<start_of_turn>model")
-    #conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.ADD_NEW_LINE_SINGLE
+    #conv_template.roles=("<start_of_turn>user", "<start_of_turn>model")
+    #conv_template.roles=tuple(["<start_of_turn>user", "<start_of_turn>model"])
+    conv_template.roles=tuple(["<start_of_turn>user\n", "<start_of_turn>model\n"])
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep="<end_of_turn>\n"
     conv_template.stop_str="<end_of_turn>"
     return conv_template
@@ -111,45 +113,73 @@ def get_stablelm2_conversation_template():
     conv_template.sep = "<|im_end|>"
     return conv_template
 
-# TKTK: allow overriding templates if they're added later
+def register_missing_conversation_template(attack_params, fschat_added_support, template_name, template):
+    register_conv_template = True
+    
+    if template_name in fastchat.conversation.conv_templates.keys():
+        fschat_added_support.append(template_name)
+        if not attack_params.override_fschat_templates:
+            register_conv_template = False
+    if register_conv_template:
+        fastchat.conversation.register_conv_template(template = template, override = True)
+        
+    return fschat_added_support
+
 # override = True is required because otherwise adding a missing template will fail with an assertion
-def register_missing_conversation_templates():
+def register_missing_conversation_templates(attack_params):
     fschat_added_support = []
 
-    if "gemma" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("gemma")
-    else:
-        fastchat.conversation.register_conv_template(template = get_gemma_conversation_template(), override = True)
+    register_missing_conversation_template(attack_params, fschat_added_support, "gemma", get_gemma_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "phi2", get_phi2_conversation_template())
+    register_missing_conversation_template(attack_params, fschat_added_support, "phi3", get_phi3_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "qwen", get_qwen_conversation_template())
+    register_missing_conversation_template(attack_params, fschat_added_support, "qwen2", get_qwen2_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "stablelm2", get_stablelm2_conversation_template())
 
-    if "phi2" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("phi2")
-    else:
-        fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
+    # if "gemma" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("gemma")
+    # else:
+        # fastchat.conversation.register_conv_template(template = get_gemma_conversation_template(), override = True)
 
-    if "phi3" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("phi3")
-    else:
-        fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
+    # if "phi2" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("phi2")
+    # else:
+        # fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
 
-    # For some reason, fschat calls their "qwen" template "qwen-7b-chat" specifically, so this code adds a shortcut
-    if "qwen" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("qwen")
-    else:        
-        fastchat.conversation.register_conv_template(template = get_qwen_conversation_template(), override = True)
+    # if "phi3" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("phi3")
+    # else:
+        # fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
 
-    # Qwen2 *seems* to use the same chat template format at Qwen
-    if "qwen2" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("qwen2")
-    else:        
-        fastchat.conversation.register_conv_template(template = get_qwen2_conversation_template(), override = True)
+    # # For some reason, fschat calls their "qwen" template "qwen-7b-chat" specifically, so this code adds a shortcut
+    # if "qwen" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("qwen")
+    # else:        
+        # fastchat.conversation.register_conv_template(template = get_qwen_conversation_template(), override = True)
+
+    # # Qwen2 *seems* to use the same chat template format at Qwen
+    # if "qwen2" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("qwen2")
+    # else:        
+        # fastchat.conversation.register_conv_template(template = get_qwen2_conversation_template(), override = True)
         
-    if "stablelm2" in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append("stablelm2")
-    else:
-        fastchat.conversation.register_conv_template(template = get_stablelm2_conversation_template(), override = True)
+    # if "stablelm2" in fastchat.conversation.conv_templates.keys():
+        # fschat_added_support.append("stablelm2")
+    # else:
+        # fastchat.conversation.register_conv_template(template = get_stablelm2_conversation_template(), override = True)
 
     if len(fschat_added_support) > 0:
-        print(f"[register_missing_conversation_templates] Warning: the fschat (fastchat) library appears to have added support for the following model(s), which previously required custom definitions: {fschat_added_support}. This may cause differences in results generated by this tool.")
+        if attack_params.template_name in fschat_added_support:
+            #added_support_message = f"[register_missing_conversation_templates] Warning: the fschat (fastchat) library appears to have added support for the following model(s) that previously required custom definitions: {fschat_added_support}. "
+            added_support_message = f"Warning: the fschat library appears to have added support for the template '{attack_params.template_name}'. The corresponding model previously required a custom definition included in Broken Hill. "
+            if attack_params.override_fschat_templates:
+                added_support_message += f"Because the --override-fschat-templates option was specified, the custom Broken Hill definition will be used instead."
+            else:
+                added_support_message += f"The fschat template will be used. If you receive warnings or errors from the conversation template self-test, try specifying the --override-fschat-templates option to use the custom Broken Hill definition instead."
+            print(added_support_message)
 
 def load_conversation_template(model_path, template_name = None, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
     #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'. generic_role_indicator_template='{generic_role_indicator_template}', system_prompt='{system_prompt}', clear_existing_template_conversation='{clear_existing_template_conversation}'")
@@ -368,12 +398,12 @@ class AdversarialContentManager:
             message = message[:-1]
             print(message)
 
-    # The get_prompt function was originally an opaque piece of logic populated with magic numbers that had no explanations for how they were derived, but were supposedly specific to three LLMs: Llama 2, Vicuna, and OpenAssistant's Pythia.
+    # The get_prompt function was originally mostly undocumented with magic numbers that had no explanations for how they were derived, but were supposedly specific to three LLMs: Llama 2, Vicuna, and OpenAssistant's Pythia.
     
     # By examining the results of this function for those three models, I was able to reverse-engineer how to (more or less) find the correct values for other models.
     # I think it should all be fully automatic now, but in case you need to add model-specific logic or debug the parsing, here are what the slices represent.
 
-    # Each slice should contain an array of token IDs that represent one or more words.
+    # Each slice should end up containing an array of token IDs that represent one or more words.
     # Even if the content is a single word, it will still be an array, and may be represented by more than one token by the LLM.
     # For example, Phi-3 uses the tokens "Ass" and "istant" to represent the single English word "Assistant".
     
@@ -408,19 +438,19 @@ class AdversarialContentManager:
     #
     # If you're like me, you might wonder why this doesn't just optimize over time for adversarial content that matches the target string. Actually, that's very close to what's going on.
     #
-    # The loss calculation is between the tokens of the adversarial content and the tokens that represents the role-switch from user to LLM plus all but the last token of the target string. The only reason (AFAIK) that the last token isn't included is that the length of the loss slice would then no longer match the target slice, and that causes some issues.
+    # The loss calculation is between the tokens of the adversarial content and the tokens that represents the role-switch from user to LLM plus all but the last token of the target string. The only reason (AFAIK) that the last token isn't included is that the length of the loss slice would then no longer match the target slice. Broken Hill has code to pad the data in this case, but it may cause issues with the attack.
     #
     # In other words, the GCG attack tries to discover a sequence of tokens that cause the LLM to predict that the next thing it should do is to switch contexts from reading your input to responding, then issue (most of) the target string. If it does that, then clearly the most likely thing for it to do is to give you the information you asked for, because by that point, the response *already contains the LLM's indication that it's happy to provide that information*. Go back and re-read the semi-explanation again if it didn't make sense the first time. It probably will now.
     # 
-    # Once you make that connection, a lot of the potential failure modes of this tool start to make more sense. For example, sending the conversations to the LLM in the correct format (including using the correct token *IDs*, not just identical text) is vital, because otherwise you're either not going to escape out of the user-input context, *or* you're going to cause the LLM to generate a pseudo-conversation between a human and an LLM, without responding as itself. Adversarial content generated in this way is unlikely to work against other implementations of the same LLM, because those implementations will most likely send conversations to the LLM in the correct format.
+    # Once you make that connection, a lot of the potential failure modes of this tool start to make more sense. For example, sending the conversations to the LLM in the correct format (including using the correct token *IDs*, not just identical text) is vital, because otherwise you're either not going to escape out of the user-input context, *or* you're going to cause the LLM to generate a pseudo-conversation between a human and an LLM, without responding the way it would when prompted in the format it expects. Adversarial content generated in this way is unlikely to work against other implementations of the same LLM, because those implementations will most likely send conversations to the LLM in the correct format.
 
     # In the original demonstration code's Llama-2 code path, the user role, goal, and control slices were incorrectly calculated.
     # This was because some of the code didn't take into account that the tokenizer considered "[INST]" three tokens instead of one.
     # I eventually sort of fixed this by making the code flexible enough to handle Llama-2 without a separate branch.
     
     # TKTK (maybe): implement two handling modes:
-    # Truncate the slices to the shorter of the two
-    # Pad the shorter data to match the length of the longer data
+    # Truncate the slices to the shorter of the two (done)
+    # Pad the shorter data to match the length of the longer data (done for len(loss) > len(target)
     #   Option to pad the shorter data with different tokens, e.g. padding, unknown, the tokenized version of a string, etc.
     # 
 
@@ -440,7 +470,7 @@ class AdversarialContentManager:
     def get_complete_input_string(self, prompt_and_input_id_data):
         return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
 
-    def get_prompt(self, adversarial_content=None, force_python_tokenizer = False):#, update_self_values = True):
+    def get_prompt(self, adversarial_content = None, force_python_tokenizer = False):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
@@ -458,8 +488,8 @@ class AdversarialContentManager:
         conversation_template.append_message(conversation_template.roles[1], f"{self.target}")
         result.prompt = conversation_template.get_prompt()
 
-        encoding = self.tokenizer(result.prompt)
-        toks = encoding.input_ids
+        encoded_conversation_template_prompt = self.tokenizer(result.prompt)
+        toks = encoded_conversation_template_prompt.input_ids
         #original_toks = copy.deepcopy(toks)
         #original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
        
@@ -475,7 +505,7 @@ class AdversarialContentManager:
         # This (formerly undocumented) check is a way to determine if the model is using Python-based tokenizers. It works because Python-based tokenizers (at least in the current version of Transformers) don't support the char_to_token operation), and it's used to avoid calling char_to_token for the rest of the get_prompt method in that case.
         if not python_tokenizer:
             try:
-                encoding.char_to_token(len(result.prompt)-1)
+                encoded_conversation_template_prompt.char_to_token(len(result.prompt)-1)
             except:
                 python_tokenizer = True
 
@@ -507,12 +537,16 @@ class AdversarialContentManager:
             separator = ' '
             if not self.instruction:
                 separator = ''
-            conversation_template.update_last_message(f"{self.instruction}{separator}{working_adversarial_content.as_string}")
-            toks = self.tokenizer(conversation_template.get_prompt()).input_ids
-            decoded_toks = get_decoded_tokens(self.tokenizer, toks)
-            first_non_garbage_token = find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.goal.stop)
-            last_non_garbage_token = find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
-            result.slice_data.control = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
+            #If the adversarial content is an empty string, make the slice an empty slice right after the goal slice
+            if working_adversarial_content.as_string == "":
+                result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
+            else:
+                conversation_template.update_last_message(f"{self.instruction}{separator}{working_adversarial_content.as_string}")
+                toks = self.tokenizer(conversation_template.get_prompt()).input_ids
+                decoded_toks = get_decoded_tokens(self.tokenizer, toks)
+                first_non_garbage_token = find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.goal.stop)
+                last_non_garbage_token = find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
+                result.slice_data.control = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
             self.validate_slice_data('get_prompt - control_slice', result.slice_data)
 
             # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
@@ -567,34 +601,38 @@ class AdversarialContentManager:
                 sys_template = conversation_template.roles[0]
             result.slice_data.system = slice(
                 None, 
-                encoding.char_to_token(len(sys_template))
+                encoded_conversation_template_prompt.char_to_token(len(sys_template))
             )
             self.validate_slice_data('get_prompt', result.slice_data)
 
             result.slice_data.user_role = slice(
-                encoding.char_to_token(result.prompt.find(conversation_template.roles[0])),
-                encoding.char_to_token(result.prompt.find(conversation_template.roles[0]) + len(conversation_template.roles[0]) + 1)
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0])),
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0]) + len(conversation_template.roles[0]) + 1)
             )
             self.validate_slice_data('get_prompt', result.slice_data)
 
             # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
             result.slice_data.goal = slice(
-                encoding.char_to_token(result.prompt.find(self.instruction)),
-                encoding.char_to_token(result.prompt.find(self.instruction) + len(self.instruction))
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.instruction)),
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.instruction) + len(self.instruction))
             )
             self.validate_slice_data('get_prompt', result.slice_data)
             
-            result.slice_data.control = slice(
-                encoding.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
-                encoding.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
-            )
+            #If the adversarial content is an empty string, make the slice an empty slice right after the goal slice
+            if working_adversarial_content.as_string == "":
+                result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
+            else:
+                result.slice_data.control = slice(
+                    encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
+                    encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
+                )
             self.validate_slice_data('get_prompt', result.slice_data)
             # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
             
             #print(f"[get_prompt] Debug: finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
             result.slice_data.assistant_role = slice(
-                encoding.char_to_token(result.prompt.find(conversation_template.roles[1])),
-                encoding.char_to_token(result.prompt.find(conversation_template.roles[1]) + len(conversation_template.roles[1]) + 1)
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[1])),
+                encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[1]) + len(conversation_template.roles[1]) + 1)
             )
             self.validate_slice_data('get_prompt', result.slice_data)
 
@@ -602,14 +640,14 @@ class AdversarialContentManager:
             #print(f"[get_prompt] Debug: result.prompt = '{result.prompt}', self.target = '{self.target}'")
             prompt_find_self_target = result.prompt.find(self.target)
             #print(f"[get_prompt] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
-            prompt_find_self_target_c2t = encoding.char_to_token(prompt_find_self_target)
+            prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
             if isinstance(prompt_find_self_target_c2t, type(None)):
-                print(f"[get_prompt] Warning: got None for encoding.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.target}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                print(f"[get_prompt] Warning: got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.target}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                 prompt_find_self_target_c2t = result.slice_data.assistant.stop
             prompt_combined_c2t = None
             add_length = len(self.target) + 1
             while isinstance(prompt_combined_c2t, type(None)):
-                prompt_combined_c2t = encoding.char_to_token(prompt_find_self_target + (add_length))
+                prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
                 add_length -= 1
                 if add_length < 0:
                     prompt_combined_c2t = prompt_find_self_target_c2t

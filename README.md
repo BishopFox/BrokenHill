@@ -31,7 +31,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 
 ## Changes from the code in the original repository
 
-* Full command-line interface
+* Full (some would say overly-full) command-line interface
 * Supports many more model families, most of which are available in sizes small enough to run on an RTX 4090
   * Original authors' version:
     * Falcon (too large for the attack on an RTX 4090)
@@ -47,6 +47,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* BigBirdPegasus
 	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
 	* Gemma
+	* Gemma 2
 	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* GPT-Neo
 	* OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
@@ -62,6 +63,10 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* TinyLlama
 * The ability to test each iteration of adversarial data against the same LLM with different randomization, to help weed out fragile results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
+* Self-tests to help validate that that the attack is configured correctly and will produce useful results
+** Validation that conversations are provided in the format the model was trained for
+** Validation that the model does not provide the requested output when no adversarial content is included
+** Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
 * Filters and other controls to improve the results
 * Results can be output in JSON format for filtering/analysis
 * A bunch of other stuff

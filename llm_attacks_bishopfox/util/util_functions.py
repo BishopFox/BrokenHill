@@ -316,3 +316,30 @@ def slice_from_dict(property_dict):
         step = property_dict["step"]
     result = slice(start, stop, step)
     return result
+
+def find_index_of_first_nonmatching_element(list1, list2):
+    
+    last_index = len(list1)
+    if len(list2) < last_index:
+        last_index = len(list2)
+        
+    for i in range(0, last_index):
+        if list1[i] != list2[i]:
+            return i
+    
+    return None
+
+def remove_whitespace_and_nonprintable_characters(input_string):    
+    result = ""
+    
+    for i in range(0, len(input_string)):
+        current_char = input_string[i]
+        include_char = True
+        if not current_char.isprintable():
+            include_char = False
+        if include_char:
+            if current_char.strip() == "":
+                include_char = False
+        if include_char:
+            result = f"{result}{current_char}"
+    return result
