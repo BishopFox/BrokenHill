@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.26"
-script_date = "2024-09-12"
+script_version = "0.27"
+script_date = "2024-09-13"
 
 # def get_logo():
     # result =  "                                                                                \n"
@@ -634,6 +634,11 @@ def main(attack_params):
             print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         else:            
             print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
+
+        if nac_jailbreak_result or not target_jailbreak_result:
+            if not attack_params.ignore_jailbreak_self_tests:
+                print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+                sys.exit(1)
 
         print(f"Starting main loop")
 
@@ -1475,6 +1480,10 @@ if __name__=='__main__':
     parser.add_argument("--break-on-success", type=str2bool, nargs='?',
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
+        
+    parser.add_argument("--ignore-jailbreak-self-tests", type=str2bool, nargs='?',
+        const=True, default=attack_params.ignore_jailbreak_self_tests,
+        help="Perform the attack even if the jailbreak self-tests indicate that the results will likely not be useful.")
 
     parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
         default=attack_params.required_loss_threshold,
@@ -1883,6 +1892,8 @@ if __name__=='__main__':
         except Exception as e:
             print(f"Error writing jailbreak detection rules to file '{rules_output_file}': {e}.")
             sys.exit(1)
+    
+    attack_params.ignore_jailbreak_self_tests = args.ignore_jailbreak_self_tests
     
     attack_params.break_on_success = args.break_on_success
     

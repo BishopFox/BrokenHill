@@ -638,6 +638,9 @@ class AttackParams(JSONSerializableObject):
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1
 
+        # Perform the attack even if the jailbreak self-tests indicate the results are unlikely to be useful
+        self.ignore_jailbreak_self_tests = False
+
         # Stop iterating after the first successful jailbreak detection
         self.break_on_success = False
         

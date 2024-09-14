@@ -61,7 +61,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* StableLM
 	* StableLM 2
 	* TinyLlama
-* The ability to test each iteration of adversarial data against the same LLM with different randomization, to help weed out fragile results
+* The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
 ** Validation that conversations are provided in the format the model was trained for
