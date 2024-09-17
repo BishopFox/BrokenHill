@@ -291,6 +291,7 @@ def regex_flags_from_list(regex_flag_list):
         result = result | re.ASCII
     return result
 
+# TKTK: tie this to the numpy random seed, if it's not already, for deterministic results
 def get_random_token_id(token_allow_and_deny_lists):
     rng = numpy.random.default_rng(numpy.random.PCG64DXSM())
     #token_index = numpy.random.Generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
@@ -320,14 +321,16 @@ def slice_from_dict(property_dict):
 def find_index_of_first_nonmatching_element(list1, list2):
     
     last_index = len(list1)
+    result = None
     if len(list2) < last_index:
         last_index = len(list2)
+        result = last_index
         
     for i in range(0, last_index):
         if list1[i] != list2[i]:
             return i
     
-    return None
+    return result
 
 def remove_whitespace_and_nonprintable_characters(input_string):    
     result = ""

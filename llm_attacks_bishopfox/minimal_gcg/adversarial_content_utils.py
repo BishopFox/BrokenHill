@@ -68,7 +68,28 @@ def get_gemma_conversation_template():
     conv_template.roles=tuple(["<start_of_turn>user\n", "<start_of_turn>model\n"])
     conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep="<end_of_turn>\n"
-    conv_template.stop_str="<end_of_turn>"
+    #conv_template.stop_str="<end_of_turn>"
+    conv_template.stop_str=""
+    return conv_template
+
+def get_llama2_conversation_template():
+    conv_template = fastchat.conversation.get_conv_template("llama-2").copy()
+    conv_template.name = "llama2"
+    conv_template.system_template = "<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n"
+    #conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    #roles=("</s><s>[INST]", "[/INST]"),
+    roles=("[INST]", "[/INST]"),
+    conv_template.sep = ' '
+    #conv_template.sep2 = ' '
+    #conv_template.sep = ' </s>'
+    conv_template.sep2 = ' </s><s>'
+    #conv_template.sep = ' </s><s>'
+    conv_template.stop_str=" </s>"
+    return conv_template
+
+def get_mpt_conversation_template():
+    conv_template = fastchat.conversation.get_conv_template("mpt-7b-chat").copy()
+    conv_template.name="mpt"
     return conv_template
 
 def get_phi2_conversation_template():
@@ -85,11 +106,15 @@ def get_phi2_conversation_template():
 def get_phi3_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name="phi3"
-    conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
-    conv_template.system_message=None
-    conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
+    #conv_template.system_template = "<|system|>\n{system_message}<|end|>\n"
+    conv_template.system_template = "<|system|>\n{system_message}"
+    conv_template.system_message=""
+    #conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
+    conv_template.roles = tuple(["<|end|>\n<|user|>\n", "<|end|>\n<|assistant|>\n"])
     conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-    conv_template.sep = '\n'
+    conv_template.sep = ''
+    #conv_template.sep2 = ''
+    conv_template.stop_str = "<|end|>\n<|endoftext|>"
     return conv_template
 
 def get_qwen_conversation_template():
@@ -130,6 +155,10 @@ def register_missing_conversation_templates(attack_params):
     fschat_added_support = []
 
     register_missing_conversation_template(attack_params, fschat_added_support, "gemma", get_gemma_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "llama2", get_llama2_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "mpt", get_mpt_conversation_template())
     
     register_missing_conversation_template(attack_params, fschat_added_support, "phi2", get_phi2_conversation_template())
     register_missing_conversation_template(attack_params, fschat_added_support, "phi3", get_phi3_conversation_template())

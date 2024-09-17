@@ -339,6 +339,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         except Exception as e:
             raise GradientCreationException(f"Error calling nn.CrossEntropyLoss()(loss_logits, targets) with loss_logits = '{loss_logits}', targets = '{targets}': {e}")
 
+    # TKTK: fix this
     # if not got_loss and attack_params.loss_algorithm == LossAlgorithm.MELLOWMAX:
         # label_logits = None
         # try:
@@ -492,6 +493,7 @@ def get_adversarial_content_candidates(attack_params, adversarial_content_manage
         if attack_params.always_use_nanogcg_sampling_algorithm:
             use_nanogcg_sampling_algorithm = True
         
+    # TKTK: validate this
         if use_nanogcg_sampling_algorithm:
             #print(f"[get_adversarial_content_candidates] Debug: using nanoGCG sampling algorithm")
             # BEGIN: nanoGCG gradient-sampling algorithm

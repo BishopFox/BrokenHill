@@ -31,18 +31,17 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 
 ## Changes from the code in the original repository
 
-* Full (some would say overly-full) command-line interface
+* Extensive command-line interface
 * Supports many more model families, most of which are available in sizes small enough to run on an RTX 4090
-  * Original authors' version:
+  * Original authors' proof-of-concept:
     * Falcon (too large for the attack on an RTX 4090)
     * GPT-J (too large for the attack on an RTX 4090)
     * GPT Neo X (base model is too large for the attack on an RTX 4090)
 	* Guanaco (too large for the attack on an RTX 4090)
     * Llama-2 (too large for the attack on an RTX 4090)
-	* MPT
     * Pythia
 	* Vicuna
-  * This version also supports testing the following model families:
+  * Broken Hill also supports testing the following model families:
 	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* BigBirdPegasus
 	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
@@ -50,6 +49,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* Gemma 2
 	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* GPT-Neo
+	* MPT
 	* OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* <s>Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))</s>
 	* Phi-1
@@ -62,14 +62,34 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* StableLM 2
 	* TinyLlama
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
-* The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
 ** Validation that conversations are provided in the format the model was trained for
 ** Validation that the model does not provide the requested output when no adversarial content is included
 ** Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
+* Additional techniques for guiding the course of adversarial content generation beyond loss value
+** Roll back to high-water-mark results based on jailbreak count
+** Require that the loss value meet (or be close to) previous results
+* The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
+** Improved jailbreak detection rules for the default method developed by the original authors
 * Filters and other controls to improve the results
 * Results can be output in JSON format for filtering/analysis
+* Numerous experimental options to test variations on the GCG attack
 * A bunch of other stuff
+
+## In the works for future releases
+
+* Ability to test existing results against another model/configuration
+** Would allow more straightforward discovery of "transferrable" adversarial content
+** Would allow results to be tested against models that will fit into device memory, even when the data necessary for the GCG attack (gradient, backpropagation data, etc.) will not
+* More flexible rollback model
+* Configurable randomization to help generate more unique variations ("Gamma garden" mode)
+* Built-in features to output result data for follow-on work (versus using `jq` today)
+* Improved default jailbreak detection logic
+* Internationalization
+* Improved logging
+* Improved system resource statistics capture to allow users to better tune parameters for performance
+* Additional loss algorithm(s)
+* Additional attack modes
 
 ## Documentation
 

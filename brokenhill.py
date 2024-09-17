@@ -1,37 +1,15 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.27"
-script_date = "2024-09-13"
-
-# def get_logo():
-    # result =  "                                                                                \n"
-    # #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
-    # result += " .                                                                            . \n"
-    # result += "   .oO___________                                              ___________Oo.   \n"
-    # result += "   .             \____________________________________________/             .   \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |                             Broken Hill                              |    \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
-    # result += "    |                                                                      |    \n"    
-    # result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
-    # result += "    |                                                                      |    \n"
-    # result += "    |                   ________________________________                   |    \n"
-    # result += "   '  _________________/                                \_________________  '   \n"
-    # result += "   '^O                                                                    O^'   \n"
-    # result += " '                                                                            ' \n"
-    # result += "                                                                                \n"
-    # return result
-
+script_version = "0.28"
+script_date = "2024-09-16"
 
 def get_logo():
     result =  "                                                                                \n"
     #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
     result += " .                                                                            . \n"
-    result += "   .oO_________________                                  _________________Oo.   \n"
-    result += "   .                   \________________________________/                   .   \n"
+    result += "   .oO___________                                              ___________Oo.   \n"
+    result += "   .             \____________________________________________/             .   \n"
     result += "    |                                                                      |    \n"
     result += "    |                                                                      |    \n"
     result += "    |                             Broken Hill                              |    \n"
@@ -40,12 +18,34 @@ def get_logo():
     result += "    |                                                                      |    \n"    
     result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
     result += "    |                                                                      |    \n"
-    result += "    |             ____________________________________________             |    \n"
-    result += "   '  ___________/                                            \___________  '   \n"
+    result += "    |                   ________________________________                   |    \n"
+    result += "   '  _________________/                                \_________________  '   \n"
     result += "   '^O                                                                    O^'   \n"
     result += " '                                                                            ' \n"
     result += "                                                                                \n"
     return result
+
+
+# def get_logo():
+    # result =  "                                                                                \n"
+    # #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
+    # result += " .                                                                            . \n"
+    # result += "   .oO_________________                                  _________________Oo.   \n"
+    # result += "   .                   \________________________________/                   .   \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |                             Broken Hill                              |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |          a tool for attacking LLMs, presented by Bishop Fox          |    \n"
+    # result += "    |                                                                      |    \n"    
+    # result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
+    # result += "    |                                                                      |    \n"
+    # result += "    |             ____________________________________________             |    \n"
+    # result += "   '  ___________/                                            \___________  '   \n"
+    # result += "   '^O                                                                    O^'   \n"
+    # result += " '                                                                            ' \n"
+    # result += "                                                                                \n"
+    # return result
 
 
 
@@ -101,6 +101,8 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfo
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoCollection
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
 from llm_attacks_bishopfox.attack.attack_classes import AttackState
+from llm_attacks_bishopfox.attack.attack_classes import BrokenHillMode
+from llm_attacks_bishopfox.attack.attack_classes import BrokenHillResultData
 from llm_attacks_bishopfox.attack.attack_classes import FakeException
 from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
@@ -304,11 +306,11 @@ def check_for_attack_success(attack_params, model, tokenizer, adversarial_conten
     #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
     #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
     
-    gen_str = result_ar_info_data.decoded_llm_output_string
-                  
-    jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
-                  
     jailbroken = False
+    
+    if result_ar_info_data.decoded_llm_output_string.strip() != "":
+        jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
+
     if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
         jailbroken = True
     #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
@@ -364,8 +366,9 @@ def main(attack_params):
     jailbreak_detector.rule_set = attack_params.jailbreak_detection_rule_set
     
     # keep two arrays to avoid having to convert every item to JSON every iteration
-    json_data = []
-    attack_data = []
+    overall_result_data = BrokenHillResultData()    
+    overall_result_data.start_date_time = start_ts
+    #attack_data = []
     # keep another array to track adversarial values
     current_adversarial_content = None
     tested_adversarial_content = AdversarialContentList()
@@ -600,12 +603,18 @@ def main(attack_params):
         original_topk = attack_params.topk
         is_first_iteration = True
 
+        # Keep this out until things like denied tokens are file paths instead of inline, to keep from infecting result files with bad words
+        #overall_result_data.attack_params = attack_params
+
         #print(f"Debug: testing conversation template")
         conversation_template_tester = ConversationTemplateTester(adversarial_content_manager, model)
         conversation_template_test_results = conversation_template_tester.test_templates()
         if len(conversation_template_test_results.result_messages) > 0:
             for i in range(0, len(conversation_template_test_results.result_messages)):
                 print(conversation_template_test_results.result_messages[i])
+        else:
+            print(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
+
         
         #print(f"Debug: testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, "")
@@ -616,10 +625,14 @@ def main(attack_params):
                                                 empty_adversarial_content,
                                                 jailbreak_detector,
                                                 do_sample = False)
+        
+        overall_result_data.self_test_results["GCG-no_adversarial_content"] = nac_jailbreak_check_data
+        
         if nac_jailbreak_result:
-            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
+            #print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
+            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_data.decoded_llm_output_string.strip()}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
         else:
-            print("Validated that a jailbreak was not detected for the given configuration when adversarial content was not included.")
+            print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
         #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
@@ -630,23 +643,35 @@ def main(attack_params):
                                                 jailbreak_detector,
                                                 do_sample = False,
                                                 include_target_content = True)
+        
+        overall_result_data.self_test_results["GCG-simulated_ideal_adversarial_content"] = target_jailbreak_check_data
+        
         if target_jailbreak_result:
-            print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+            print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         else:            
-            print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
+            print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
 
-        if nac_jailbreak_result or not target_jailbreak_result:
-            if not attack_params.ignore_jailbreak_self_tests:
-                print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
-                sys.exit(1)
-
-        print(f"Starting main loop")
+        if attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
+            if nac_jailbreak_result or not target_jailbreak_result:
+                if not attack_params.ignore_jailbreak_self_tests:
+                    print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+                    sys.exit(1)
 
         # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
         
         # TKTK: self-test to count the number of tokens in a role-switching operation for the model.
         
-        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using this tool's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch. 
+        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using this tool's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch.
+        
+        if attack_params.operating_mode == BrokenHillMode.GCG_ATTACK_SELF_TEST:
+            print(f"Broken Hill has completed all self-test operations and will now exit.")
+            end_ts = get_time_string(get_now())            
+            overall_result_data.end_date_time = end_ts
+            if attack_params.json_output_file is not None:
+                safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
+            sys.exit(0)
+
+        print(f"Starting main loop")
 
         while main_loop_iteration_number < attack_params.max_iterations:
             is_success = False
@@ -658,13 +683,17 @@ def main(attack_params):
                     current_dt = get_now()
                     current_ts = get_time_string(current_dt)
                     current_elapsed_string = get_elapsed_time_string(start_dt, current_dt)
-                    print(f"{current_ts} - Main loop iteration {main_loop_iteration_number + 1} of {attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {successful_attack_count}")                    
+                    print(f"{current_ts} - Main loop iteration {main_loop_iteration_number + 1} of {attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {successful_attack_count}")
+                    overall_result_data.end_date_time = current_ts
+                    overall_result_data.elapsed_time_string = current_elapsed_string
+    
                     print_stats(attack_params)
                     print(f"---------")
                     
                     attack_data_previous_iteration = None
                     if main_loop_iteration_number > 0:
-                        attack_data_previous_iteration = attack_data[len(attack_data) - 1]
+                        #attack_data_previous_iteration = attack_data[len(attack_data) - 1]
+                        attack_data_previous_iteration = overall_result_data.attack_results[len(overall_result_data.attack_results) - 1]
                     
                     tested_adversarial_content.append_if_new(current_adversarial_content)
                     
@@ -1037,7 +1066,6 @@ def main(attack_params):
                             attack_results_current_iteration.complete_user_input = adversarial_content_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
 
                         #print(f"Passed:{is_success}\nCurrent best new adversarial content: '{current_adversarial_content.get_short_description()}'")
-                        #json_data_current_iteration = {}
                         
                         full_output_dataset_name = "full_output"
                         
@@ -1095,10 +1123,11 @@ def main(attack_params):
                         successful_attack_count += 1
                     
                     #attack_data.append(attack_data_current_iteration)
-                    attack_data.append(attack_results_current_iteration)
+                    #attack_data.append(attack_results_current_iteration)
+                    overall_result_data.attack_results.append(attack_results_current_iteration)
                     if attack_params.json_output_file is not None:
-                        json_data.append(attack_results_current_iteration.to_dict())
-                        safely_write_text_output_file(attack_params.json_output_file, json.dumps(json_data, indent=4))
+                        #overall_result_data.attack_results.append(attack_results_current_iteration.to_dict())
+                        safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
                     
                     rollback_triggered = False
                     
@@ -1181,6 +1210,7 @@ def main(attack_params):
             if is_success and attack_params.break_on_success:
                 break
             main_loop_iteration_number += 1
+            overall_result_data.completed_iterations = main_loop_iteration_number
 
     except KeyboardInterrupt:
         #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -1195,6 +1225,10 @@ def main(attack_params):
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
     print(f"Finished after {main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {successful_attack_count}")
+    overall_result_data.end_date_time = end_ts
+    overall_result_data.elapsed_time_string = total_elapsed_string
+    if attack_params.json_output_file is not None:
+        safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
 
 def exit_if_unauthorized_overwrite(output_file_path, attack_params):
     if os.path.isfile(output_file_path):
@@ -1288,6 +1322,11 @@ if __name__=='__main__':
     parser.add_argument("-d", "--device", default=attack_params.device, type=str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). Using anything other than CUDA is unlikely to produce satisfactory results.")
 
+    parser.add_argument("--self-test", type=str2bool, nargs='?',
+        const=True,
+        help="Performs self-testing only, then exits before performing an actual attack. Can be used to test basic model-handling support on systems without enough device memory to perform the GCG attack.")
+
+
     parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type=str, 
         help="The initial string to iterate on. Leave this as the default to perform the attack described in the original paper. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
     
@@ -1309,6 +1348,12 @@ if __name__=='__main__':
     
     parser.add_argument("--random-adversarial-tokens", type=numeric_string_to_int,
         help=f"Generate this many random tokens to use as the initial adversarial value instead of specifying explicit initial data. The list of possible tokens will be filtered using the same criteria defined by any of the candidate-filtering options that are also specified.")
+    
+    # TKTK: adversarial tokens are target tokens
+    # TKTK: adversarial tokens are <character> * token count of target tokens
+    # TKTK: adversarial tokens are loss tokens (this will require a little work)
+    # TKTK: adversarial tokens are <character> * token count of loss tokens (this will require a little work)
+    
     
     parser.add_argument("--reencode-every-iteration", type=str2bool, nargs='?',
         const=True,
@@ -1528,6 +1573,14 @@ if __name__=='__main__':
     parser.add_argument("--loss-slice-is-index-shifted-target-slice", type=str2bool, nargs='?',
         const=True, default=False,
         help="This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice sometimes includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and it is the default mode.")
+
+    # TKTK: option to set the index shifting
+    
+    # TKTK: option to shift left, but pad the comparison values to the right, like with the LLM role options
+        
+    # TKTK: loss slice is index-shifted base prompt plus target (set to zero shift for no shift)
+
+    # TKTK: loss slice is index-shifted base prompt plus target with padding
     
     parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type=str2bool, nargs='?',
         const=True, default=False,
@@ -1698,6 +1751,9 @@ if __name__=='__main__':
         print("Error: only one of the following options may be specified: --initial-adversarial-string, --initial-adversarial-string-base64, --initial-adversarial-token, --initial-adversarial-token-id, --initial-adversarial-token-ids, --random-adversarial-tokens.")
         sys.exit(1)
     
+    if args.self_test:
+        attack_params.operating_mode = BrokenHillMode.GCG_ATTACK_SELF_TEST
+        
     if args.reencode_every_iteration:
         attack_params.reencode_adversarial_content_every_iteration = args.reencode_every_iteration
 

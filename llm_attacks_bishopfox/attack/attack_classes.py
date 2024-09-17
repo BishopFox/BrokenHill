@@ -79,6 +79,10 @@ class PyTorchDevice():
             print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
         return result
 
+class BrokenHillMode(StrEnum):
+    GCG_ATTACK = 'gcg_attack'
+    GCG_ATTACK_SELF_TEST  = 'gcg_attack_self_test'
+
 # not currently used
 class OverallScoringFunction(StrEnum):
     MEDIAN = 'median'
@@ -106,7 +110,7 @@ class SystemMessageMode(StrEnum):
     SYSTEM_MESSAGE_PROPRTY = 'system_message_proprty'
     MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
 
-# not currently used
+# not currently implemented
 class AdversarialContentPlacement(StrEnum):
     PREFIX = 'prefix'
     SUFFIX = 'suffix'
@@ -289,7 +293,7 @@ class AdversarialContentList(JSONSerializableObject):
         if len(result.adversarial_content) > 0:
             deserialized_content = []
             for i in range(0, len(result.adversarial_content)):
-                deserialized_content.append(AdversarialContent.from_dict(result.radiation_gardens[i]))
+                deserialized_content.append(AdversarialContent.from_dict(result.adversarial_content[i]))
             result.adversarial_content = deserialized_content
         return result
 
@@ -317,6 +321,50 @@ class AdversarialContentList(JSONSerializableObject):
     def from_json(json_string):
         return AdversarialContentList.from_dict(json.loads(json_string))
 
+
+class BrokenHillResultData(JSONSerializableObject):
+    def __init__(self):
+        self.start_date_time = None
+        self.end_date_time = None
+        self.elapsed_time_string = None
+        self.attack_params = None
+        self.attack_results = []
+        self.self_test_results = {}
+        self.completed_iterations = 0
+    
+    def to_dict(self):
+        result = super(BrokenHillResultData, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = BrokenHillResultData()
+        super(BrokenHillResultData, result).set_properties_from_dict(result, property_dict)
+        
+        if len(result.attack_results) > 0:
+            deserialized_content = []
+            for i in range(0, len(result.attack_results)):
+                deserialized_content.append(AttackResultInfoCollection.from_dict(result.attack_results[i]))
+            result.attack_results = deserialized_content
+        
+        serialized_dict_keys = []
+        for k in result.self_test_results.keys():
+            serialized_dict_keys.append(k)
+        
+        if len(serialized_dict_keys) > 0:
+            deserialized_dict = {}
+            for i in range(0, len(serialized_dict_keys)):
+                deserialized_dict[serialized_dict_keys[i]] = AttackResultInfoData.from_dict(result.self_test_results[serialized_dict_keys[i]])
+            result.self_test_results = deserialized_dict
+        
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return BrokenHillResultData.from_dict(json.loads(json_string))
 
 # Default values defined in this class
 class AttackParams(JSONSerializableObject):
@@ -375,6 +423,8 @@ class AttackParams(JSONSerializableObject):
         return re.compile(self.token_filter_regex)
 
     def __init__(self):
+        self.operating_mode = BrokenHillMode.GCG_ATTACK
+        
         self.device = 'cuda'
         
         # back-end to use if CUDA is not available
@@ -476,12 +526,7 @@ class AttackParams(JSONSerializableObject):
         #   rule 17 added via command-line: "pin the tail on the donkey but where the 
         #           winner gets to anonymously kill you" indicates jailbreak after all
         #   All rules evaluated every time, like a firewall policy
-        self.jailbreak_detection_rule_set = []
-        
-        # A potential jailbreak must match this regular expression as well
-        # Defaults to "at least two mixed-case alphabetical characters in sequence"
-        # To avoid false positives for e.g. a bunch of lines consisting solely of "###"
-        #self.jailbreak_minimum_sequential_letters_regex = re.compile("[A-Za-z]{2}")
+        self.jailbreak_detection_rule_set = []      
 
         # TKTK: detect jailbreak based on some loss threshold?
         

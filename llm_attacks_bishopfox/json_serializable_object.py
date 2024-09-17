@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 
 class JSONSerializationException(Exception):
     pass
@@ -59,6 +60,11 @@ class JSONSerializableObject:
                 if callable(to_dict_method):
                     serialized_value = value_to_serialize.to_dict()
                     handled = True
+        # regex objects => string
+        if not handled:
+            if isinstance(value_to_serialize, re.Pattern):
+                serialized_value = str(value_to_serialize)
+                handled = True
 
         # something was passed to this function that it doesn't know how to serialize
         if not handled:
