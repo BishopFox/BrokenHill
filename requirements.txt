@@ -26,5 +26,8 @@ causal-conv1d>=1.2.0
 # mamba-ssm is recommended by the state-spaces for the Mamba LLM family, but doesn't install correctly on my system.
 #mamba-ssm
 # needed for Tiny-Llama
-# tested with protobuf==xxxxx
+# tested with protobuf==5.28.0
 protobuf
+# needed for Guanaco and other adapter-based models
+# tested with peft==0.12.0
+peft

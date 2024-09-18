@@ -1,6 +1,6 @@
 # One Prompt To Rule Them All: Generating a prompt that exploits multiple LLMs
 
-[ [Back to the Observations and recommendations document](observations.md) ]
+[ [Back to the Observations and recommendations document](../observations.md) ]
 
 ## Multiple instances of the same LLM configured in different ways
 

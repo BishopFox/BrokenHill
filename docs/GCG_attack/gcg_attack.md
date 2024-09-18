@@ -1,6 +1,6 @@
 # How the greedy coordinate gradient (GCG) attack works
 
-For someone who doesn't already have extensive experience working with large language models (LLMs), the GCG attack can seem like an arcane piece of alien technology that may never make sense. I know it did to me when I originally began work on this project. Reading [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://arxiv.org/abs/2307.15043) will likely feel like jumping into the deep end of the pool, and [reading the original authors' code](https://github.com/llm-attacks/llm-attacks) is unlikely to help because so much of the critical elements are either undocumented, or documented in a way that doesn't make sense without a strong LLM background. This document is my attempt to explain the attack in a way that's understandable to most people with some sort of information technology background. Any errors in the description are my own.
+For someone who doesn't already have extensive experience working with large language models (LLMs), the GCG attack can seem like an arcane piece of alien technology that may never make sense. I know it did to me when I originally began work on this project. Reading [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://arxiv.org/abs/2307.15043) will likely feel like jumping into the deep end of the pool, and [reading Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code](https://github.com/llm-attacks/llm-attacks) is unlikely to help because so much of the critical elements are either undocumented, or documented in a way that doesn't make sense without a strong LLM background. This document is my attempt to explain the attack in a way that's understandable to most people with some sort of information technology background. Any errors in the description are my own.
 
 ## Large language models: how do they work?
 
@@ -82,13 +82,11 @@ It will then find the location ("index") in the list of tokens where the target 
 
 *<|assistant|> Sure, here are instructions for making*
 
-[This has implications for the GCG mechanism itself, as discussed in the "Thoughts on the 'universal' and 'transferrable' claims from the original paper" document](thoughts_on_universal_and_transferrable_claims.md), [and it should also inform how an operator words their target strings, as discussed in the "Observations and recommendations" document](observations.md).
+This has implications for the GCG mechanism itself, [and it should also inform how an operator phrases their target strings, as discussed in the "Observations and recommendations" document](../observations.md).
 
 ## Observations on effectiveness and limitations
 
 [We've successfully generated adversarial content that works against other configurations of the same model](One_Prompt_To_Rule_Them_All-Derek_CTF.md), but [we've also found that a lot of adversarial content is ineffective even against the same model when loaded at a different quantization level, or in another platform](observations.md). By using iterative techniques, it seems generally possible to develop adversarial content that will work against other instances of the same LLM, and potentially other LLMs.
-
-See also [the "Thoughts on the 'universal' and 'transferrable' claims from the original paper" document](thoughts_on_universal_and_transferrable_claims.md) for a lengthy discussion of that topic.
 
 ## Footnotes
 

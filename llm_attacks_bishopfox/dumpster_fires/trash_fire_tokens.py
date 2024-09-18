@@ -215,37 +215,106 @@ def remove_empty_leading_and_trailing_tokens(trash_fire_tokens, token_array, dec
     #print(f"[remove_empty_leading_and_trailing_tokens] Debug: token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
     return result_token_array, result_decoded_token_array
 
-def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, start_index = 0, stop_index = None, conversation_template = None):  
+# def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, start_index = 0, stop_index = None, conversation_template = None):  
+    # if string_to_search_for == "":
+        # print(f"[find_last_index_of_token] Error: cannot search for empty string '{string_to_search_for}' in tokens = '{tokens}'")
+        # sys.exit(1)
+    # decoded_tokens = get_decoded_tokens(tokenizer, tokens)
+    # if len(decoded_tokens) < 1:
+        # print(f"[find_last_index_of_token] Error: got zero-length array '{decoded_tokens}' for tokens = '{tokens}'")
+        # sys.exit(1)
+    # print(f"[find_last_index_of_token] Debug: decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
+    # string_tokens = get_encoded_token(tokenizer, string_to_search_for)
+    # if len(decoded_tokens) < 1:
+        # print(f"[find_last_index_of_token] Error: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
+        # sys.exit(1)
+    
+    # print(f"[find_last_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")
+    # # hacky workarounds for garbagey behaviour by LLMs
+    # string_to_search_for_array = string_to_search_for.split(" ")
+    # if len(string_to_search_for_array) < 1:
+        # print(f"[find_last_index_of_token] Error: got zero-length array '{string_to_search_for_array}' when splitting '{string_to_search_for}' into words")
+        # sys.exit(1)
+    # decoded_string_tokens = get_decoded_tokens(tokenizer, string_tokens)
+    # if len(decoded_string_tokens) < 1:
+        # print(f"[find_last_index_of_token] Error: got zero-length array '{decoded_string_tokens}' when decoding string_tokens '{string_tokens}'")
+        # sys.exit(1)
+
+    # string_tokens, decoded_string_tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, string_tokens, decoded_string_tokens, conversation_template = conversation_template, strip_decoded_tokens = True)
+    
+    # print(f"[find_last_index_of_token] Debug: searching for last occurrence of '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
+    # result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
+    # result_stop = None
+    # if isinstance(result_start, type(None)):
+        # # try to find cases where tokens have spaces on either side or not at all
+        # decoded_tokens_processed_1 = []
+        # decoded_tokens_processed_2 = []
+        # for i in range(0, len(decoded_tokens)):
+            # processed_token = decoded_tokens[i].strip()
+            # decoded_tokens_processed_1.append(processed_token)
+            # decoded_tokens_processed_2.append(decoded_tokens[i])
+        # # look for the first word as one string as well as individual decoded token IDs
+        # for search_array in [ string_to_search_for_array, decoded_string_tokens ]:
+            # for in_array in [ decoded_tokens_processed_1, decoded_tokens_processed_2 ]:
+                # if isinstance(result_start, type(None)):
+                    # result_start = find_last_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
+                # else:
+                    # break
+            # if not isinstance(result_start, type(None)):
+                # break
+        # if isinstance(result_start, type(None)):
+            # raise Exception(f"Could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', '{decoded_tokens_processed_1}', or '{decoded_tokens_processed_2}'")
+        # else:
+            # result_stop = result_start + len(string_to_search_for_array)
+            # # This issue is so frequent that enabling this error is too noisy
+            # #print(f"[find_last_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+            
+    # else:
+        # result_stop = result_start + len(string_tokens)
+    
+    # result = slice(result_start, result_stop)
+    # print(f"[find_last_index_of_token] Debug: result = '{result}'")
+    # return result
+
+def find_first_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None):
+    return find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, find_last = False)
+
+def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None):
+    return find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, find_last = True)
+
+def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, find_last = False):  
     if string_to_search_for == "":
-        print(f"[find_last_index_of_token] Eror: cannot search for empty string '{string_to_search_for}' in tokens = '{tokens}'")
+        print(f"[find_index_of_token] Error: cannot search for empty string '{string_to_search_for}' in tokens = '{tokens}'")
         sys.exit(1)
-    decoded_tokens = get_decoded_tokens(tokenizer, tokens)
-    if len(decoded_tokens) < 1:
-        print(f"[find_last_index_of_token] Eror: got zero-length array '{decoded_tokens}' for tokens = '{tokens}'")
-        sys.exit(1)
-    #print(f"[find_last_index_of_token] Debug: decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
+    # decoded_tokens = get_decoded_tokens(tokenizer, tokens)
+    # if len(decoded_tokens) < 1:
+        # print(f"[find_index_of_token] Error: got zero-length array '{decoded_tokens}' for tokens = '{tokens}'")
+        # sys.exit(1)
+    #print(f"[find_index_of_token] Debug: decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
     string_tokens = get_encoded_token(tokenizer, string_to_search_for)
     if len(decoded_tokens) < 1:
-        print(f"[find_last_index_of_token] Eror: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
+        print(f"[find_index_of_token] Error: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
         sys.exit(1)
     
-    #print(f"[find_last_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")
+    #print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")
     # hacky workarounds for garbagey behaviour by LLMs
     string_to_search_for_array = string_to_search_for.split(" ")
     if len(string_to_search_for_array) < 1:
-        print(f"[find_last_index_of_token] Eror: got zero-length array '{string_to_search_for_array}' when splitting '{string_to_search_for}' into words")
+        print(f"[find_index_of_token] Error: got zero-length array '{string_to_search_for_array}' when splitting '{string_to_search_for}' into words")
         sys.exit(1)
-    #first_search_word = string_to_search_for_array[0]
-    #len_first_search_word = len(first_search_word)
     decoded_string_tokens = get_decoded_tokens(tokenizer, string_tokens)
     if len(decoded_string_tokens) < 1:
-        print(f"[find_last_index_of_token] Eror: got zero-length array '{decoded_string_tokens}' when decoding string_tokens '{string_tokens}'")
+        print(f"[find_index_of_token] Error: got zero-length array '{decoded_string_tokens}' when decoding string_tokens '{string_tokens}'")
         sys.exit(1)
 
     string_tokens, decoded_string_tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, string_tokens, decoded_string_tokens, conversation_template = conversation_template, strip_decoded_tokens = True)
     
-    #print(f"[find_last_index_of_token] Debug: searching for last occurrence of '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
-    result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
+    #print(f"[find_index_of_token] Debug: searching for last occurrence of '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}'")
+    result_start = None
+    if find_last:
+        result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
+    else:
+        result_start = find_first_occurrence_of_array_in_array(string_tokens, tokens, start_index=start_index, stop_index=stop_index)
     result_stop = None
     if isinstance(result_start, type(None)):
         # try to find cases where tokens have spaces on either side or not at all
@@ -259,7 +328,10 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
         for search_array in [ string_to_search_for_array, decoded_string_tokens ]:
             for in_array in [ decoded_tokens_processed_1, decoded_tokens_processed_2 ]:
                 if isinstance(result_start, type(None)):
-                    result_start = find_last_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
+                    if find_last:
+                        result_start = find_last_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
+                    else:
+                        result_start = find_first_occurrence_of_array_in_array(search_array, in_array, start_index=start_index, stop_index=stop_index)
                 else:
                     break
             if not isinstance(result_start, type(None)):
@@ -269,13 +341,13 @@ def find_last_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for,
         else:
             result_stop = result_start + len(string_to_search_for_array)
             # This issue is so frequent that enabling this error is too noisy
-            #print(f"[find_last_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+            #print(f"[find_index_of_token] Warning: could not find '{string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
             
     else:
         result_stop = result_start + len(string_tokens)
     
     result = slice(result_start, result_stop)
-    #print(f"[find_last_index_of_token] Debug: result = '{result}'")
+    #print(f"[find_index_of_token] Debug: result = '{result}'")
     return result
 
 

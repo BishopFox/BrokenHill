@@ -436,6 +436,10 @@ class AttackParams(JSONSerializableObject):
         # For models such as e.g. Mamba that don't include their own tokenizer
         self.tokenizer_path = None
         
+        # If this value is not None, after loading the model, use Hugging Face's PEFT library to load a pretrained model based on the first model from a separate path.
+        # For models such as Guanaco that can't be loaded on their own
+        self.peft_adapter_path = None
+        
         self.template_name = None
         
         self.override_fschat_templates = False
@@ -546,7 +550,7 @@ class AttackParams(JSONSerializableObject):
         # temperature
         self.model_temperature = 1.0
         # random seeds
-        # The magic value 20 is from the notebook by the original authors
+        # The magic value 20 is from the notebook by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
         # NumPy
         self.numpy_random_seed = 20
         # PyTorch
@@ -671,14 +675,14 @@ class AttackParams(JSONSerializableObject):
         self.display_model_size = False
 
         # batch sizes for various operations
-        #self.new_adversarial_token_candidate_count = 16
-        #self.new_adversarial_token_candidate_count = 32
-        self.new_adversarial_token_candidate_count = 48
-        #self.new_adversarial_token_candidate_count = 64
-        #self.new_adversarial_token_candidate_count = 256
+        #self.new_adversarial_value_candidate_count = 16
+        #self.new_adversarial_value_candidate_count = 32
+        self.new_adversarial_value_candidate_count = 48
+        #self.new_adversarial_value_candidate_count = 64
+        #self.new_adversarial_value_candidate_count = 256
         
         # the maximum the adversarial token generation batch size is allowed to grow to when no candidates are found
-        self.max_new_adversarial_token_candidate_count = 1024
+        self.max_new_adversarial_value_candidate_count = 1024
         
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1
@@ -700,6 +704,9 @@ class AttackParams(JSONSerializableObject):
         #self.max_topk = None
         # default to allowing the value to increase 20 times before being considered a fatal error
         self.max_topk = 5120
+
+        # TKTK: add a value and handling in Broken Hill for the overall limit on tokens (not just new tokens to be added to the end, which is what the _max_new_tokens values below represent).
+        # "This is a friendly reminder - the current text generation call will exceed the model's predefined maximum length (2048). Depending on the model, you may observe exceptions, performance degradation, or nothing at all."
 
         # maximum number of tokens to have the LLM generate when testing adversarial values for a jailbreak
         # The original code warned against setting this higher than 32 to avoid a performance penalty

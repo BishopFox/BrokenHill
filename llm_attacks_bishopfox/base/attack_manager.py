@@ -1,3 +1,5 @@
+#!/bin/env python
+
 import base64
 import gc
 import json
@@ -8,11 +10,13 @@ from copy import deepcopy
 from typing import Optional, Any
 
 import numpy
+import peft.peft_model
 import pandas as pd
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 from fastchat.model import get_conversation_template
 from tokenizers import AddedToken
 from transformers import (AutoTokenizer, GPT2LMHeadModel)
@@ -131,7 +135,7 @@ def get_default_negative_test_strings():
                    "I regret to",
                    "I would advise",
                    #"I'm an",
-                   "I'm just",
+                   #"I'm just",
                    "I'm not sure I can do that",
                    "I'm not sure if I should",
                    "I'm not sure what you mean",
@@ -266,6 +270,9 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
 
+class EmbeddingLayerNotFoundException(Exception):
+    pass
+
 def is_phi_1_to_3_model(model):
     if isinstance(model, Phi3ForCausalLM):
         return True
@@ -279,41 +286,85 @@ def is_phi_1_to_3_model(model):
     return False
 
 def get_embedding_layer(model):
-    if isinstance(model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
-        return model.transformer.wte
-    elif isinstance(model, BartForCausalLM):
+    use_default_logic = False
+    if isinstance(model, BartForCausalLM):
         return model.model.decoder.get_input_embeddings()
-    elif isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
+    if isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
         return model.model.decoder.embed_tokens
-    elif isinstance(model, BlenderbotForCausalLM):
+    if isinstance(model, BlenderbotForCausalLM):
         return model.model.decoder.embed_tokens
-    elif isinstance(model, GemmaForCausalLM):
+    if isinstance(model, FalconForCausalLM):
+        return model.get_input_embeddings()
+    if isinstance(model, GemmaForCausalLM):
         return model.base_model.get_input_embeddings()
-    elif isinstance(model, Gemma2ForCausalLM):
+    if isinstance(model, Gemma2ForCausalLM):
         return model.base_model.get_input_embeddings()
-    elif isinstance(model, GPTNeoForCausalLM):
+    if isinstance(model, GPT2LMHeadModel):
+        return model.transformer.wte
+    if isinstance(model, GPTJForCausalLM):
+        return model.transformer.wte
+    if isinstance(model, GPTNeoForCausalLM):
         return model.base_model.wte
-    elif isinstance(model, GPTNeoXForCausalLM):
+    if isinstance(model, GPTNeoXForCausalLM):
         return model.base_model.embed_in
-    elif isinstance(model, LlamaForCausalLM):
-        return model.model.embed_tokens
-    elif isinstance(model, MambaForCausalLM):
+    if isinstance(model, LlamaForCausalLM):
+        if hasattr(model, "model"):
+            if hasattr(model.model, "embed_tokens"):
+                return model.model.embed_tokens
+            if hasattr(model.model, "get_input_embeddings"):
+                return model.model.get_input_embeddings()
+        if hasattr(model, "embed_tokens"):
+            return model.embed_tokens
+        if hasattr(model, "get_input_embeddings"):
+            return model.get_input_embeddings()
+    if isinstance(model, MambaForCausalLM):
         return model.model.get_input_embeddings()
-    elif isinstance(model, MptForCausalLM):
+    if isinstance(model, MptForCausalLM):
         return model.get_input_embeddings()
-    elif isinstance(model, OPTForCausalLM):
+    if isinstance(model, OPTForCausalLM):
         return model.model.get_input_embeddings()
-    elif is_phi_1_to_3_model(model):
+    if isinstance(model, peft.peft_model.PeftModelForCausalLM):
+        use_default_logic = True
+    if is_phi_1_to_3_model(model):
         return model.model.embed_tokens
-    elif isinstance(model, RobertaForCausalLM):
+    if isinstance(model, RobertaForCausalLM):
         return model.get_input_embeddings()
-    elif isinstance(model, Qwen2ForCausalLM):
+    if isinstance(model, Qwen2ForCausalLM):
         return model.base_model.get_input_embeddings()
-    elif isinstance(model, StableLmForCausalLM):
+    if isinstance(model, StableLmForCausalLM):
         return model.base_model.embed_tokens
     else:
-        print(f"[get_embedding_layer] Warning: unrecognized model type {type(model)} - defaulting to get_input_embeddings() - this may cause unexpected behaviour.")
-        return model.model.get_input_embeddings()
+        result = None
+        result_name = None
+        if hasattr(model, "model"):
+            if hasattr(model.model, "get_input_embeddings"):
+                result = model.model.get_input_embeddings()
+                result_name = "model.model.get_input_embeddings()"
+            if result is None and hasattr(model.model, "embed_tokens"):
+                result = model.model.embed_tokens
+                result_name = "model.model.embed_tokens"
+        if result is None and hasattr(model, "get_input_embeddings"):
+            result = model.get_input_embeddings()
+            result_name = "model.get_input_embeddings()"
+        if result is None and hasattr(model, "embed_tokens"):
+            result = model.embed_tokens
+            result_name = "model.embed_tokens"
+        
+        if result is not None:
+            if not use_default_logic:
+                print(f"[get_embedding_layer] Warning: unrecognized model type {type(model)} - using  {result_name} - this may cause unexpected behaviour.")
+            return result
+        
+        result_message = f"[get_embedding_layer] Error: unrecognized model type {type(model)} "
+        if use_default_logic:
+            f"[get_embedding_layer] Error: model type {type(model)} "
+
+        result_message += "did not have an input embedding property in any of the default locations Broken Hill is configured to search for. Processing cannot continue."
+        
+        raise EmbeddingLayerNotFoundException(result_message)
+        
+        #print(f"[get_embedding_layer] Warning: unrecognized model type {type(model)} - defaulting to model.get_input_embeddings() - this may cause unexpected behaviour.")
+        #return result
         #raise ValueError(f"Unknown model type: {type(model)}")
 
 def get_embedding_matrix(model):

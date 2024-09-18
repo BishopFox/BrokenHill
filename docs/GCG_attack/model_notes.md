@@ -1,14 +1,25 @@
 # Model notes
 
-This document describes high-level results of testing using various publicly-available large language models.
+This document describes high-level results of testing the GCG attack using various publicly-available large language models.
 
 ## Model families with publicly-available versions capable of handling chat interaction
 
+### Falcon
+
+* Conversation template name: `falcon`
+* [TKTK](TKTK)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+** Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+** Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Specific versions tested using this tool:
+
+* [falcon-7b-instruct](https://huggingface.co/tiiuae/falcon-7b-instruct)
 
 ### Gemma
 
-* Chat template name: `gemma`
-* Minimum recommended PyTorch device memory: 24GB
+* Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
@@ -27,8 +38,7 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 
 ### Gemma 2
 
-* Chat template name: `gemma`
-* Minimum recommended PyTorch device memory: 24GB
+* Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TKTK
@@ -46,22 +56,84 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 * [gemma-2-2b](https://huggingface.co/google/gemma-2b)
 * [gemma-2-2b-it](https://huggingface.co/google/gemma-2b-it)
 
+### Guanaco
+
+* Conversation template name: `guanaco`
+* [Guanaco-7B at Hugging Face](https://huggingface.co/timdettmers/guanaco-7b)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+** Tool can generate adversarial content that defeats those restrictions: **Yes**
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+** Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Special considerations
+
+Guanaco is a PEFT pre-trained model built on top of the original Llama. To you use, you'll need to specify the corresponding Llama model using the `--model` option, and refer to Guanaco using the `--peft-adapter` option, e.g.:
+
+```
+--model /mnt/md0/Machine_Learning/LLMs/huggyllama/llama-7b \
+--peft-adapter /mnt/md0/Machine_Learning/LLMs/timdettmers/guanaco-7b \
+```
+
+Even though Guanaco is a model layered on top of Llama, it uses its own conversation template. The format is similar to the `fschat` `zero_shot` template, but not identical so Broken Hill includes a custom `guanaco` template.
+
+#### Specific versions tested using this tool:
+
+* [guanaco-7b](https://huggingface.co/timdettmers/guanaco-7b)
+
+### Llama
+
+Broken Hill can successfully load the original Llama model, but we haven't been able to find any documentation on the specific format it expects conversation messages in. Using the templates that seem like they'd work (`llama2`, `zero_shot`, `guanaco`) produces output similar to other models when given input using a conversation template that doesn't match the data the model was trained with. In other words, it's unclear how useful the results are. If you have reliable information on the correct conversation format, please let us know.
+
 ### Llama-2
 
-* Chat template name: `llama2` (not: *not* `llama-2`)
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `llama2` or `llama-2` (see discussion below)
 * [TKTK](TKTK)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 
-`fschat` includes a template for Llama-2 named `llama-2`, but it is slightly incorrect. Broken Hill includes a slightly-less-wrong template definition  named `llama2`that matches the output of the Llama-2 tokenizer's `apply_chat_template` method in terms of the beginning of the text, which is more likely to affect Broken Hill results. Fixing the template completely seems like it will require code changes to `fschat`.
+#### Special considerations
+
+`fschat` includes a template for Llama-2 named `llama-2`, but it is slightly incorrect (for example, it does not add the leading `<s>` at the beginning of the conversation, and it adds a trailing `<s>` to the conversation. Fixing the template completely seems like it will require code changes to `fschat`. Broken Hill includes a modified version of the template named `llama2` that can be used as a workaround. The custom template has a different name in this case to allow operators to easy choose which option they believe is the "least worst option" for their purposes.
+
+The custom template is also slightly incorrect, but seems to be "less wrong" regarding the parts of the output that are more likely to affect Broken Hill's results. Specifically, it adds the leading `<s>` at the beginning of the conversation when a system prompt is present, and sets a default empty system message to cause the system message block to be included in all conversations. It still leaves a trailing `<s>` at the end of the conversation.
+
+Until this issue is resolved, Broken Hill will report one or more warnings when the Llama-2 templates are used.
+
+#### Specific versions tested using this tool:
+
+* [Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
+
+### Llama-3
+
+* Conversation template name: `llama-3` (see instructions below)
+* [TKTK](TKTK)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+** Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+** Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Special considerations
+
+As of this writing, the current *release* of `fschat` (0.2.36 - from February 11th, 2024) did not support Llama-3, and the template requires custom logic. [You can install `fschat` from source](https://github.com/lm-sys/FastChat?tab=readme-ov-file#method-2-from-source) to enable the `llama-3` template, e.g. from the base directory where you created the Python virtual environment for Broken Hill:
+
+```
+git clone https://github.com/lm-sys/FastChat.git
+cd FastChat
+../bin/pip install -e ".[model_worker,webui]"
+cd ..
+```
+
+As with the Llama-2 conversation template, the `fschat` template for Llama-3 does not exactly match the output of the tokenizer's `apply_chat_template` function (for example, `fschat` adds an extra `<|eot_id|>` at the end of the prompt), but the differences shouldn't be enough to materially effect Broken Hill's test results. Until `fschat` is updated, Broken Hill will display a brief warning when the `llama-3` template is used.
+
+#### Specific versions tested using this tool:
+
+* [Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
 
 ### MPT
 
-* Chat template name: `mpt`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `mpt`
 * [TKTK](TKTK)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
@@ -70,10 +142,13 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 
 `fschat` includes a template for MPT, but for some reason there are two templates named `mpt-7b-chat` and `mpt-30b-chat`, which are identical except for the system prompt. Broken Hill includes a shortcut template definition that points to `mpt-7b-chat`.
 
+#### Specific versions tested using this tool:
+
+* [mpt-7b-chat](https://huggingface.co/mosaicml/mpt-7b-chat)
+
 ### Phi-2
 
-* Chat template name: `phi2`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `phi2`
 * [Microsoft's Phi-2 model at Hugging Face](https://huggingface.co/microsoft/phi-2)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: **Yes**
@@ -88,8 +163,7 @@ Broken Hill includes a custom `phi2` chat template because `fschat` does not cur
 
 ### Phi-3
 
-* Chat template name: `phi3`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `phi3`
 * [Microsoft's Phi-3 model collection at Hugging Face](https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: **Yes**
@@ -114,8 +188,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 ### Qwen
 
-* Chat template name: `qwen`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `qwen`
 * [Qwen collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen-65c0e50c3f1ab89cb8704144)
 * [Qwen 1.5 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen15-65c0a2f577b1ecb76d786524)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
@@ -131,8 +204,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 ### Qwen 2
 
-* Chat template name: `qwen2`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `qwen2`
 * [Qwen 2 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TKTK
@@ -147,8 +219,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 ### StableLM
 
-* Chat template name: `stablelm`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `stablelm`
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
@@ -161,8 +232,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 
 ### StableLM 2
 
-* Chat template name: `stablelm2`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `stablelm2`
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
@@ -176,8 +246,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 
 ### TinyLlama
 
-* Chat template name: `TinyLlama`
-* Minimum recommended PyTorch device memory: TBD
+* Conversation template name: `TinyLlama`
 * [TinyLlama GitHub repository](https://github.com/jzhang38/TinyLlama)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
 ** Tool can generate adversarial content that defeats those restrictions: TBD

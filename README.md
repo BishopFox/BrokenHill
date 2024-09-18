@@ -19,7 +19,7 @@ The original research by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson was pe
 
 Our original goal was to greatly expand the accessibility of this fascinating area of research by producing a tool that could perform the GCG attack against as many models as possible on a GeForce RTX 4090, which is the current-generation consumer GPU with CUDA support that includes the most VRAM (24GiB). The RTX 4090 is still expensive, but buying one outright is (as of this writing) about the same price as renting a cloud instance with an A100 or H100 for one month. Additionally, at least a small fraction of people in the information security field *already* have at least one RTX 4090 for hash-cracking and/or gaming.
 
-The code released by the paper's authors only supported a few base models, and while some of those models were available in forms that could fit into VRAM on an RTX 4090, it typically didn't leave enough memory available for the actual attack. 
+The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only supported a few base models, and while some of those models were available in forms that could fit into VRAM on an RTX 4090, it typically didn't leave enough memory available for the actual attack. 
 
 Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
 
@@ -33,8 +33,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 
 * Extensive command-line interface
 * Supports many more model families, most of which are available in sizes small enough to run on an RTX 4090
-  * Original authors' proof-of-concept:
-    * Falcon (too large for the attack on an RTX 4090)
+  * Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's proof-of-concept:
     * GPT-J (too large for the attack on an RTX 4090)
     * GPT Neo X (base model is too large for the attack on an RTX 4090)
 	* Guanaco (too large for the attack on an RTX 4090)
@@ -45,11 +44,14 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* BigBirdPegasus
 	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
+    * Falcon +
 	* Gemma
 	* Gemma 2
 	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* GPT-Neo
-	* MPT
+	* Llama (if you have an accurate conversation template)
+	* Llama-3
+	* MPT +
 	* OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* <s>Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))</s>
 	* Phi-1
@@ -70,26 +72,31 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 ** Roll back to high-water-mark results based on jailbreak count
 ** Require that the loss value meet (or be close to) previous results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
-** Improved jailbreak detection rules for the default method developed by the original authors
+** Improved jailbreak detection rules for the default method developed by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
 * Filters and other controls to improve the results
 * Results can be output in JSON format for filtering/analysis
 * Numerous experimental options to test variations on the GCG attack
 * A bunch of other stuff
 
-## In the works for future releases
+Note: **+** in the model list above indicates a model that was discussed in Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's paper, but not supported out of the box by their proof of concept code.
 
-* Ability to test existing results against another model/configuration
+## Planned for future releases
+
+* The ability to test or re-analyze existing results (against another model/configuration, with different jailbreak detection rules, etc.)
 ** Would allow more straightforward discovery of "transferrable" adversarial content
 ** Would allow results to be tested against models that will fit into device memory, even when the data necessary for the GCG attack (gradient, backpropagation data, etc.) will not
+** Would allow revised jailbreak detection rules to be tested without the overhead of rerunning the content generation
+* More extensive self-tests to further refine conversation templates
 * More flexible rollback model
-* Configurable randomization to help generate more unique variations ("Gamma garden" mode)
-* Built-in features to output result data for follow-on work (versus using `jq` today)
+* Configurable randomization rules to help generate more unique variations ("Gamma garden mode")
+* Built-in features to output result data for follow-on work (versus using `jq` in the current version)
 * Improved default jailbreak detection logic
-* Internationalization
-* Improved logging
+* Improved output/logging
 * Improved system resource statistics capture to allow users to better tune parameters for performance
 * Additional loss algorithm(s)
+* The ability to operate a cluster of systems running Broken Hill coordinated by a central node
 * Additional attack modes
+* Internationalization
 
 ## Documentation
 

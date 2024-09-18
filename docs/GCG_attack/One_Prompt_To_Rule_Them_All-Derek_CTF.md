@@ -1,6 +1,6 @@
 # One Prompt To Rule Them All: Walkthrough - Derek Rush's LLM CTF
 
-[ [Back to the Observations and recommendations document](observations.md) ]
+[ [Back to the Observations and recommendations document](../observations.md) ]
 
 [ [Back to the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md) ]
 

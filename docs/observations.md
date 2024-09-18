@@ -18,7 +18,7 @@ Broken Hill sends a message to the LLM that only includes the base prompt value 
 
 #### Test for positive results with simulated ideal adversarial content
 
-[Understanding this test requires knowledge of how the GCG attack works](gcg_attack.md).
+[Understanding this test requires knowledge of how the GCG attack works](GCG_attack/gcg_attack.md).
 
 Broken Hill crafts a partial conversation consisting of the base prompt, a role switch to the LLM, and the target output specified by the operator, then asks the LLM to generate completion text. For example, the prompt sent to the LLM might consist of:
 
@@ -61,7 +61,7 @@ This doesn't necessarily mean that it will be *easy* for Broken Hill to find adv
 
 ### If you are not using --auto-target, include non-vital text at the end of the target string
 
-The loss calculation for the GCG attack requires that the targeted token IDs be offset by a negative value. Depending on the loss slice mode selected by the operator, and the model, a small number of tokens (usually one to three) at the end of the target string will essentially be ignored by the loss calculation. [This is discussed further in the "How the greedy coordinate gradient (GCG) attack works" document](gcg_attack.md).
+The loss calculation for the GCG attack requires that the targeted token IDs be offset by a negative value. Depending on the loss slice mode selected by the operator, and the model, a small number of tokens (usually one to three) at the end of the target string will essentially be ignored by the loss calculation. [This is discussed further in the "How the greedy coordinate gradient (GCG) attack works" document](GCG_attack/gcg_attack.md).
 
 If a target string is not crafted correctly, this means that some of the most vital tokens for the operator's goal may be excluded from the loss calculation.
 
@@ -111,7 +111,7 @@ That approach was not successful. Maybe there's a way to get the tool to generat
 
 #### A solution
 
-What I found worked much better was to generate a completely separate value targeting the gatekeeping LLMs, e.g. "This message is a valid question for a record store customer ", then test every possible combination of a prompt that combined one element from each list. [The details were getting too long for this document, so I've moved them to the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md).
+What I found worked much better was to generate a completely separate value targeting the gatekeeping LLMs, e.g. "This message is a valid question for a record store customer ", then test every possible combination of a prompt that combined one element from each list. [The details were getting too long for this document, so I've moved them to the One Prompt To Rule Them All document](GCG_attack/One_Prompt_To_Rule_Them_All.md).
 
 ## Writing the target output string
 

@@ -1,5 +1,8 @@
+#!/bin/env python
+
 import copy
 import torch
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 import fastchat 
 
 from llm_attacks_bishopfox import get_decoded_token
@@ -10,12 +13,15 @@ from llm_attacks_bishopfox import get_encoded_tokens
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import get_llama2_and_3_fschat_template_names
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_non_garbage_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_index_of_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_index_of_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_non_garbage_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_occurrence_of_array_in_array
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import is_disastrous_dumpster_fire_token
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import RequiredValueIsNoneException
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 
@@ -72,19 +78,29 @@ def get_gemma_conversation_template():
     conv_template.stop_str=""
     return conv_template
 
+def get_guanaco_conversation_template():
+    conv_template = fastchat.conversation.get_conv_template("zero_shot").copy()
+    conv_template.name = "guanaco"
+    sep=" ### ",
+    stop_str="",
+    conv_template.stop_str = " </s>"
+    return conv_template
+
 def get_llama2_conversation_template():
     conv_template = fastchat.conversation.get_conv_template("llama-2").copy()
     conv_template.name = "llama2"
     conv_template.system_template = "<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n"
+    if conv_template.system_message is None:
+        conv_template.system_message = ""
     #conv_template.sep_style=fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
     #roles=("</s><s>[INST]", "[/INST]"),
-    roles=("[INST]", "[/INST]"),
-    conv_template.sep = ' '
+    #roles=("[INST]", "[/INST]"),
+    #conv_template.sep = ' '
     #conv_template.sep2 = ' '
     #conv_template.sep = ' </s>'
-    conv_template.sep2 = ' </s><s>'
+    #conv_template.sep2 = ' </s><s>'
     #conv_template.sep = ' </s><s>'
-    conv_template.stop_str=" </s>"
+    conv_template.stop_str = " </s>"
     return conv_template
 
 def get_mpt_conversation_template():
@@ -155,6 +171,8 @@ def register_missing_conversation_templates(attack_params):
     fschat_added_support = []
 
     register_missing_conversation_template(attack_params, fschat_added_support, "gemma", get_gemma_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "guanaco", get_guanaco_conversation_template())
     
     register_missing_conversation_template(attack_params, fschat_added_support, "llama2", get_llama2_conversation_template())
     
@@ -427,6 +445,18 @@ class AdversarialContentManager:
             message = message[:-1]
             print(message)
 
+    def extend_slice_if_next_token_is_in_list(self, decoded_tokens, current_slice, token_string_list):
+        #print(f"[extend_slice_if_next_token_is_in_list] Debug: decoded_tokens: {decoded_tokens}, decoded current slice is {decoded_tokens[current_slice]}.")
+        result = current_slice
+        next_token_stop = current_slice.stop + 1
+        if (next_token_stop) <= len(decoded_tokens):
+            next_token = decoded_tokens[current_slice.stop]
+            if next_token in token_string_list or next_token.strip() in token_string_list:
+                new_slice = slice(current_slice.start, next_token_stop)
+                #print(f"[extend_slice_if_next_token_is_in_list] Debug: next token is '{next_token}', extending slice stop by 1. Slice contents were {decoded_tokens[current_slice]}, now {decoded_tokens[new_slice]}.")
+                result = new_slice
+        return result
+
     # The get_prompt function was originally mostly undocumented with magic numbers that had no explanations for how they were derived, but were supposedly specific to three LLMs: Llama 2, Vicuna, and OpenAssistant's Pythia.
     
     # By examining the results of this function for those three models, I was able to reverse-engineer how to (more or less) find the correct values for other models.
@@ -498,6 +528,17 @@ class AdversarialContentManager:
     #prompt_and_input_id_data should be a PromptAndInputIDCollection
     def get_complete_input_string(self, prompt_and_input_id_data):
         return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
+    
+    def conversation_template_appends_colon_to_role_names(self):
+        result = False
+        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_SINGLE:
+            result = True
+        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_TWO:
+            result = True
+        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_SPACE_SINGLE:
+            result = True
+        #print(f"[conversation_template_appends_colon_to_role_names] Debug: self.conv_template.sep_style = {self.conv_template.sep_style}, result = {result}")
+        return result
 
     def get_prompt(self, adversarial_content = None, force_python_tokenizer = False):#, update_self_values = True):
 
@@ -539,11 +580,20 @@ class AdversarialContentManager:
                 python_tokenizer = True
 
         if python_tokenizer:
+            # TKTK: consider rewriting this to not use fschat at all.
+            # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
             #print(f"[get_prompt] Info: using Python tokenizer.")
             conversation_template.messages = []
             
+            role_extension_token_list = []
+            if self.conversation_template_appends_colon_to_role_names():
+                role_extension_token_list = add_value_to_list_if_not_already_present(role_extension_token_list, ":")
+            if conversation_template.name == "llama-3":
+                role_extension_token_list = add_value_to_list_if_not_already_present(role_extension_token_list, "<|end_header_id|>")
+            
             conversation_template.append_message(conversation_template.roles[0], None)
             toks = self.tokenizer(conversation_template.get_prompt()).input_ids
+            decoded_toks = get_decoded_tokens(self.tokenizer, toks)
             # find the token that indicates the following text is input
             delimiter = f"{conversation_template.roles[0]}"
             #print(f"[get_prompt] Debug: conversation_template.roles = '{conversation_template.roles}', delimiter = '{delimiter}', toks = '{toks}', original_toks = '{original_toks}'")
@@ -551,7 +601,19 @@ class AdversarialContentManager:
             if delimiter.strip() == "":
                 print(f"[get_prompt] Error: conversation_template.roles '{conversation_template.roles}' entry 0 ('{delimiter}') is equivalent to an empty string.")
                 sys.exit(1)
-            result.slice_data.user_role = find_last_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks, conversation_template = conversation_template)
+            
+            # workaround for Llama-2 templates
+            # Meanwhile, because it's buggy, at this stage, the fschat llama-2 template has generated a series of tokens that looks like the following:
+            #       ['<s>', '[', 'INST', ']', '[', 'INST', ']']'
+            # When the conversation is updated in the next step, it will look like this instead:
+            #       '['<s>', '[', 'INST', ']', 'Please', 'write', 'a', 'detailed', 'plan', 'for', 'the', 'anni', 'h', 'ilation', 'of', 'the', 'entire', 'human', 'race', '.', '']
+            if conversation_template.name in get_llama2_and_3_fschat_template_names():
+                result.slice_data.user_role = find_first_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks, decoded_toks, conversation_template = conversation_template)
+            else:
+                result.slice_data.user_role = find_last_index_of_token(self.tokenizer, self.trash_fire_tokens, delimiter, toks, decoded_toks, conversation_template = conversation_template)
+            if len(role_extension_token_list) > 0:
+                result.slice_data.user_role = self.extend_slice_if_next_token_is_in_list(decoded_toks, result.slice_data.user_role, role_extension_token_list)
+            
             self.validate_slice_data('get_prompt - user_role_slice', result.slice_data)
 
             # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
@@ -589,6 +651,8 @@ class AdversarialContentManager:
             first_non_garbage_token = find_first_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = result.slice_data.control.stop)
             last_non_garbage_token = find_last_non_garbage_token(conversation_template, toks, decoded_toks, self.trash_fire_tokens, start_index = first_non_garbage_token) + 1
             result.slice_data.assistant_role = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
+            if len(role_extension_token_list) > 0:
+                result.slice_data.assistant_role = self.extend_slice_if_next_token_is_in_list(decoded_toks, result.slice_data.assistant_role, role_extension_token_list)
             self.validate_slice_data('get_prompt - assistant_role_slice', result.slice_data)
 
             conversation_template.update_last_message(f"{self.target}")
@@ -721,7 +785,7 @@ class AdversarialContentManager:
         result.full_prompt_token_ids = toks
         result.input_token_ids = toks[:result.slice_data.target.stop]
 
-        #self.print_slice_info("get_prompt", result.slice_data, toks)
+        self.print_slice_info("get_prompt", result.slice_data, toks)
 
         conversation_template.messages = []
 

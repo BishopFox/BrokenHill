@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.28"
-script_date = "2024-09-16"
+script_version = "0.29"
+script_date = "2024-09-17"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -73,6 +73,7 @@ def get_short_script_description():
 import argparse
 import base64
 import datetime
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 import fastchat.conversation
 import gc
 import locale
@@ -155,9 +156,12 @@ from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import str2bool
 from llm_attacks_bishopfox.util.util_functions import update_elapsed_time_string
+from peft import PeftModel
 from torch.quantization import quantize_dynamic
 from torch.quantization.qconfig import float_qparams_weight_only_qconfig
 from transformers.generation import GenerationConfig
+
+SAFETENSORS_WEIGHTS_FILE_NAME = "adapter_model.safetensors"
 
 # threshold for warning the user if the specified PyTorch device already has more than this percent of its memory reserved
 # 0.1 = 10%
@@ -389,6 +393,13 @@ def main(attack_params):
                                 enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
                                 missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
                                 device=attack_params.device)
+        if attack_params.peft_adapter_path is not None:
+            f"Loading PEFT model from '{attack_params.peft_adapter_path}'."
+            try:
+                model = PeftModel.from_pretrained(model, attack_params.peft_adapter_path)
+            except Exception as e:
+                print(f"Error: loading PEFT model from '{attack_params.peft_adapter_path}': {e}.")
+                sys.exit(1)
         print_stats(attack_params)
         
         if isinstance(tokenizer.pad_token_id, type(None)):
@@ -599,7 +610,7 @@ def main(attack_params):
         last_known_good_adversarial_content.as_string = None
         best_loss_value = None
         best_jailbreak_count = None
-        original_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count
+        original_new_adversarial_value_candidate_count = attack_params.new_adversarial_value_candidate_count
         original_topk = attack_params.topk
         is_first_iteration = True
 
@@ -607,6 +618,7 @@ def main(attack_params):
         #overall_result_data.attack_params = attack_params
 
         #print(f"Debug: testing conversation template")
+        print(f"Testing conversation template '{conv_template.name}'")
         conversation_template_tester = ConversationTemplateTester(adversarial_content_manager, model)
         conversation_template_test_results = conversation_template_tester.test_templates()
         if len(conversation_template_test_results.result_messages) > 0:
@@ -865,22 +877,22 @@ def main(attack_params):
                                             #    print(f"[main loop] Debug: the option to delete a random token is disabled.")
                                         
                                         if not something_has_changed:
-                                            new_new_adversarial_token_candidate_count = attack_params.new_adversarial_token_candidate_count + original_new_adversarial_token_candidate_count
-                                            increase_new_adversarial_token_candidate_count = True
-                                            if not isinstance(attack_params.max_new_adversarial_token_candidate_count, type(None)):
-                                                if new_new_adversarial_token_candidate_count > attack_params.max_new_adversarial_token_candidate_count:
-                                                    new_new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
-                                                    if new_new_adversarial_token_candidate_count <= attack_params.new_adversarial_token_candidate_count:
-                                                        increase_new_adversarial_token_candidate_count = False
+                                            new_new_adversarial_value_candidate_count = attack_params.new_adversarial_value_candidate_count + original_new_adversarial_value_candidate_count
+                                            increase_new_adversarial_value_candidate_count = True
+                                            if not isinstance(attack_params.max_new_adversarial_value_candidate_count, type(None)):
+                                                if new_new_adversarial_value_candidate_count > attack_params.max_new_adversarial_value_candidate_count:
+                                                    new_new_adversarial_value_candidate_count = attack_params.max_new_adversarial_value_candidate_count
+                                                    if new_new_adversarial_value_candidate_count <= attack_params.new_adversarial_value_candidate_count:
+                                                        increase_new_adversarial_value_candidate_count = False
                                                     #else:
-                                                    #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count > attack_params.new_adversarial_token_candidate_count.")
+                                                    #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count > attack_params.new_adversarial_value_candidate_count.")
                                                 #else:
-                                                #    print(f"[main loop] Debug: new_new_adversarial_token_candidate_count <= attack_params.max_new_adversarial_token_candidate_count.")
+                                                #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count <= attack_params.max_new_adversarial_value_candidate_count.")
                                             #else:
-                                            #    print(f"[main loop] Debug: attack_params.max_new_adversarial_token_candidate_count is None.")
-                                            if increase_new_adversarial_token_candidate_count:
-                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_token_candidate_count} to {new_new_adversarial_token_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
-                                                attack_params.new_adversarial_token_candidate_count = new_new_adversarial_token_candidate_count
+                                            #    print(f"[main loop] Debug: attack_params.max_new_adversarial_value_candidate_count is None.")
+                                            if increase_new_adversarial_value_candidate_count:
+                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_value_candidate_count} to {new_new_adversarial_value_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
+                                                attack_params.new_adversarial_value_candidate_count = new_new_adversarial_value_candidate_count
                                                 something_has_changed = True
                                             #else:
                                             #    print(f"[main loop] Debug: not increasing the --batch-size-new-adversarial-tokens value.")
@@ -1216,6 +1228,10 @@ def main(attack_params):
         #import pdb; pdb.Pdb(nosigint=True).post_mortem()
         print(f"Exiting early by request")
         user_aborted = True
+    
+    except torch.OutOfMemoryError as toome:
+        print(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.")
+        raise toome
 
     if not user_aborted:
         print(f"Main loop complete")
@@ -1278,15 +1294,18 @@ if __name__=='__main__':
     #TKTK: load attack state from JSON
     #TKTK: save/load custom conversation template
     
-    parser.add_argument("--model", "-m", required=True, type=str, 
+    parser.add_argument("--model", required=True, type=str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
         
     parser.add_argument("--tokenizer", type=str, 
         help="(optional) Path to the base directory for the LLM tokenizer you want to use with the model instead of any tokenizer that may be included with the model itself. Intended for use with models such as Mamba that do not include their own tokenizer.")
         
+    parser.add_argument("--peft-adapter", type=str, 
+        help="(optional) Path to the base directory for a PEFT pre-trained model/adapter that is based on the model specified with --model. Used to load models such as Guanaco.")
+        
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("--template", "-t", type=str, 
+    parser.add_argument("--template", type=str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
 
     parser.add_argument("--list-templates", type=str2bool, nargs='?',
@@ -1387,19 +1406,19 @@ if __name__=='__main__':
 
     parser.add_argument("--number-of-tokens-to-update-every-iteration", type=numeric_string_to_int,
         default=attack_params.number_of_tokens_to_update_every_iteration,
-        help="The number of tokens to randomly alter in candidate adversarial content during every iteration. If this option is set to 1 (the default), the gradient-sampling algorithm from the original authors' code is used. If it is set to any other value, the nanoGCG gradient-sampling algorithm is used instead.")
+        help="The number of tokens to randomly alter in candidate adversarial content during every iteration. If this option is set to 1 (the default), the gradient-sampling algorithm from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code is used. If it is set to any other value, the nanoGCG gradient-sampling algorithm is used instead.")
         
     parser.add_argument("--always-use-nanogcg-sampling-algorithm", type=str2bool, nargs='?',
         const=True, default=attack_params.always_use_nanogcg_sampling_algorithm,
         help="If this option is specified, the nanoGCG gradient-sampling algorithm is used even when --number-of-tokens-to-update-every-iteration is 1.")
 
-    parser.add_argument("--new-adversarial-token-candidate-count", type=numeric_string_to_int,
-        default=attack_params.new_adversarial_token_candidate_count,
+    parser.add_argument("--new-adversarial-value-candidate-count", type=numeric_string_to_int,
+        default=attack_params.new_adversarial_value_candidate_count,
         help=f"The number of candidate adversarial values to generate at every iteration. If you are running out of memory and this value is greater than 1, try reducing it. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.")
         
-    parser.add_argument("--max-new-adversarial-token-candidate-count", type=numeric_string_to_int,
-        default=attack_params.max_new_adversarial_token_candidate_count,
-        help=f"The maximum amount that the number of candidate adversarial tokens is allowed to grow to when no new candidates are found.")
+    parser.add_argument("--max-new-adversarial-value-candidate-count", type=numeric_string_to_int,
+        default=attack_params.max_new_adversarial_value_candidate_count,
+        help=f"The maximum amount that the number of candidate adversarial values is allowed to grow to when no new candidates are found.")
 
     parser.add_argument("--batch-size-get-logits", type=numeric_string_to_int,
         default=attack_params.batch_size_get_logits,
@@ -1596,7 +1615,7 @@ if __name__=='__main__':
 
     # parser.add_argument("--mellowmax", type=str2bool, nargs='?',
         # const=True, default=False,
-        # help="If this option is specified, the attack will use the mellowmax loss algorithm (borrowed from nanoGCG) instead of the cross-entropy loss from the original authors' code.")
+        # help="If this option is specified, the attack will use the mellowmax loss algorithm (borrowed from nanoGCG) instead of the cross-entropy loss from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code.")
 
     # parser.add_argument("--mellowmax-alpha", type=numeric_string_to_float,
         # default=attack_params.mellowmax_alpha,
@@ -1662,6 +1681,12 @@ if __name__=='__main__':
         attack_params.tokenizer_path = os.path.abspath(args.tokenizer)
         if not os.path.isdir(attack_params.tokenizer_path):
             print(f"The specified tokenizer directory ('{attack_params.tokenizer_path}') does not appear to exist.")
+            sys.exit(1)
+            
+    if args.peft_adapter:
+        attack_params.peft_adapter_path = os.path.abspath(args.peft_adapter)
+        if not os.path.isdir(attack_params.peft_adapter_path):
+            print(f"The specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not appear to exist.")
             sys.exit(1)
         
     if args.template:
@@ -1831,13 +1856,13 @@ if __name__=='__main__':
         if attack_params.number_of_tokens_to_update_every_iteration == 1:
             print("Using the nanoGCG gradient-sampling algorithm even though only one token will be updated during each iteration.")
 
-    attack_params.new_adversarial_token_candidate_count = args.new_adversarial_token_candidate_count
+    attack_params.new_adversarial_value_candidate_count = args.new_adversarial_value_candidate_count
     
-    attack_params.max_new_adversarial_token_candidate_count = args.max_new_adversarial_token_candidate_count
+    attack_params.max_new_adversarial_value_candidate_count = args.max_new_adversarial_value_candidate_count
     
-    if attack_params.max_new_adversarial_token_candidate_count < attack_params.new_adversarial_token_candidate_count:
-        print(f"Warning: the value specified for --max-new-adversarial-token-candidate-count ({attack_params.max_new_adversarial_token_candidate_count}) was less than the value specified for --new-adversarial-token-candidate-count ({attack_params.new_adversarial_token_candidate_count}). Both values will be set to {attack_params.max_new_adversarial_token_candidate_count}.")
-        attack_params.new_adversarial_token_candidate_count = attack_params.max_new_adversarial_token_candidate_count
+    if attack_params.max_new_adversarial_value_candidate_count < attack_params.new_adversarial_value_candidate_count:
+        print(f"Warning: the value specified for --max-new-adversarial-token-candidate-count ({attack_params.max_new_adversarial_value_candidate_count}) was less than the value specified for --new-adversarial-token-candidate-count ({attack_params.new_adversarial_value_candidate_count}). Both values will be set to {attack_params.max_new_adversarial_value_candidate_count}.")
+        attack_params.new_adversarial_value_candidate_count = attack_params.max_new_adversarial_value_candidate_count
 
     attack_params.batch_size_get_logits = args.batch_size_get_logits
     
@@ -2040,6 +2065,18 @@ if __name__=='__main__':
         for l in excluded_token_file_content.splitlines():
             attack_params.not_allowed_token_list_case_insensitive = add_value_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, l.strip())
 
+
+    # determine if any arbitrary code execution is possible during model load and handle accordingly
+    if attack_params.peft_adapter_path is not None:
+        if not os.path.isfile(os.path.join(attack_params.peft_adapter_path, SAFETENSORS_WEIGHTS_FILE_NAME)):
+            peft_message = f"the specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not contain a safe tensors file ('{SAFETENSORS_WEIGHTS_FILE_NAME}'). Because the model weights are only available in Python 'pickle' format, loading the adapter could result in arbitrary code execution on your system. "
+            if attack_params.load_options_trust_remote_code:
+                peft_message += " The --trust-remote-code option was specified, so the model will be loaded."
+                print(f"Warning: {peft_message}")
+            else:
+                peft_message += " If you trust the specified adapter and understand the implications of potentially running untrusted Python code, add the --trust-remote-code option to load the adapter."
+                print(f"Error: {peft_message}")
+                sys.exit(1)
 
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)

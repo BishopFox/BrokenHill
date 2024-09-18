@@ -158,17 +158,17 @@ When using this option, `--temperature` must also be set to a non-default value,
 
 ## Content-generation size controls
 
-### --new-adversarial-token-candidate-count <positive integer> and --max-new-adversarial-token-candidate-count <positive integer>
+### --new-adversarial-value-candidate-count <positive integer> and --max-new-adversarial-value-candidate-count <positive integer>
 
-`--new-adversarial-token-candidate-count` sets the number of candidate adversarial values to generate at each iteration. The value with the lowest loss versus the target string is then tested. You should set this value as high as you can without running out of memory, because [as discussed in the "How the greedy coordinate gradient (GCG) attack works" document](gcg_attack.md), it is probably the single most important factor in determining the efficiency of the GCG attack. [See the "parameter guidelines based on model size" document for some general estimates of values you can use based on the size of the model and the amount of memory available](parameter_guidelines_based_on_model_size.md). The default value is 48, because this typically allows Broken Hill to attack a model with two billion parameters on a device with 24GiB of memory.
+`--new-adversarial-value-candidate-count` sets the number of candidate adversarial values to generate at each iteration. The value with the lowest loss versus the target string is then tested. You should set this value as high as you can without running out of memory, because [as discussed in the "How the greedy coordinate gradient (GCG) attack works" document](GCG_attack/gcg_attack.md), it is probably the single most important factor in determining the efficiency of the GCG attack. [See the "parameter guidelines based on model size" document for some general estimates of values you can use based on the size of the model and the amount of memory available](parameter_guidelines_based_on_model_size.md). The default value is 48, because this typically allows Broken Hill to attack a model with two billion parameters on a device with 24GiB of memory.
 
 This value technically only needs to be a positive integer, but if you set it to 1, your attack will likely take a *very* long time, because that will cause the attack to operate entirely randomly, with no benefit from the GCG algorithm.
 
-You can help make up for a low `--new-adversarial-token-candidate-count` value by using `--required-loss-threshold` and related options, which are discussed later in this document.
+You can help make up for a low `--new-adversarial-value-candidate-count` value by using `--required-loss-threshold` and related options, which are discussed later in this document.
 
-If you are running out of memory and have already set `--batch-size-get-logits` to 1, and `--new-adversarial-token-candidate-count` is greater than 16, try reducing it. If you still run out of memory with this value set to 16 and `--batch-size-get-logits` set to 1, you're probably out of luck without more VRAM.
+If you are running out of memory and have already set `--batch-size-get-logits` to 1, and `--new-adversarial-value-candidate-count` is greater than 16, try reducing it. If you still run out of memory with this value set to 16 and `--batch-size-get-logits` set to 1, you're probably out of luck without more VRAM.
 
-If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-token-candidate-count` can be used to reduce or increase that limit.
+If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-value-candidate-count` can be used to reduce or increase that limit.
 
 ### --batch-size-get-logits <positive integer>
 
@@ -261,7 +261,7 @@ If this value is specified, candidate adversarial strings will be filtered out i
 
 ### --attempt-to-keep-token-count-consistent
 
-Enable the check from the original authors' code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are generally much better options.
+Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are generally much better options.
 
 ## Controlling the data that's used to calculate loss at every iteration
 
@@ -329,9 +329,7 @@ The maximum number of tokens to generate when generating final output for displa
 
 ## Restricting candidate adversarial content to values that are an improvement, or at least not a significant deterioration
 
-
-
-These options are intended to help make up for a `--new-adversarial-token-candidate-count` that has been limited by the amount of device memory available, by making an arbitrary number of attempts to find a candidate with a lower loss (or at least a loss that isn't significantly worse) than the current value.
+These options are intended to help make up for a `--new-adversarial-value-candidate-count` that has been limited by the amount of device memory available, by making an arbitrary number of attempts to find a candidate with a lower loss (or at least a loss that isn't significantly worse) than the current value.
 
 ### --required-loss-threshold <floating-point number>
 

@@ -2,6 +2,7 @@
 
 import json
 
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 from fastchat.conversation import Conversation
 from fastchat.conversation import SeparatorStyle
 
@@ -20,6 +21,26 @@ class SeparatorStyleConversionException(Exception):
     
 class ConversationTemplateSerializationException(Exception):
     pass
+
+# Just the fschat Llama-2 template and equivalents
+def get_llama2_fschat_template_names():
+    result = [ "llama-2" ]
+    return result
+
+# templates that have known imperfect output compared to apply_chat_template
+def get_llama2_and_3_fschat_template_names():
+    result = [ "llama2", "llama-2", "llama-3" ]
+    return result
+
+# Templates that produce identical output to apply_chat_template, except for probably-insignificant spurious tokens at the end
+def get_llama2_and_3_template_names():
+    #result = [ "llama-2", "llama2" ]
+    result = [ "llama2", "llama-3" ]
+    return result
+
+def get_apply_chat_template_ignored_template_names():
+    result = [ "guanaco" ]
+    return result
 
 def fschat_separator_style_to_string(fschat_separator_style):
     result = None
@@ -234,43 +255,49 @@ class ConversationTemplateTester:
         got_tokenizer_chat_template_with_system_as_string = False
         got_tokenizer_chat_template_with_no_system_as_string = False
         
-        apply_template_messages = []
-            
-        try:
-            tokenizer_prompt_no_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = False)
-            got_tokenizer_chat_template_with_no_system_as_string = True
-        except Exception as e:
-            result.got_tokenizer_chat_template = False
-            result.tokenizer_supports_apply_chat_template_method = False
-            result.result_messages.append(f"Warning: the tokenizer does not appear to support an apply_chat_template method. Broken Hill will be unable to compare the current conversation template against the template provided by the developers of the model/tokenizer. If you observe unexpected or incorrect results during this test, verify that the chat template you've selected formats data correctly for the model. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that did not include an initial system message was '{tokenizer_prompt_no_system_string}'")
-        if got_tokenizer_chat_template_with_no_system_as_string:
+        if not result.existing_fschat_template.name in get_apply_chat_template_ignored_template_names():
+        
+            apply_template_messages = []
+            if result.existing_fschat_template.name in get_llama2_and_3_fschat_template_names():
+                llama_template_warning = f"Warning: the fschat template '{result.existing_fschat_template.name}' may (or may not) produce less accurate conversation output than the canonical Llama-2 and Llama-3 conversation templates. "
+                if result.existing_fschat_template.name in get_llama2_fschat_template_names():
+                    llama_template_warning += f"If additional warnings regarding mismatches between the conversation template at the tokenizer's apply_chat_template output appear below, consider using the custom 'llama2' conversation template included with Broken Hill as a workaround until the underlying issue in fschat is resolved."
+                result.result_messages.append(llama_template_warning)
             try:
-                tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
-                tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_no_system_token_ids)
-                result.tokenizer_supports_apply_chat_template_method = True
-                result.got_tokenizer_chat_template = True
+                tokenizer_prompt_no_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = False)
+                got_tokenizer_chat_template_with_no_system_as_string = True
             except Exception as e:
                 result.got_tokenizer_chat_template = False
                 result.tokenizer_supports_apply_chat_template_method = False
-                result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation did not contain a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_no_system_string}'")
-
-        if result.tokenizer_supports_apply_chat_template_method:
-            try:
-                tokenizer_prompt_with_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = False)
-                got_tokenizer_chat_template_with_system_as_string = True
-            except Exception as e:
-                result.tokenizer_chat_template_supports_messages_with_system_role = False
-                result.result_messages.append(f"Warning: the tokenizer's apply_chat_template method does not appear to support messages with the 'system' role. This may imply that the associated model does not support system messages. If your testing depends on setting a specific system message, you should validate that the model appears to incorporate your message. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that included an initial system message was '{tokenizer_prompt_with_system_string}'")
-            if got_tokenizer_chat_template_with_system_as_string:
+                result.result_messages.append(f"Warning: the tokenizer does not appear to support an apply_chat_template method. Broken Hill will be unable to compare the current conversation template against the template provided by the developers of the model/tokenizer. If you observe unexpected or incorrect results during this test, verify that the chat template you've selected formats data correctly for the model. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that did not include an initial system message was '{tokenizer_prompt_no_system_string}'")
+            if got_tokenizer_chat_template_with_no_system_as_string:
                 try:
-                    tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
-                    tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_with_system_token_ids)
-                    result.tokenizer_chat_template_supports_messages_with_system_role = True
+                    tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
+                    tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_no_system_token_ids)
                     result.tokenizer_supports_apply_chat_template_method = True
                     result.got_tokenizer_chat_template = True
                 except Exception as e:
+                    result.got_tokenizer_chat_template = False
+                    result.tokenizer_supports_apply_chat_template_method = False
+                    result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation did not contain a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_no_system_string}'")
+
+            if result.tokenizer_supports_apply_chat_template_method:
+                try:
+                    tokenizer_prompt_with_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = False)
+                    got_tokenizer_chat_template_with_system_as_string = True
+                except Exception as e:
                     result.tokenizer_chat_template_supports_messages_with_system_role = False
-                    result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation contained a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_with_system_string}'")
+                    result.result_messages.append(f"Warning: the tokenizer's apply_chat_template method does not appear to support messages with the 'system' role. This may imply that the associated model does not support system messages. If your testing depends on setting a specific system message, you should validate that the model appears to incorporate your message. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that included an initial system message was '{tokenizer_prompt_with_system_string}'")
+                if got_tokenizer_chat_template_with_system_as_string:
+                    try:
+                        tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
+                        tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_with_system_token_ids)
+                        result.tokenizer_chat_template_supports_messages_with_system_role = True
+                        result.tokenizer_supports_apply_chat_template_method = True
+                        result.got_tokenizer_chat_template = True
+                    except Exception as e:
+                        result.tokenizer_chat_template_supports_messages_with_system_role = False
+                        result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation contained a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_with_system_string}'")
             
         existing_fschat_template_working_copy_system_message = result.existing_fschat_template.copy()
         existing_fschat_template_working_copy_system_role = result.existing_fschat_template.copy()
@@ -390,6 +417,12 @@ class ConversationTemplateTester:
         
         # TKTK: validate that the count of instances of each test string is appropriate
         
+        # TKTK: split this out into a separate function and compare several different conversations, e.g.:
+        #       * Only one message from user, no response
+        #       * Only one user/model message/response
+        #       * User/model/user, no second response
+        #       * User/model/user/model
+        #       * If the tokenizer's chat template supports system role messages, test all of the above with and without a system message
         # the remainder of the tests require the tokenizer's chat template output
         if result.tokenizer_supports_apply_chat_template_method:                
             result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(ef_template_prompt_string, 
@@ -398,11 +431,37 @@ class ConversationTemplateTester:
                 tokenizer_prompt_string, 
                 tokenizer_prompt_token_ids, 
                 tokenizer_prompt_with_decoded_tokens)
-           
+            
+            
+            # temporary workaround for minor issue with Llama-2 template that can't be easily corrected without fschat code changes
+            if result.existing_fschat_template.name in get_llama2_and_3_template_names():
+                #print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is in the list of Llama-2 template names. Workaround logic may apply.")
+                if not result.template_comparison_result.strings_match_exactly:
+                    if len(ef_template_prompt_string) > len(tokenizer_prompt_string):
+                        #print("[ConversationTemplateTester.test_templates] Debug: len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
+                        truncated_ef_template_prompt_string = ef_template_prompt_string[:len(tokenizer_prompt_string)]
+                        if truncated_ef_template_prompt_string == tokenizer_prompt_string:                            
+                            result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the Llama-2 conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
+                            ef_template_prompt_string = truncated_ef_template_prompt_string
+                            ef_template_prompt_token_ids = self.adversarial_content_manager.tokenizer.encode(ef_template_prompt_string)
+                            ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_token_ids)
+                            result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(ef_template_prompt_string, 
+                                ef_template_prompt_token_ids, 
+                                ef_template_prompt_decoded_tokens, 
+                                tokenizer_prompt_string, 
+                                tokenizer_prompt_token_ids, 
+                                tokenizer_prompt_with_decoded_tokens)
+                        #else:
+                        #    print("[ConversationTemplateTester.test_templates] Debug: truncated_ef_template_prompt_string != tokenizer_prompt_string")
+                    #else:
+                    #    print("[ConversationTemplateTester.test_templates] Debug: len(ef_template_prompt_string) <= len(tokenizer_prompt_string)")
+            #else:
+            #    print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is not in the list of Llama-2 template names.")
+            
             # Test whether the generated prompts are character-for-character identical
             if not result.template_comparison_result.strings_match_exactly:
                 include_full_output_as_last_message = True
-                string_match_message = f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. The first difference was at character {result.template_comparison_result.strings_first_nonmatching_index}. "
+                string_match_message = f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. The first difference was at character {result.template_comparison_result.strings_first_nonmatching_index}. "                
                 # If the generated prompts are not character-for-character identical, test whether they're identical when all whitespace and non-printable characters are removed.
                 if result.template_comparison_result.strings_match_without_whitespace_and_nonprintable:
                     string_match_message += f"The strings only differed due to whitespace or nonprintable characters, and so the difference may not materially affect the results of this test, but investigating the reason for the discrepancy is recommended for best results."
