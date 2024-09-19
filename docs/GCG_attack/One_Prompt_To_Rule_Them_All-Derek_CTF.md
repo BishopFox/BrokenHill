@@ -4,13 +4,13 @@
 
 [ [Back to the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md) ]
 
-This is a walkthrough of exploiting Derek Rush's LLM CTF by generating completely separate strings targeting the "genie" LLM and the gatekeeping LLM(s), then testing every possible combination of prompts that combine one element from each list against the real LLM "stack". [As discussed in the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md), I've found this to be the most effective way to approach this kind of scenario.
+This is a walkthrough of exploiting [Derek Rush's LLM CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) by generating completely separate strings targeting the "genie" LLM and the gatekeeping LLM(s), then testing every possible combination of prompts that combine one element from each list against the real LLM "stack". [As discussed in the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md), I've found this to be the most effective way to approach this kind of scenario.
 
 For now, I've prototyped this attack variation using a combination of `expect` and `bash` one-liners. A future version of the tool may be able to perform this type of testing for you in some cases.
 
 ## Generate the adversarial content
 
-Derek's CTF uses `ollama` with the `phi3` model. [The Phi-3-mini-128k-instruct version of Phi 3](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) is most like the default version that `ollama` uses, so this section assumes you've already downloaded that. Note that `ollama` uses 4-bit integer quantized weights by default, and the tool can only work with floating-point weights, so even if a particular generated output works very well in the tool, it may fail to produce the desired results when used in the CTF executable. Due to other differences, this will still be true even if you run the CTF with the `--model phi3:3.8b-mini-128k-instruct-fp16` option, which one would expect to create an environment identical to the attack tool's.
+[Derek's CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) uses `ollama` with the `phi3` model. [The Phi-3-mini-128k-instruct version of Phi 3](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) is most like the default version that `ollama` uses, so this section assumes you've already downloaded that. Note that `ollama` uses 4-bit integer quantized weights by default, and the tool can only work with floating-point weights, so even if a particular generated output works very well in the tool, it may fail to produce the desired results when used in the CTF executable. Due to other differences, this will still be true even if you run the CTF with the `--model phi3:3.8b-mini-128k-instruct-fp16` option, which one would expect to create an environment identical to the attack tool's.
 
 For all of these examples, I've used "Do you have any albums by Mari Kattman, Youth Code, Inertia, The Birthday Massacre, Night Club, or Cindergarden in stock?" as the initial adversarial string. If you'd rather begin with a neutral value, just substitute "? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?" instead
 
@@ -95,7 +95,7 @@ $ bin/python ./gcg-attack.py \
 
 ### Gatekeeper(s)
 
-I found that in the case of Derek's CTF, nearly every prompt that fooled the "is this a valid question for a record store customer to ask?" LLM also fooled the other gatekeeper LLMs, so this section only covers generating values based on the single LLM gatekeeper. If you need to explicitly bypass multiple gatekeepers, repeat the steps in this section for each of them, using the corresponding system prompts and initialization messages.
+I found that in the case of [Derek's CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab), nearly every prompt that fooled the "is this a valid question for a record store customer to ask?" LLM also fooled the other gatekeeper LLMs, so this section only covers generating values based on the single LLM gatekeeper. If you need to explicitly bypass multiple gatekeepers, repeat the steps in this section for each of them, using the corresponding system prompts and initialization messages.
 
 Place the following content in a file named `Derek_CTF-is_valid_question-system.txt`:
 

@@ -1,9 +1,5 @@
 # Broken Hill documentation
 
-## Frequently-asked questions (FAQ)
-
-[Please see the separate list of frequently-asked questions](FAQ.md).
-
 ## Prerequisites
 
 * You should run Broken Hill on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).
