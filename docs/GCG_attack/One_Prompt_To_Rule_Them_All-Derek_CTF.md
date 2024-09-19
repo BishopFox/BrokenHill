@@ -70,7 +70,7 @@ You can exclude the `--display-failure-output` option to make this process run f
 ```
 $ bin/python ./gcg-attack.py \
 	-m LLMs/Microsoft/Phi-3-mini-128k-instruct \
-	-t phi3 \
+	--template phi3 \
 	--clear-existing-conversation \
 	--system-prompt-from-file Derek_CTF-genie-system.txt \
 	--template-messages-from-file Derek_CTF-genie-messages.json \
@@ -158,7 +158,7 @@ Generate content that attempts to cause the gatekeeper LLM to respond with the w
 ```
 $ bin/python ./gcg-attack.py \
 	-m LLMs/Microsoft/Phi-3-mini-128k-instruct \
-	-t phi3 \
+	--template phi3 \
 	--clear-existing-conversation \
 	--system-prompt-from-file Derek_CTF-is_valid_question-system.txt \
 	--template-messages-from-file Derek_CTF-is_valid_question-messages.json \
@@ -186,7 +186,7 @@ $ bin/python ./gcg-attack.py \
 Get a histogram of successful jailbreak counts for each result file, e.g.:
 
 ```
-$ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-disclose.json | sort | uniq -c
+$ jq -r '.attack_results[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-disclose.json | sort | uniq -c
 
       8 0
      23 1
@@ -197,7 +197,7 @@ $ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-disclose.jso
     266 6
      22 7
 
-$ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-valid.json | sort | uniq -c
+$ jq -r '.attack_results[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-valid.json | sort | uniq -c
 
       8 2
      19 4
@@ -209,9 +209,9 @@ $ jq -r '.[] | [.jailbreak_detection_count] | join("\t")' Derek_CTF-valid.json |
 Pick a threshold you're comfortable with, and export only those results that meet or exceed that count. e.g. to limit results to only content that resulted in 6 or more jailbreak detections:
 
 ```
-$ jq -r '.[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' Derek_CTF-disclose.json | sort -u > Derek_CTF-disclose-prompts-high_success_rate.txt
+$ jq -r '.attack_results[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' Derek_CTF-disclose.json | sort -u > Derek_CTF-disclose-prompts-high_success_rate.txt
 
-$ jq -r '.[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' Derek_CTF-valid.json | sort -u  > Derek_CTF-valid-prompts-high_success_rate.txt
+$ jq -r '.attack_results[] | select(.jailbreak_detection_count >= 6) | [.complete_user_input] | join("\t")' Derek_CTF-valid.json | sort -u  > Derek_CTF-valid-prompts-high_success_rate.txt
 ```
 
 ## Test all permutations against the CTF

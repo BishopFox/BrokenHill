@@ -29,7 +29,6 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
   * Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's proof-of-concept:
     * GPT-J (too large for the attack on an RTX 4090)
     * GPT Neo X (base model is too large for the attack on an RTX 4090)
-	* Guanaco (too large for the attack on an RTX 4090)
     * Llama-2 (too large for the attack on an RTX 4090)
     * Pythia
 	* Vicuna
@@ -37,11 +36,12 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* BigBirdPegasus
 	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
-    * Falcon +
+    * Falcon **+**
 	* Gemma
 	* Gemma 2
 	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
 	* GPT-Neo
+	* Guanaco (too large for the attack on an RTX 4090) **+**
 	* Llama (if you have an accurate conversation template)
 	* Llama-3
 	* MPT +
@@ -56,6 +56,7 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* StableLM
 	* StableLM 2
 	* TinyLlama
+* Results can be output in JSON format for filtering/analysis
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
   * Validation that conversations are provided in the format the model was trained for
@@ -66,8 +67,8 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
   * Require that the loss value meet (or be close to) previous results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
   * Improved jailbreak detection rules for the default method developed by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
-* Filters and other controls to improve the results
-* Results can be output in JSON format for filtering/analysis
+* Optional pre-configured denylists to help avoid generating adversarial results that contain slurs, profanity, etc.
+* Filtering and other controls to improve the results
 * Numerous experimental options to test variations on the GCG attack
 * A bunch of other stuff
 
