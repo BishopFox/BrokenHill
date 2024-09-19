@@ -60,6 +60,9 @@ This situation is so dangerously confusing that at the time of this writing, [ev
 
 <img src="pip_install_fastchat-07.PNG">
 
+<img src="pip_install_fastchat-08.PNG">
+
+<img src="pip_install_fastchat-09.PNG">
 
 I think this is extremely troubling. It would be a great way to mount a supply chain attack against a popular new technical field, either through the initial creation of the fork, or by waiting for the fork to be abandoned and then assuming ownership over it.
 
