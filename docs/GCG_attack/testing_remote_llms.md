@@ -2,7 +2,12 @@
 
 This document will eventually discuss possible approaches for using this tool to develop attack payloads for LLMs that are hosted remotely, i.e. where the tool operator doesn't have access to the model weights and tokenizer. It is currently only a sketch.
 
-## Convince the remote LLM to describe itself, then replicate its configuration locally
+## Table of contents
+
+1. [Convince the remote LLM to describe itself, replicate its configuration locally, then generate payloads](#)
+1. [Generate some apocalyptic giga-prompts that jailbreak as many LLMs as possible, then try all of those](#generate-some-apocalyptic-giga-prompts-that-jailbreak-as-many-llms-as-possible-then-try-all-of-those)
+
+## Convince the remote LLM to describe itself, replicate its configuration locally, then generate payloads
 
 This approach uses Broken Hill to bootstrap an attack on the remote LLM, based on knowledge of which model is being used. We've performed initial testing on this approach, but don't have sufficient data yet to share it.
 

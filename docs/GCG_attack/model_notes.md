@@ -7,7 +7,7 @@ This document describes high-level results of testing the GCG attack using vario
 ### Falcon
 
 * Conversation template name: `falcon`
-* [TKTK](TKTK)
+* [TII's Falcon LLM website](https://falconllm.tii.ae/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
@@ -41,7 +41,7 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 * Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TKTK
+** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: **Yes**
 
@@ -87,7 +87,7 @@ Broken Hill can successfully load the original Llama model, but we haven't been 
 ### Llama-2
 
 * Conversation template name: `llama2` or `llama-2` (see discussion below)
-* [TKTK](TKTK)
+* [Meta's Llama LLM family website](https://www.llama.com/llama-downloads/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
@@ -108,7 +108,7 @@ Until this issue is resolved, Broken Hill will report one or more warnings when 
 ### Llama-3
 
 * Conversation template name: `llama-3` (see instructions below)
-* [TKTK](TKTK)
+* [Meta's Llama LLM family website](https://www.llama.com/llama-downloads/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
@@ -134,7 +134,7 @@ As with the Llama-2 conversation template, the `fschat` template for Llama-3 doe
 ### MPT
 
 * Conversation template name: `mpt`
-* [TKTK](TKTK)
+* [Databricks' Mosaic Research website, which includes MPT](https://www.databricks.com/research/mosaic)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
@@ -192,7 +192,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 * [Qwen collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen-65c0e50c3f1ab89cb8704144)
 * [Qwen 1.5 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen15-65c0a2f577b1ecb76d786524)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TKTK
+** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: **Yes**
 
@@ -207,7 +207,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 * Conversation template name: `qwen2`
 * [Qwen 2 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TKTK
+** Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
 ** Tool can generate adversarial content that defeats those restrictions: **Yes**
 
