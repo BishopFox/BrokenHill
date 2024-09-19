@@ -4,7 +4,7 @@ This document will eventually discuss possible approaches for using this tool to
 
 ## Table of contents
 
-1. [Convince the remote LLM to describe itself, replicate its configuration locally, then generate payloads](#)
+1. [Convince the remote LLM to describe itself, replicate its configuration locally, then generate payloads](#convince-the-remote-llm-to-describe-itself-replicate-its-configuration-locally-then-generate-payloads)
 1. [Generate some apocalyptic giga-prompts that jailbreak as many LLMs as possible, then try all of those](#generate-some-apocalyptic-giga-prompts-that-jailbreak-as-many-llms-as-possible-then-try-all-of-those)
 
 ## Convince the remote LLM to describe itself, replicate its configuration locally, then generate payloads
