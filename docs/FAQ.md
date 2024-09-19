@@ -19,3 +19,7 @@ You can use the PyTorch `cpu` device if you really want to, but it will literall
 No (for any type of integer quantization, which is the main type of quantization that inspires this question). The source code for Broken Hill is littered with grumpy comments related to lack of support for quantized integer values in PyTorch for some of the features this tool depends upon.
 
 In the unlikely event that you are asking about the corner case where you have a model with weights in a larger format than 16-bit floating point that hasn't already also been released in a 16-bit floating point format, you could quantize that model to a 16-bit floating point format, and it will occupy less memory when you load it into the tool. Most publicly-available models that you'd want to use with this tool are already available in such a format.
+
+## Why do you keep referring to the `fschat` library instead of calling it `fastchat` or FastChat like everyone else?
+
+[Please see the "On the naming of FastChat's `fschat` (AKA `fastchat` in some contexts) Python library" document](fschat.md).
