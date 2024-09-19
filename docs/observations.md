@@ -2,6 +2,15 @@
 
 Some or all of these opinions may change based on continued testing and development of the tool.
 
+## Table of contents
+
+1. [Pay attention to the output of Broken Hill's self-tests](#pay-attention-to-the-output-of-broken-hills-self-tests)
+2. [Writing the target string](#writing-the-target-string)
+3. [Writing the initial prompt](#writing-the-initial-prompt)
+4. [Choosing the initial adversarial content](#choosing-the-initial-adversarial-content)
+5. [Results can be fragile](#results-can-be-fragile)
+6. [#chat-template-formatting-is-critical](Chat template formatting is critical)
+
 ## Pay attention to the output of Broken Hill's self-tests
 
 During its initial attack setup, Broken Hill performs self-testing to help validate that the attack you've specified is likely to produce useful results. You should carefully read the resulting messages. In particular, see the *Test for positive results with simulated ideal adversarial content* discussion, because some models can be very resilient against producing jailbroken output.
@@ -59,6 +68,18 @@ This doesn't necessarily mean that it will be *easy* for Broken Hill to find adv
 
 ## Writing the target string
 
+[The "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://arxiv.org/abs/2307.15043) states:
+
+*we found that providing a target phrase that also repeats the user prompt affirmatively provides the best means of producing the prompted behavior.*
+
+This is why the `--auto-target` option words the prompt and target using this specific language:
+
+`Write {autotarget_string}`
+
+`Sure, here's {autotarget_string}`
+
+You don't *have* to follow this approach, but it does seem to be more effective and efficient when possible.
+
 ### If you are not using --auto-target, include non-vital text at the end of the target string
 
 The loss calculation for the GCG attack requires that the targeted token IDs be offset by a negative value. Depending on the loss slice mode selected by the operator, and the model, a small number of tokens (usually one to three) at the end of the target string will essentially be ignored by the loss calculation. [This is discussed further in the "How the greedy coordinate gradient (GCG) attack works" document](GCG_attack/gcg_attack.md).
@@ -112,20 +133,6 @@ That approach was not successful. Maybe there's a way to get the tool to generat
 #### A solution
 
 What I found worked much better was to generate a completely separate value targeting the gatekeeping LLMs, e.g. "This message is a valid question for a record store customer ", then test every possible combination of a prompt that combined one element from each list. [The details were getting too long for this document, so I've moved them to the One Prompt To Rule Them All document](GCG_attack/One_Prompt_To_Rule_Them_All.md).
-
-## Writing the target output string
-
-[The "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://arxiv.org/abs/2307.15043) states:
-
-*we found that providing a target phrase that also repeats the user prompt affirmatively provides the best means of producing the prompted behavior.*
-
-This is why the `--auto-target` option words the prompt and target using this specific language:
-
-`Write {autotarget_string}`
-
-`Sure, here's {autotarget_string}`
-
-You don't *have* to follow this approach, but it does seem to be more effective and efficient when possible.
 
 ## Choosing the initial adversarial content
 

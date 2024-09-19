@@ -4,6 +4,14 @@ Eventually, Broken Hill will be able to export frequently-useful subsets of resu
 
 These commands tend to be very long. To avoid corrupting the `jq` instructions but avoid making readers scroll far to the right, they're *not* presented as Markdown code blocks.
 
+## Table of contents
+
+1. [Histogram of jailbreak detection counts](#histogram-of-jailbreak-detection-counts)
+2. [Unique user input that resulted in some minimum number of jailbreak detections](#unique-user-input-that-resulted-in-some-minimum-number-of-jailbreak-detections)
+3. [Jailbreak detection count and loss for each Broken Hill iteration](#jailbreak-detection-count-and-loss-for-each-broken-hill-iteration)
+4. [All adversarial content that resulted in some minimum number of jailbreak detections](#all-adversarial-content-that-resulted-in-some-minimum-number-of-jailbreak-detections)
+5. [Find LLM output that contains a particular string, and show how many times that unique output occurred](#find-llm-output-that-contains-a-particular-string-and-show-how-many-times-that-unique-output-occurred)
+
 ## Histogram of jailbreak detection counts
 
 jq -r '.attack_results[] | [.jailbreak_detection_count] | join("\t")' results.json | sort | uniq -c

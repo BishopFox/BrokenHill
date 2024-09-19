@@ -1,5 +1,20 @@
 # Broken Hill documentation
 
+## Table of contents
+
+1. [Prerequisites](#prerequisites)
+2. [Setup](#setup)
+3. [Use](#use)
+4. [Options you will probably want to use frequently](#options-you-will-probably-want-to-use-frequently)
+5. [Examples](#examples)
+6. [Observations and recommendations](#observations-and-recommendations)
+7. [Extracting result information](#extracting-result-information)
+8. [Notes on specific models Broken Hill has been tested against](#notes-on-specific-models-broken-hill-has-been-tested-against)
+9. [Troubleshooting](#troubleshooting)
+10. [Frequently-asked questions (FAQ)](#frequently-asked-questions-faq)
+11. [Curated results](#curated-results)
+12. [Additional information](#additional-information)
+
 ## Prerequisites
 
 * You should run Broken Hill on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).

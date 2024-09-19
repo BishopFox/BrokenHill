@@ -8,6 +8,16 @@ This is a walkthrough of exploiting [Derek Rush's LLM CTF](https://bishopfox.com
 
 For now, I've prototyped this attack variation using a combination of `expect` and `bash` one-liners. A future version of the tool may be able to perform this type of testing for you in some cases.
 
+## Table of contents
+
+1. [Generate the adversarial content](#generate-the-adversarial-content)
+2. [Export the most successful results](#export-the-most-successful-results)
+3. [Test all permutations against the CTF](#test-all-permutations-against-the-ctf)
+4. [Analyze the results](#analyze-the-results)
+5. [Compare results of runs against different models/configurations](#compare-results-of-runs-against-different-modelsconfigurations)
+6. [Test the result of one run against a different ollama model/configuration](#test-the-result-of-one-run-against-a-different-ollama-modelconfiguration)
+7. [Find prompts which succeed against combinations of LLM configurations](#find-prompts-which-succeed-against-combinations-of-llm-configurations)
+
 ## Generate the adversarial content
 
 [Derek's CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) uses `ollama` with the `phi3` model. [The Phi-3-mini-128k-instruct version of Phi 3](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) is most like the default version that `ollama` uses, so this section assumes you've already downloaded that. Note that `ollama` uses 4-bit integer quantized weights by default, and the tool can only work with floating-point weights, so even if a particular generated output works very well in the tool, it may fail to produce the desired results when used in the CTF executable. Due to other differences, this will still be true even if you run the CTF with the `--model phi3:3.8b-mini-128k-instruct-fp16` option, which one would expect to create an environment identical to the attack tool's.
