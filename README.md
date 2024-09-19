@@ -5,13 +5,12 @@ Broken Hill is a productionized, ready-to-use automated attack tool that generat
 Broken Hill can generate robust prompts that successfully jailbreak LLMs configured differently than the one used to generate the prompts. For example:
 
 * The same model with more or fewer parameters
-** e.g. the prompts were generated using the 2-billion-parameter version of Gemma, but are used against an implementation based on the 7-billion-parameter version of Gemma.
+  * e.g. the prompts were generated using the 2-billion-parameter version of Gemma, but are used against an implementation based on the 7-billion-parameter version of Gemma.
 * The same model with weights quantized to different types
-** e.g. the prompts were generated using the version of Phi 3 with weights stored in `FP16` format, but are used against the `ollama` default version of Phi 3 that has the weights quantized to 4-bit `q4_0` integer format.
+  * e.g. the prompts were generated using the version of Phi 3 with weights stored in `FP16` format, but are used against the `ollama` default version of Phi 3 that has the weights quantized to 4-bit `q4_0` integer format.
 * The same model, but with different randomization settings
-** e.g. a non-default temperature or random seed.
+  * e.g. a non-default temperature or random seed.
 * Potentially even a different model than the one used to generate the prompts
-** e.g. [example TBD]
 
 This tool is based in part on a **heavily** customized version of [the llm-attacks repository associated with the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/).
 
@@ -65,14 +64,14 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 	* TinyLlama
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
-** Validation that conversations are provided in the format the model was trained for
-** Validation that the model does not provide the requested output when no adversarial content is included
-** Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
+  * Validation that conversations are provided in the format the model was trained for
+  * Validation that the model does not provide the requested output when no adversarial content is included
+  * Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
 * Additional techniques for guiding the course of adversarial content generation beyond loss value
-** Roll back to high-water-mark results based on jailbreak count
-** Require that the loss value meet (or be close to) previous results
+  * Roll back to high-water-mark results based on jailbreak count
+  * Require that the loss value meet (or be close to) previous results
 * The ability to specify custom jailbreak detection rules in JSON format, to make detection more accurate for test cases
-** Improved jailbreak detection rules for the default method developed by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
+  * Improved jailbreak detection rules for the default method developed by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
 * Filters and other controls to improve the results
 * Results can be output in JSON format for filtering/analysis
 * Numerous experimental options to test variations on the GCG attack
@@ -83,9 +82,9 @@ Note: **+** in the model list above indicates a model that was discussed in Zou,
 ## Planned for future releases
 
 * The ability to test or re-analyze existing results (against another model/configuration, with different jailbreak detection rules, etc.)
-** Would allow more straightforward discovery of "transferrable" adversarial content
-** Would allow results to be tested against models that will fit into device memory, even when the data necessary for the GCG attack (gradient, backpropagation data, etc.) will not
-** Would allow revised jailbreak detection rules to be tested without the overhead of rerunning the content generation
+  * Would allow more straightforward discovery of "transferrable" adversarial content
+  * Would allow results to be tested against models that will fit into device memory, even when the data necessary for the GCG attack (gradient, backpropagation data, etc.) will not
+  * Would allow revised jailbreak detection rules to be tested without the overhead of rerunning the content generation
 * More extensive self-tests to further refine conversation templates
 * More flexible rollback model
 * Configurable randomization rules to help generate more unique variations ("Gamma garden mode")

@@ -10,4 +10,4 @@ When learning to apply the GCG attack to Derek Rush's CTF, I found that what wor
 
 ## Instances of different LLMs
 
-TKTK
+This section will be added at a later date.

@@ -1,5 +1,17 @@
 # Troubleshooting
 
+## I keep running out of memory!
+
+The GCG attack uses a *lot* of PyTorch device memory. A CUDA device with 24 GiB of memory, such as a GeForce RTX 4090, can easily load an LLM like `Llama-2-7b-chat-hf`, because seven billion parameters represented as 16-bit floating point values occupy about 14 GiB of memory. But (among other things) the GCG attack involves very memory-intensive operations like creating a PyTorch gradient and running backpropagation, and those operations are too large to perform for a seven-billion-parameter model on a device with 24 GiB of memory. If you want to test models of that size, you'll need to use [a device with more memory](other_graphics_hardware.md).
+
+If you are already testing using [models with sizes in-line with the values in the "Broken Hill PyTorch device memory requirements" document](memory_requirements.md) and still running out of memory, here are a few things to try:
+
+* If you are running Broken Hill on a device with one or more screens connected to the same GPU that you're using for Broken Hill:
+** If you are using a GUI to interact with the OS (X, Weyland, Gnome, KDE, etc.), close out of the GUI or suspend it.
+*** e.g. on Debian and most derived distributions, Ctrl-Alt-F2 to switch to the second virtual console, then Ctrl-Alt-F1 to switch back to the GUI session when you're done. This can free up to several GiB of VRAM depending on how many displays are attached, what resolution the GPU is rendering content for them at, etc.
+* Specify a value lower than the default (48) for `--max-new-adversarial-value-candidate-count`, e.g. `--max-new-adversarial-value-candidate-count 16`. This will reduce the efficiency of the search for new values, so consider setting a `--required-loss-threshold` value [as discussed in the the "Content-generation size controls" section of the command-line options documentation](all_command-line_options.md#content-generation-size-controls).
+* If you're specifying a non-default value for `--batch-size-get-logits`, stop doing that.
+
 ## TypeError: Couldn't build proto file into descriptor pool
 
 Sometimes, everything will seem to be working fine, and then the next time you run the tool, you'll get an error like this:

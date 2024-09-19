@@ -1,6 +1,6 @@
 # Broken Hill PyTorch device memory requirements
 
-This document currently lists rough estimates for requirement device memory based on ad hoc testing. It will be updated with more specific figures as we collect additional data.
+This document currently lists rough estimates for requirement device memory based on ad hoc testing. It will be updated with additional information and more specific figures as we collect them.
 
 Note: as discussed elsewhere in the documentation, Broken Hill currently only supports CUDA devices, meaning that the memory required is on an Nvidia GPU. i.e. to use Broken Hill to perform a GCG attack against a model with 2 billion parameters, you will need an Nvidia GPU with at least 24GiB of VRAM.
 
@@ -11,4 +11,4 @@ Note: as discussed elsewhere in the documentation, Broken Hill currently only su
 
 ## 7 billion parameter models
 
-* 24GiB is sufficient to perform Broken Hill self-tests
+* 24GiB is sufficient to perform Broken Hill self-tests, but generally not perform the GCG attack
