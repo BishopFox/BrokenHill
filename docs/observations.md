@@ -9,7 +9,7 @@ Some or all of these opinions may change based on continued testing and developm
 3. [Writing the initial prompt](#writing-the-initial-prompt)
 4. [Choosing the initial adversarial content](#choosing-the-initial-adversarial-content)
 5. [Results can be fragile](#results-can-be-fragile)
-6. [#chat-template-formatting-is-critical](Chat template formatting is critical)
+6. [Chat template formatting is critical](#chat-template-formatting-is-critical)
 
 ## Pay attention to the output of Broken Hill's self-tests
 
