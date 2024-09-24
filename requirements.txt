@@ -16,10 +16,12 @@ pandas==2.2.2
 accelerate==0.33.0
 # tested with flash_attn 2.6.3
 # probably need to comment this out for Mac OS
+# Note: you will likely need to comment out the next line the first time you install Broken Hill in a virtual environment. After installing, uncomment the line and rerun.
 flash_attn==2.6.3
 # tested with sentencepiece 0.2.0
 sentencepiece==0.2.0
 # tested with causal-conv1d 1.4.0
+# Note: you will likely need to comment out the next line the first time you install Broken Hill in a virtual environment. After installing, uncomment the line and rerun.
 causal-conv1d==1.4.0
 # mamba-ssm is recommended by the state-spaces for the Mamba LLM family, but doesn't install correctly on my system.
 #mamba-ssm
