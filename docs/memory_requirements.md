@@ -10,7 +10,7 @@ Note: as discussed elsewhere in the documentation, Broken Hill currently only su
 
 ## Models with more than about 500 million, but less than 2 billion parameters
 
-* There is probably a cutoff around 1 billion parameters where testing can be performed using 16 GiB  of memory, but we haven't tested in that configuration yet.
+* There is probably a cutoff around 1 billion parameters where testing can be performed using 16 GiB  of memory, but we haven't tested in that configuration yet
 * 24 GiB should be sufficient to perform typical testing using Broken Hill
 
 ## Models with 2 billion parameters
