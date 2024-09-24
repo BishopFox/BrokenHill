@@ -31,6 +31,25 @@ $ python -m venv ./
 $ bin/pip install ./BrokenHill/
 ```
 
+Note: if this is a brand new installation, you may receive an error like the following:
+
+```
+Collecting flash-attn==2.6.3 (from llm_attacks_bishopfox==0.0.2)
+  Downloading flash_attn-2.6.3.tar.gz (2.6 MB)
+...omitted for brevity...
+  error: subprocess-exited-with-error
+...omitted for brevity...
+      ModuleNotFoundError: No module named 'torch'
+```
+
+This is because `flash-attn` has a dependency on `torch` that may not be declared properly. One workaround is to manually install `torch` first:
+
+```
+$ bin/pip install torch
+
+$ bin/pip install ./BrokenHill/
+```
+
 Highly recommended additional step: install the `fschat` Python library from source to pick up newer conversation templates:
 
 ```
