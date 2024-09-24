@@ -1,3 +1,5 @@
+<img src="BrokenHill-Logo.jpg" alt="[ Broken Hill logo ]">
+
 # Broken Hill
 
 Broken Hill is a productionized, ready-to-use automated attack tool that generates crafted prompts to bypass restrictions in large language models (LLMs) using the greedy coordinate gradient (GCG) attack described in [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper by Andy Zou, Zifan Wang, Nicholas Carlini, Milad Nasr, J. Zico Kolter, and Matt Fredrikson](https://arxiv.org/abs/2307.15043).

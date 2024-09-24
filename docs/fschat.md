@@ -44,25 +44,25 @@ The "Homepage" link in that PyPi entry is invalid. The email address is a random
 
 This situation is so dangerously confusing that at the time of this writing, [even *Microsoft* had documentation instructing users to install the modified fork of `fschat`](https://huggingface.co/datasets/microsoft/Taskbench):
 
-<img src="pip_install_fastchat-01.PNG">
+<img src="pip_install_fastchat-01.PNG" alt="[ screenshot of Microsoft's Taskbench repository at Hugging Face incorrectly instructing users to run 'pip install fastchat' ]">
 
 ...but Microsoft's document was far from alone:
 
-<img src="pip_install_fastchat-02.PNG">
+<img src="pip_install_fastchat-02.PNG" alt="[ screenshot of a Medium post incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-03.PNG">
+<img src="pip_install_fastchat-03.PNG" alt="[ screenshot of restack.io / IPEX-LLM  incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-04.PNG">
+<img src="pip_install_fastchat-04.PNG" alt="[ screenshot of gitee.com / AgentScope documentation incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-05.PNG">
+<img src="pip_install_fastchat-05.PNG" alt="[ screenshot of the ChatDrug GitHub repository incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-06.PNG">
+<img src="pip_install_fastchat-06.PNG" alt="[ screenshot of a Reddit thread incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-07.PNG">
+<img src="pip_install_fastchat-07.PNG" alt="[ screenshot of an issue in lm-sys' own GitHub repository for the fschat library incorrectly referring to 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-08.PNG">
+<img src="pip_install_fastchat-08.PNG" alt="[ screenshot of developer.baidu.com documentation incorrectly instructing users to run 'pip install fastchat' ]">
 
-<img src="pip_install_fastchat-09.PNG">
+<img src="pip_install_fastchat-09.PNG" alt="[ screenshot of cloud.baidu.com documentation incorrectly instructing users to run 'pip install fastchat' ]">
 
 I think this is extremely troubling. It would be a great way to mount a supply chain attack against a popular new technical field, either through the initial creation of the fork, or by waiting for the fork to be abandoned and then assuming ownership over it.
 
