@@ -61,9 +61,7 @@ cd ..
 * `--template <string>`
 * `--exclude-nonascii-tokens`
 * `--exclude-special-tokens`
-* `--display-failure-output`
 * `--json-output-file <string>`
-
 
 ### Example
 
@@ -159,11 +157,11 @@ potential resurrection attempts.
 
 ## Observations and recommendations
 
-The [Observations and recommendations on using this tool](observations.md) document contains some detailed discussions about how to get useful results efficiently.
+[The "Observations and recommendations on using this tool" document](observations.md) contains some detailed discussions about how to get useful results efficiently.
 
 ## Extracting result information
 
-The [Extracting result information](extracting_result_information.md) document describes how to export key information from Broken Hill's JSON output data using `jq`.
+[The "Extracting result information" document](extracting_result_information.md) describes how to export key information from Broken Hill's JSON output data using `jq`.
 
 ## Notes on specific models Broken Hill has been tested against
 
@@ -181,7 +179,7 @@ Please see [the Frequently-asked questions (FAQ) document](FAQ.md).
 
 ## Curated results
 
-[The curated results directory](curated_results/) contains output of particular interest for various LLMs.
+[The curated results directory](curated_results/) contains output of particular interest for various LLMs, although we temporarily removed most of the old content for the first public release, to avoid confusion about reproducibility.
 
 ## Additional information
 
