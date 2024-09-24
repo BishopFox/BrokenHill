@@ -4,7 +4,7 @@ This document describes high-level results of testing the GCG attack using vario
 
 ## Table of contents
 
-* [Model families with publicly-available versions capable of handling chat interaction](#)
+* [Model families with publicly-available versions capable of handling chat interaction](#model-families-with-publicly-available-versions-capable-of-handling-chat-interaction)
   * [Falcon](#falcon)
   * [Gemma](#gemma)
   * [Gemma 2](#gemma-2)
@@ -22,7 +22,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [StableLM 2](#stablelm-2)
   * [TinyLlama](#tinyllama)
   * [Vicuna 1.1](#vicuna-11)
-* Other model families that can be used with Broken Hill
+* [Other model families that can be used with Broken Hill](#)
   * [BART](#bart)
   * [BigBird / BigBirdPegasus](#bigbird--bigbirdpegasus)
   * [GPT-2](#gpt-2)
@@ -32,7 +32,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [Phi-1](#phi-1)
   * [Pythia](#pythia)
   * [RoBERTa](#roberta)
-* Other model families that do not currently work with Broken Hill
+* [Other model families that do not currently work with Broken Hill](#)
   * [BlenderBot](#blenderbot)
   * [GPT-NeoX](#gpt-neox)
   * [Pegasus](#pegasus)
@@ -48,7 +48,7 @@ This document describes high-level results of testing the GCG attack using vario
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [falcon-7b-instruct](https://huggingface.co/tiiuae/falcon-7b-instruct)
 
@@ -67,7 +67,7 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 
 Gemma is strongly conditioned to avoid discussing certain topics. We'll be adding a separate discussion about this.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [gemma-2b-it](https://huggingface.co/google/gemma-2b-it)
 
@@ -86,7 +86,7 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 
 Gemma 2 is strongly conditioned to avoid discussing certain topics. We'll be adding a separate discussion about this.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [gemma-2-2b](https://huggingface.co/google/gemma-2b)
 * [gemma-2-2b-it](https://huggingface.co/google/gemma-2b-it)
@@ -111,7 +111,7 @@ Guanaco is a PEFT pre-trained model built on top of the original Llama. To you u
 
 Even though Guanaco is a model layered on top of Llama, it uses its own conversation template. The format is similar to the `fschat` `zero_shot` template, but not identical, so Broken Hill includes a custom `guanaco` template.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [guanaco-7b](https://huggingface.co/timdettmers/guanaco-7b)
 
@@ -136,7 +136,7 @@ The custom template is also slightly incorrect, but seems to be "less wrong" reg
 
 Until this issue is resolved, Broken Hill will report one or more warnings when the Llama-2 templates are used.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
 
@@ -162,7 +162,7 @@ cd ..
 
 As with the Llama-2 conversation template, the `fschat` template for Llama-3 does not exactly match the output of the tokenizer's `apply_chat_template` function (for example, `fschat` adds an extra `<|eot_id|>` at the end of the prompt), but the differences shouldn't be enough to materially effect Broken Hill's test results. Until `fschat` is updated, Broken Hill will display a brief warning when the `llama-3` template is used.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
 
@@ -177,7 +177,7 @@ As with the Llama-2 conversation template, the `fschat` template for Llama-3 doe
 
 `fschat` includes a template for MPT, but for some reason there are two templates named `mpt-7b-chat` and `mpt-30b-chat`, which are identical except for the system prompt. Broken Hill includes a shortcut template definition that points to `mpt-7b-chat`.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [mpt-7b-chat](https://huggingface.co/mosaicml/mpt-7b-chat)
 
@@ -192,7 +192,7 @@ As with the Llama-2 conversation template, the `fschat` template for Llama-3 doe
 
 Broken Hill includes a custom `phi2` chat template because `fschat` does not currently include one.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [phi-2](https://huggingface.co/microsoft/phi-2)
 
@@ -209,7 +209,7 @@ Broken Hill includes a custom `phi3` chat template because `fschat` does not cur
 
 Phi-3 is one of the most frequent test candidates when developing this tool. Everything should work as expected. 
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct)
 
@@ -232,7 +232,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 `fschat` includes a template for Qwen and Qwen 2, but for some reason it's named `qwen-7b-chat` specifically, so Broken Hill includes a shortcut template definition that points to that.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [Qwen1.5-0.5B-Chat](https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat)
 
@@ -247,7 +247,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 `fschat` includes a template for Qwen and Qwen 2, but for some reason it's named `qwen-7b-chat` specifically, so Broken Hill includes a shortcut template definition that points to that.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [Qwen2-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct)
 
@@ -262,7 +262,7 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 Broken Hill includes a custom `smollm` chat template because `fschat` does not currently include one.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [SmolLM-1.7B-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-1.7B-Instruct)
 
@@ -275,7 +275,7 @@ Broken Hill includes a custom `smollm` chat template because `fschat` does not c
 
 As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. It is supported by this tool in order to test models built on top of StabilityAI's foundation.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [stablelm-tuned-alpha-3b](https://huggingface.co/stabilityai/stablelm-tuned-alpha-3b)
 * [stablelm-zephyr-3b](https://huggingface.co/stabilityai/stablelm-zephyr-3b)
@@ -290,7 +290,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 Broken Hill includes a custom `stablelm2` chat template because `fschat` does not currently include one.
 As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. It is supported by this tool in order to test models built on top of StabilityAI's foundation. 
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat)
 * [stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b)
@@ -304,7 +304,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
   * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)
 
@@ -317,11 +317,11 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [vicuna-7b-v1.1](https://huggingface.co/lmsys/vicuna-7b-v1.1)
 
-## Other model families that can be used in the tool
+## Other model families that can be used with Broken Hill
 
 These model families can be used in the tool, but publicly-available versions are not trained to handle chat-type interactions. The tool can handle them in case someone runs across a derived model that's been trained for chat-like interaction. If you encounter a derived model, you'll likely need to add a custom chat template to the code to generate useful results.
 
@@ -333,7 +333,7 @@ These model families can be used in the tool, but publicly-available versions ar
 
 BART currently requires currently requires `--max-new-tokens-final 512` (or lower) to be manually specified.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [bart-large-cnn](https://huggingface.co/facebook/bart-large-cnn)
 
@@ -341,7 +341,7 @@ BART currently requires currently requires `--max-new-tokens-final 512` (or lowe
 
 * [BigBird GitHub page](https://github.com/google-research/bigbird)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [bigbird-pegasus-large-pubmed](https://huggingface.co/google/bigbird-pegasus-large-pubmed)
 
@@ -353,7 +353,7 @@ BART currently requires currently requires `--max-new-tokens-final 512` (or lowe
 
 GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually specified.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [gpt2-medium](https://huggingface.co/openai-community/gpt2-medium)
 
@@ -361,7 +361,7 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 * [Eleuther AI's GPT-J 6B page at Hugging Face](https://huggingface.co/EleutherAI/gpt-j-6b)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [GPT-J 6B](https://huggingface.co/EleutherAI/gpt-j-6b)
 
@@ -369,7 +369,7 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 * [GPT-Neo 1.3B Hugging Face page](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
 
@@ -381,7 +381,7 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly specified.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [opt-2.7b](https://huggingface.co/microsoft/phi-1_5)
 
@@ -389,7 +389,7 @@ OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly 
 
 * [Microsoft's Phi-1 model collection at Hugging Face](https://huggingface.co/collections/microsoft/phi-1-6626e29134744e94e222d572)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [phi-1_5](https://huggingface.co/facebook/opt-2.7b)
 
@@ -397,7 +397,7 @@ OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly 
 
 * [Pythia GitHub repository](https://github.com/EleutherAI/pythia)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [pythia-1.4b](https://huggingface.co/EleutherAI/pythia-1.4b)
 
@@ -405,11 +405,11 @@ OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly 
 
 * [RoBERTa GitHub page](https://github.com/facebookresearch/fairseq/tree/main/examples/roberta)
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [roberta-base](https://huggingface.co/FacebookAI/roberta-base)
 
-## Other model families that do not currently work in the tool
+## Other model families that do not currently work with Broken Hill
 
 ### BlenderBot
 
@@ -421,7 +421,7 @@ This used to work in an early pre-release version, now it doesn't. We'll try to 
 
 When Broken Hill can handle this model again, BlenderBot may require `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower) depending on whether or not we add some other additional code.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
 
@@ -435,7 +435,7 @@ GPT-NeoX is currently unsupported because it only supports use of a fast tokeniz
 
 Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors). If you receive a "Can't load tokenizer" error, try explicitly specifying the path to the GPT-NeoX 20B tokenizer, e.g. `--tokenizer LLMs/EleutherAI/gpt-neox-20b`
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
 
@@ -450,6 +450,6 @@ This used to work in an early pre-release version, now it doesn't. We'll try to 
 
 When Broken Hill can handle this model again, Pegasus may require `--max-new-tokens-final 512` (or lower) depending on whether or not we add some other additional code.
 
-#### Specific versions tested using this tool:
+#### Specific versions tested using Broken Hill:
 
 * [pegasus-wikihow](https://huggingface.co/google/pegasus-wikihow)
