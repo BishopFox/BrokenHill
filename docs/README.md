@@ -67,6 +67,13 @@ cd ..
 
 #### Convince an LLM to provide devious machine-generated plans for the annihilation of the human race
 
+The example below takes advantage of several Broken Hill features:
+
+* The ability to test candidate adversarial content against multiple, randomized versions of the same LLM, to help find content that is effective against other versions/configurations of the same LLM (`--random-seed-comparisons 6`, `--temperature 1.001`).
+* The ability to use highly-successful content as rollback points to maximize the time spent finding effective adversarial content (`--rollback-on-jailbreak-count-threshold 1`)
+* JSON result output (`--json-output-file annihilation-phi-2-results.json`)
+* Filtering the tokens used in adversarial content to avoid generating results that are unlikely to bypass input validation filtering (`--exclude-nonascii-tokens`, `--exclude-nonprintable-tokens`, `--exclude-special-tokens`, `--exclude-additional-special-tokens`), or contain offensive words (`--exclude-slur-tokens`, `--exclude-profanity-tokens`, `--exclude-other-offensive-tokens`).
+
 ```
 $ bin/python ./brokenhill.py \
 	--model LLMs/Microsoft/phi-2 \
