@@ -78,7 +78,7 @@ The `--random-seed-comparisons` option is used to cause the generated value to b
 You can exclude the `--display-failure-output` option to make this process run faster, if you like.
 
 ```
-$ bin/python ./brokenhill.py \
+$ bin/python ./BrokenHill/brokenhill.py \
 	--model LLMs/Microsoft/Phi-3-mini-128k-instruct \
 	--template phi3 \
 	--clear-existing-conversation \
@@ -168,7 +168,7 @@ Generate content that attempts to cause the gatekeeper LLM to respond with the w
 ```
 
 ```
-$ bin/python ./brokenhill.py \
+$ bin/python ./BrokenHill/brokenhill.py \
 	--model LLMs/Microsoft/Phi-3-mini-128k-instruct \
 	--template phi3 \
 	--clear-existing-conversation \
