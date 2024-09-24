@@ -215,7 +215,7 @@ Please see [the Frequently-asked questions (FAQ) document](FAQ.md).
 
 ## Curated results
 
-[The curated results directory](curated_results/) contains output of particular interest for various LLMs, although we temporarily removed most of the old content for the first public release, to avoid confusion about reproducibility.
+[The curated results directory](curated_results/) contains output of particular interest for various LLMs. However, we temporarily removed most of the old content for the first public release, to avoid confusion about reproducibility, because most of the material was generated using very early versions of Broken Hill with incompatible syntaces. Expect that section to grow considerably going forward.
 
 ## Additional information
 
