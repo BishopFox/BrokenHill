@@ -81,8 +81,8 @@ def get_gemma_conversation_template():
 def get_guanaco_conversation_template():
     conv_template = fastchat.conversation.get_conv_template("zero_shot").copy()
     conv_template.name = "guanaco"
-    sep=" ### ",
-    stop_str="",
+    sep=" ### "
+    stop_str=""
     conv_template.stop_str = " </s>"
     return conv_template
 
@@ -141,6 +141,23 @@ def get_qwen_conversation_template():
 def get_qwen2_conversation_template():
     conv_template = get_qwen_conversation_template().copy()
     conv_template.name="qwen2"
+    conv_template.system_message="You are a helpful assistant."
+    return conv_template
+
+def get_smollm_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="smollm"
+    conv_template.system_template="<|im_start|>system\n{system_message}"
+    conv_template.system_message=""
+    conv_template.roles=("<|im_start|>user", "<|im_start|>assistant")
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep="<|im_end|>"
+    conv_template.stop_token_ids=[
+        0,
+        1,
+        2,
+    ]  # "<|endoftext|>", "<|im_start|>", "<|im_end|>"
+    conv_template.stop_str="<|endoftext|>"
     return conv_template
 
 def get_stablelm2_conversation_template():
@@ -183,6 +200,8 @@ def register_missing_conversation_templates(attack_params):
     
     register_missing_conversation_template(attack_params, fschat_added_support, "qwen", get_qwen_conversation_template())
     register_missing_conversation_template(attack_params, fschat_added_support, "qwen2", get_qwen2_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "smollm", get_smollm_conversation_template())
     
     register_missing_conversation_template(attack_params, fschat_added_support, "stablelm2", get_stablelm2_conversation_template())
 
@@ -547,7 +566,11 @@ class AdversarialContentManager:
         # set up temporary values based on permanent values
         working_adversarial_content = self.adversarial_content.copy()
         conversation_template = self.conv_template.copy()
-
+        
+        if conversation_template is None:
+            print(f"[get_prompt] Error: got a null conversation template when trying to call self.conv_template.copy(). This should never happen. self.conv_template was '{self.conv_template}'")
+            sys.exit(1)
+        
         if adversarial_content is not None:
             working_adversarial_content = adversarial_content.copy()
 
@@ -671,8 +694,9 @@ class AdversarialContentManager:
                 len_target_slice = result.slice_data.target.stop - result.slice_data.target.start
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
                 
-            if self.loss_slice_mode == LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES:
-                result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(toks)) - 1)
+            if self.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
+                #result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(toks)) - 1)
+                result.slice_data.loss = slice(result.slice_data.target.start - 1, min(result.slice_data.target.stop - 1, len(toks)))
 
             if self.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
                 result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(toks)))
@@ -761,7 +785,7 @@ class AdversarialContentManager:
                 len_target_slice = result.slice_data.target.stop - result.slice_data.target.start
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
                 
-            if self.loss_slice_mode == LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES:
+            if self.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
                 result.slice_data.loss = slice(
                     prompt_find_self_target_c2t - 1,
                     prompt_combined_c2t
@@ -785,13 +809,8 @@ class AdversarialContentManager:
         result.full_prompt_token_ids = toks
         result.input_token_ids = toks[:result.slice_data.target.stop]
 
-        self.print_slice_info("get_prompt", result.slice_data, toks)
+        #self.print_slice_info("get_prompt", result.slice_data, toks)
 
-        conversation_template.messages = []
+        #conversation_template.messages = []
 
         return result
-    
-#    def get_input_ids(self, adv_string=None, force_python_tokenizer = False):
-#        result = self.get_prompt(adv_string=adv_string, force_python_tokenizer=force_python_tokenizer)
-#        return result
-

@@ -1,12 +1,12 @@
 # All command-line options
 
-## -d <string>, --device <string>
+## --device <string>
 
 The PyTorch device to use for the attack. Defaults to `cuda`.
 
 Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended. For example, using `cpu` option will make the attack run about 100 times slower.
 
-## -m <string>, --model <string>
+## --model <string>
 
 The path to the directory containing the LLM you want to test against.
 
@@ -14,9 +14,25 @@ The path to the directory containing the LLM you want to test against.
 
 An optional parameter used to specify a path to a different directory containing the LLM tokenizer to use with the model. Mainly intended for models such as Mamba that don't include their own tokenizer and instruct users to refer to the tokenizer included with another model.
 
+## --peft-adapter <string>
+
+An optional parameter used to specify a path to the base directory for a PEFT pre-trained model/adapter that is based on the model specified with `--model`. [Used to load models such as Guanaco](GCG_attack/model_notes.md).
+
 ## --json-output-file <string> and --overwrite-output
 
 If specified, causes the tool to write result information in JSON format to the specified file. If the file already exists, the tool will exit with an error unless `--overwrite-output` is also specified.
+
+## --self-test
+
+Exit with an error code of 0 after performing self tests.
+
+## --verbose-self-test-output
+
+When performing self tests, if there is a significant difference between the conversation template Broken Hill is using and the output of the `apply_chat_template` method included with the tokenizer, display detailed information about the token IDs and tokens for debugging purposes.
+
+## --ignore-jailbreak-self-tests
+
+Perform testing even if one of the jailbreak self-tests indicates the attempt is unlikely to succeed.
 
 ## Setting the prompt and target output
 
@@ -38,7 +54,7 @@ e.g. `--auto-target 'a convincing anonymous death threat'` is equivalent to `--b
 
 ## Conversation template options
 
-### -t <string>, --template <string>
+### --template <string>
 
 The model type name, for selecting the correct chat template. Use `--list-templates` to view available options. If this option is not specified, `fschat` will attempt to automatically detect the model name based on content in the model data directory. Beware that this automatic detection is not very good, and specifying the name using this option is recommended. Use of a template or configuration that doesn't match the one used by the target model will likely result in attack output that does not work outside of the attack tool.
 
@@ -47,6 +63,10 @@ Many common model names (e.g. `phi`) are not currently recognized by `fschat` an
 ### --list-templates
 
 Output a list of all template names for the version of the `fschat` library you have installed (to use with `--template`), then exit.
+
+### --override-fschat-templates
+
+Use the custom Broken Hill chat template, even if `fschat` has added a template with the same name.
 
 ### --system-prompt
 
@@ -98,7 +118,11 @@ These options control the value that the tool begins with and alters at each ite
 
 Base the initial adversarial content on a string. Leave this as the default to perform the standard attack. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens. (default: `! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !`)
 
-This is the recommended method for controlling initial adversarial content unless you *really* know what you're doing.
+This is the recommended method for controlling initial adversarial content unless you know what you're doing.
+
+### --initial-adversarial-string-base64 <string>
+
+Same as `--initial-adversarial-string`, but reads the value as a Base64-encoded string. This allows more easily specifying adversarial content containing newlines and other special characters.
 
 ### --initial-adversarial-token-ids <comma-delimited list of integers>
 
@@ -114,7 +138,7 @@ Base the initial adversarial content on a set of this many random tokens. If tok
 
 ### --max-iterations <positive integer>
 
-Maximum number of times to iterate on the adversarial data (default: 200)
+Maximum number of times to iterate on the adversarial data (default: 500)
 
 ### --reencode-every-iteration
 
@@ -122,13 +146,21 @@ The original code written by the authors of [the "Universal and Transferable Adv
 
 This tool manages adversarial content as token IDs by default, and does not exhibit the behaviour described above as a result. If you would like to re-enable that behaviour, include the `--reencode-every-iteration` option.
 
+### --number-of-tokens-to-update-every-iteration <positive integer>
+
+*Experimental* Update more than one token during every iteration.
+
+### --always-use-nanogcg-sampling-algorithm
+
+*Experimental* Ordinarily, omitting `--number-of-tokens-to-update-every-iteration` (i.e. configuring the tool to only update one adversarial content token every iteration) will cause Broken Hill to use the sampling algorithm from the demonstration code by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson. If this option is specified, the alternative algorithm borrowed from nanogcg will be used instead.
+
 ### --temperature <floating-point number>
 
 'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results. Higher values are likely to cause more "creative" or "colourful" output.
 
 You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
 
-### --topk <number> and --max-topk <number>
+### --topk <positive integer> and --max-topk <positive integer>
 
 `--topk` controls the number of results assessed when determining the best possible candidate adversarial data for each iteration. (default: 256)
 
@@ -275,7 +307,7 @@ This option causes the loss slice to be determined by starting with the token(s)
 
 ### --loss-slice-is-llm-role-and-full-target-slice
 
-This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string. 
+This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string.
 
 Using this option is not currently recommended, because it requires padding the list of tokens used to calculate the loss, and the current padding method generally causes less useful results.
     

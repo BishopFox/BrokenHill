@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.29"
-script_date = "2024-09-17"
+script_version = "0.30"
+script_date = "2024-09-23"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -492,6 +492,9 @@ def main(attack_params):
         if attack_params.template_name is not None:
             if conv_template.name != attack_params.template_name:
                 print(f"Warning: the template '{attack_params.template_name}' was specified, but fschat returned the template '{conv_template.name}' in response to that value.")
+        if conv_template is None:
+            print(f"Error: got a null conversation template when trying to load '{attack_params.template_name}'. This should never happen.")
+            sys.exit(1)
         #print(f"Conversation template: '{conv_template.name}'")
         #print(f"Conversation template sep: '{conv_template.sep}'")
         #print(f"Conversation template sep2: '{conv_template.sep2}'")
@@ -540,6 +543,11 @@ def main(attack_params):
         if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
             token_ids = get_random_token_ids(token_allow_and_deny_lists, attack_params.initial_adversarial_token_count)
             initial_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, token_ids)
+        
+        post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
+        
+        if attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
+            initial_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_string)
         
         # This should never actually happen, but just in case
         if initial_adversarial_content is None:
@@ -620,7 +628,7 @@ def main(attack_params):
         #print(f"Debug: testing conversation template")
         print(f"Testing conversation template '{conv_template.name}'")
         conversation_template_tester = ConversationTemplateTester(adversarial_content_manager, model)
-        conversation_template_test_results = conversation_template_tester.test_templates()
+        conversation_template_test_results = conversation_template_tester.test_templates(verbose = attack_params.verbose_self_test_output)
         if len(conversation_template_test_results.result_messages) > 0:
             for i in range(0, len(conversation_template_test_results.result_messages)):
                 print(conversation_template_test_results.result_messages[i])
@@ -1338,7 +1346,7 @@ if __name__=='__main__':
     parser.add_argument("--auto-target", type=str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and the tool will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
-    parser.add_argument("-d", "--device", default=attack_params.device, type=str, 
+    parser.add_argument("--device", default=attack_params.device, type=str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). Using anything other than CUDA is unlikely to produce satisfactory results.")
 
     parser.add_argument("--self-test", type=str2bool, nargs='?',
@@ -1545,6 +1553,10 @@ if __name__=='__main__':
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
         
+    parser.add_argument("--verbose-self-test-output", type=str2bool, nargs='?',
+        const=True, default=attack_params.verbose_self_test_output,
+        help="If self-test operations fail badly enough to output a comparison of strings generated, also output token ID and token information for debugging.")
+
     parser.add_argument("--ignore-jailbreak-self-tests", type=str2bool, nargs='?',
         const=True, default=attack_params.ignore_jailbreak_self_tests,
         help="Perform the attack even if the jailbreak self-tests indicate that the results will likely not be useful.")
@@ -1821,7 +1833,7 @@ if __name__=='__main__':
         attack_params.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
 
     if not isinstance(args.loss_slice_is_index_shifted_target_slice, type(None)) and args.loss_slice_is_index_shifted_target_slice == True:
-        attack_params.loss_slice_mode = LossSliceMode.SUBTRACT_ONE_FROM_START_AND_END_INDICES
+        attack_params.loss_slice_mode = LossSliceMode.INDEX_SHIFTED_TARGET_SLICE
         #print("Warning: --loss-slice-is-index-shifted-target-slice was specified. This will work as expected with some LLMs, but likely fail to generate useful results for LLMs that have multi-token role indicators, such as Gemma and Llama.")
 
     if not isinstance(args.loss_slice_is_target_slice, type(None)) and args.loss_slice_is_target_slice == True:
@@ -1973,6 +1985,8 @@ if __name__=='__main__':
         except Exception as e:
             print(f"Error writing jailbreak detection rules to file '{rules_output_file}': {e}.")
             sys.exit(1)
+    
+    attack_params.verbose_self_test_output = args.verbose_self_test_output
     
     attack_params.ignore_jailbreak_self_tests = args.ignore_jailbreak_self_tests
     

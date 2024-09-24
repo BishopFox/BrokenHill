@@ -33,9 +33,8 @@ def get_llama2_and_3_fschat_template_names():
     return result
 
 # Templates that produce identical output to apply_chat_template, except for probably-insignificant spurious tokens at the end
-def get_llama2_and_3_template_names():
-    #result = [ "llama-2", "llama2" ]
-    result = [ "llama2", "llama-3" ]
+def get_stop_string_or_equivalent_is_different_template_names():
+    result = [ "llama2", "llama-3", "qwen2 ", "smollm" ]
     return result
 
 def get_apply_chat_template_ignored_template_names():
@@ -215,7 +214,7 @@ class ConversationTemplateTester:
         self.adversarial_content_manager = adversarial_content_manager
         self.model = model
     
-    def test_templates(self):
+    def test_templates(self, verbose = False):
         result = TokenizerConversationTemplateTestResult()
         
         result.existing_fschat_template = self.adversarial_content_manager.conv_template.copy()
@@ -434,14 +433,14 @@ class ConversationTemplateTester:
             
             
             # temporary workaround for minor issue with Llama-2 template that can't be easily corrected without fschat code changes
-            if result.existing_fschat_template.name in get_llama2_and_3_template_names():
-                #print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is in the list of Llama-2 template names. Workaround logic may apply.")
+            if result.existing_fschat_template.name in get_stop_string_or_equivalent_is_different_template_names():
+                #print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is in the list of template names with known non-identical endings that are currently displayed as minor warnings. Workaround logic may apply.")
                 if not result.template_comparison_result.strings_match_exactly:
                     if len(ef_template_prompt_string) > len(tokenizer_prompt_string):
                         #print("[ConversationTemplateTester.test_templates] Debug: len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
                         truncated_ef_template_prompt_string = ef_template_prompt_string[:len(tokenizer_prompt_string)]
                         if truncated_ef_template_prompt_string == tokenizer_prompt_string:                            
-                            result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the Llama-2 conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
+                            result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
                             ef_template_prompt_string = truncated_ef_template_prompt_string
                             ef_template_prompt_token_ids = self.adversarial_content_manager.tokenizer.encode(ef_template_prompt_string)
                             ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_token_ids)
@@ -485,16 +484,17 @@ class ConversationTemplateTester:
             if result.tokenizer_supports_apply_chat_template_method:
                 last_message += f"The tokenizer's apply_chat_template method generated the test conversation as the following string:\n"
                 last_message += f"'{tokenizer_prompt_string}'\n"
-            last_message += f"The conversation template '{result.existing_fschat_template.name}' output was tokenized to the following token IDs:\n"
-            last_message += f"{ef_template_prompt_token_ids}\n"
-            if result.tokenizer_supports_apply_chat_template_method:
-                last_message += f"The tokenizer's apply_chat_template method output was tokenized to the following token IDs:\n"
-                last_message += f"{tokenizer_prompt_token_ids}\n"
-            last_message += f"The conversation template '{result.existing_fschat_template.name}' output token IDs were decoded to the following strings:\n"
-            last_message += f"{ef_template_prompt_decoded_tokens}\n"
-            if result.tokenizer_supports_apply_chat_template_method:
-                last_message += f"The tokenizer's apply_chat_template method output token IDs were decoded to the following strings:\n"
-                last_message += f"{tokenizer_prompt_with_decoded_tokens}\n"
+            if verbose:
+                last_message += f"The conversation template '{result.existing_fschat_template.name}' output was tokenized to the following token IDs:\n"
+                last_message += f"{ef_template_prompt_token_ids}\n"
+                if result.tokenizer_supports_apply_chat_template_method:
+                    last_message += f"The tokenizer's apply_chat_template method output was tokenized to the following token IDs:\n"
+                    last_message += f"{tokenizer_prompt_token_ids}\n"
+                last_message += f"The conversation template '{result.existing_fschat_template.name}' output token IDs were decoded to the following strings:\n"
+                last_message += f"{ef_template_prompt_decoded_tokens}\n"
+                if result.tokenizer_supports_apply_chat_template_method:
+                    last_message += f"The tokenizer's apply_chat_template method output token IDs were decoded to the following strings:\n"
+                    last_message += f"{tokenizer_prompt_with_decoded_tokens}\n"
             result.result_messages.append(last_message)
 
         # TKTK: If the templates are not identical, generate an fschat template definition that closely matches the one obtained from the tokenizer

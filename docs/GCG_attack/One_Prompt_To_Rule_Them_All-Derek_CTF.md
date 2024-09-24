@@ -79,7 +79,7 @@ You can exclude the `--display-failure-output` option to make this process run f
 
 ```
 $ bin/python ./brokenhill.py \
-	-m LLMs/Microsoft/Phi-3-mini-128k-instruct \
+	--model LLMs/Microsoft/Phi-3-mini-128k-instruct \
 	--template phi3 \
 	--clear-existing-conversation \
 	--system-prompt-from-file Derek_CTF-genie-system.txt \
@@ -100,7 +100,9 @@ $ bin/python ./brokenhill.py \
 	--temperature 1.001 \
 	--jailbreak-detection-rules-file jailbreak_detection-contains_secret_base64.json \
 	--rollback-on-jailbreak-count-threshold 1 \
-	--json-output-file Derek_CTF-disclose.json
+	--ignore-jailbreak-self-tests \
+	--json-output-file Derek_CTF-disclose.json \
+	2>&1 | tee Derek_CTF-disclose-log.txt
 ```
 
 ### Gatekeeper(s)
@@ -167,7 +169,7 @@ Generate content that attempts to cause the gatekeeper LLM to respond with the w
 
 ```
 $ bin/python ./brokenhill.py \
-	-m LLMs/Microsoft/Phi-3-mini-128k-instruct \
+	--model LLMs/Microsoft/Phi-3-mini-128k-instruct \
 	--template phi3 \
 	--clear-existing-conversation \
 	--system-prompt-from-file Derek_CTF-is_valid_question-system.txt \
@@ -188,7 +190,9 @@ $ bin/python ./brokenhill.py \
 	--temperature 1.001 \
 	--jailbreak-detection-rules-file jailbreak_detection-begins_with_true-does_not_contain_false.json \
 	--rollback-on-jailbreak-count-threshold 1 \
-	--json-output-file Derek_CTF-valid.json
+	--ignore-jailbreak-self-tests \
+	--json-output-file Derek_CTF-valid.json \
+	2>&1 | tee Derek_CTF-valid-log.txt
 ```
 
 ## Export the most successful results

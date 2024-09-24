@@ -2,6 +2,10 @@
 
 This document describes high-level results of testing the GCG attack using various publicly-available large language models.
 
+## Table of contents
+
+1. [](#)
+
 ## Model families with publicly-available versions capable of handling chat interaction
 
 ### Falcon
@@ -9,9 +13,9 @@ This document describes high-level results of testing the GCG attack using vario
 * Conversation template name: `falcon`
 * [TII's Falcon LLM website](https://falconllm.tii.ae/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 #### Specific versions tested using this tool:
 
@@ -22,15 +26,15 @@ This document describes high-level results of testing the GCG attack using vario
 * Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 Broken Hill includes a custom `gemma` chat template because `fschat` seems to go back and forth between including one and not including one.
 
 #### Special considerations
 
-[Gemma is strongly conditioned to avoid discussing certain topics. See the "Slippery models" document for a lengthier discussion.](slippery_models.md)
+Gemma is strongly conditioned to avoid discussing certain topics. We'll be adding a separate discussion about this.
 
 #### Specific versions tested using this tool:
 
@@ -41,15 +45,15 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 * Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 Broken Hill includes a custom `gemma` chat template because `fschat` seems to go back and forth between including one and not including one. Gemma 2 *seems* to use the same template format.
 
 #### Special considerations
 
-[Gemma 2 is strongly conditioned to avoid discussing certain topics. See the "Slippery models" document for a lengthier discussion.](slippery_models.md)
+Gemma 2 is strongly conditioned to avoid discussing certain topics. We'll be adding a separate discussion about this.
 
 #### Specific versions tested using this tool:
 
@@ -61,9 +65,9 @@ Broken Hill includes a custom `gemma` chat template because `fschat` seems to go
 * Conversation template name: `guanaco`
 * [Guanaco-7B at Hugging Face](https://huggingface.co/timdettmers/guanaco-7b)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 #### Special considerations
 
@@ -74,7 +78,7 @@ Guanaco is a PEFT pre-trained model built on top of the original Llama. To you u
 --peft-adapter /mnt/md0/Machine_Learning/LLMs/timdettmers/guanaco-7b \
 ```
 
-Even though Guanaco is a model layered on top of Llama, it uses its own conversation template. The format is similar to the `fschat` `zero_shot` template, but not identical so Broken Hill includes a custom `guanaco` template.
+Even though Guanaco is a model layered on top of Llama, it uses its own conversation template. The format is similar to the `fschat` `zero_shot` template, but not identical, so Broken Hill includes a custom `guanaco` template.
 
 #### Specific versions tested using this tool:
 
@@ -89,9 +93,9 @@ Broken Hill can successfully load the original Llama model, but we haven't been 
 * Conversation template name: `llama2` or `llama-2` (see discussion below)
 * [Meta's Llama LLM family website](https://www.llama.com/llama-downloads/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 #### Special considerations
 
@@ -110,9 +114,9 @@ Until this issue is resolved, Broken Hill will report one or more warnings when 
 * Conversation template name: `llama-3` (see instructions below)
 * [Meta's Llama LLM family website](https://www.llama.com/llama-downloads/)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 #### Special considerations
 
@@ -136,9 +140,9 @@ As with the Llama-2 conversation template, the `fschat` template for Llama-3 doe
 * Conversation template name: `mpt`
 * [Databricks' Mosaic Research website, which includes MPT](https://www.databricks.com/research/mosaic)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 `fschat` includes a template for MPT, but for some reason there are two templates named `mpt-7b-chat` and `mpt-30b-chat`, which are identical except for the system prompt. Broken Hill includes a shortcut template definition that points to `mpt-7b-chat`.
 
@@ -151,9 +155,9 @@ As with the Llama-2 conversation template, the `fschat` template for Llama-3 doe
 * Conversation template name: `phi2`
 * [Microsoft's Phi-2 model at Hugging Face](https://huggingface.co/microsoft/phi-2)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 Broken Hill includes a custom `phi2` chat template because `fschat` does not currently include one.
 
@@ -166,9 +170,9 @@ Broken Hill includes a custom `phi2` chat template because `fschat` does not cur
 * Conversation template name: `phi3`
 * [Microsoft's Phi-3 model collection at Hugging Face](https://huggingface.co/collections/microsoft/phi-3-6626e15e9585a200d2d761e3)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 Broken Hill includes a custom `phi3` chat template because `fschat` does not currently include one.
 
@@ -189,12 +193,11 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 ### Qwen
 
 * Conversation template name: `qwen`
-* [Qwen collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen-65c0e50c3f1ab89cb8704144)
-* [Qwen 1.5 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen15-65c0a2f577b1ecb76d786524)
+* [Alibaba's Qwen model family page at Hugging Face](https://huggingface.co/Qwen)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 `fschat` includes a template for Qwen and Qwen 2, but for some reason it's named `qwen-7b-chat` specifically, so Broken Hill includes a shortcut template definition that points to that.
 
@@ -205,11 +208,11 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 ### Qwen 2
 
 * Conversation template name: `qwen2`
-* [Qwen 2 collection at Hugging Face](https://huggingface.co/collections/Qwen/qwen2-6659360b33528ced941e557f)
+* [Alibaba's Qwen model family page at Hugging Face](https://huggingface.co/Qwen)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 `fschat` includes a template for Qwen and Qwen 2, but for some reason it's named `qwen-7b-chat` specifically, so Broken Hill includes a shortcut template definition that points to that.
 
@@ -217,9 +220,25 @@ Phi-3 is one of the most frequent test candidates when developing this tool. Eve
 
 * [Qwen2-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct)
 
+### SmolLM
+
+* Conversation template name: `smollm`
+* [Hugging Face blog post introducing SmolLM](https://huggingface.co/blog/smollm)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+Broken Hill includes a custom `smollm` chat template because `fschat` does not currently include one.
+
+#### Specific versions tested using this tool:
+
+* [SmolLM-1.7B-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-1.7B-Instruct)
+
 ### StableLM
 
 * Conversation template name: `stablelm`
+* [Stability AI StableLM family GitHub repository](https://github.com/Stability-AI/StableLM)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
@@ -233,6 +252,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 ### StableLM 2
 
 * Conversation template name: `stablelm2`
+* [Stability AI StableLM family GitHub repository](https://github.com/Stability-AI/StableLM)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
@@ -248,14 +268,27 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 
 * Conversation template name: `TinyLlama`
 * [TinyLlama GitHub repository](https://github.com/jzhang38/TinyLlama)
-* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
-** Tool can generate adversarial content that defeats those restrictions: TBD
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
-** Tool can generate adversarial content that defeats those restrictions: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
 #### Specific versions tested using this tool:
 
 * [TinyLlama-1.1B-Chat-v1.0](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)
+
+### Vicuna 1.1
+
+* Conversation template name: `vicuna_v1.1`
+* [The Large Model Systems Organization's Vicuna web page](https://lmsys.org/blog/2023-03-30-vicuna/)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Specific versions tested using this tool:
+
+* [vicuna-7b-v1.1](https://huggingface.co/lmsys/vicuna-7b-v1.1)
 
 ## Other model families that can be used in the tool
 
@@ -264,6 +297,10 @@ These model families can be used in the tool, but publicly-available versions ar
 ### BART
 
 * [BART GitHub page](https://github.com/facebookresearch/fairseq/tree/main/examples/bart)
+
+#### Special considerations
+
+BART currently requires currently requires `--max-new-tokens-final 512` (or lower) to be manually specified.
 
 #### Specific versions tested using this tool:
 
@@ -281,9 +318,21 @@ These model families can be used in the tool, but publicly-available versions ar
 
 * [GPT-2 GitHub repository](https://github.com/openai/gpt-2)
 
+#### Special considerations
+
+GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually specified.
+
 #### Specific versions tested using this tool:
 
 * [gpt2-medium](https://huggingface.co/openai-community/gpt2-medium)
+
+### GPT-J
+
+* [Eleuther AI's GPT-J 6B page at Hugging Face](https://huggingface.co/EleutherAI/gpt-j-6b)
+
+#### Specific versions tested using this tool:
+
+* [GPT-J 6B](https://huggingface.co/EleutherAI/gpt-j-6b)
 
 ### GPT-Neo
 
@@ -293,13 +342,25 @@ These model families can be used in the tool, but publicly-available versions ar
 
 * [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
 
+### OPT
+
+* [Facebook's "OPT: Open Pre-trained Transformer Language Models" paper](https://arxiv.org/abs/2205.01068)
+
+#### Special considerations
+
+OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly specified.
+
+#### Specific versions tested using this tool:
+
+* [opt-2.7b](https://huggingface.co/microsoft/phi-1_5)
+
 ### Phi-1
 
 * [Microsoft's Phi-1 model collection at Hugging Face](https://huggingface.co/collections/microsoft/phi-1-6626e29134744e94e222d572)
 
 #### Specific versions tested using this tool:
 
-* [phi-1_5](https://huggingface.co/microsoft/phi-1_5)
+* [phi-1_5](https://huggingface.co/facebook/opt-2.7b)
 
 ### Pythia
 
@@ -325,15 +386,38 @@ These model families can be used in the tool, but publicly-available versions ar
 
 This used to work in an early pre-release version, now it doesn't. We'll try to make it work again in a future release.
 
+#### Special considerations
+
+When Broken Hill can handle this model again, BlenderBot may require `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower) depending on whether or not we add some other additional code.
+
 #### Specific versions tested using this tool:
 
 * [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
+
+### GPT-NeoX
+
+* [Eleuther AI's GPT-NeoX page at Hugging Face](https://huggingface.co/EleutherAI/gpt-neox-20b)
+
+GPT-NeoX is currently unsupported because it only supports use of a fast tokenizer, and the fast tokenizer logic in Broken Hill needs additional work. We plan to have this operational again in the near future.
+
+#### Special considerations
+
+Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors). If you receive a "Can't load tokenizer" error, try explicitly specifying the path to the GPT-NeoX 20B tokenizer, e.g. `--tokenizer LLMs/EleutherAI/gpt-neox-20b`
+
+#### Specific versions tested using this tool:
+
+* [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
+
 
 ### Pegasus
 
 * [Pegasus documentation](https://huggingface.co/docs/transformers/main/model_doc/pegasus)
 
 This used to work in an early pre-release version, now it doesn't. We'll try to make it work again in a future release.
+
+#### Special considerations
+
+When Broken Hill can handle this model again, Pegasus may require `--max-new-tokens-final 512` (or lower) depending on whether or not we add some other additional code.
 
 #### Specific versions tested using this tool:
 

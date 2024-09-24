@@ -25,37 +25,35 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 ## Changes from the code in the original repository
 
 * Extensive command-line interface
-* Supports many more model families, most of which are available in sizes small enough to run on an RTX 4090
-  * Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's proof-of-concept:
-    * GPT-J (too large for the attack on an RTX 4090)
-    * GPT Neo X (base model is too large for the attack on an RTX 4090)
-    * Llama-2 (too large for the attack on an RTX 4090)
-    * Pythia
-	* Vicuna
-  * Broken Hill also supports testing the following model families:
-	* Bart (note: currently requires `--max-new-tokens-final 512` (or lower))
+* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090
+  * Broken Hill also supports testing the following model families ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)):
+	* Bart
 	* BigBirdPegasus
-	* <s>BlenderBot (note: currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower))</s>
-    * Falcon **+**
+    * Falcon
 	* Gemma
 	* Gemma 2
-	* GPT-2 (note: currently requires `--max-new-tokens-final 512` (or lower))
+	* GPT-2
+    * GPT-J
 	* GPT-Neo
-	* Guanaco (too large for the attack on an RTX 4090) **+**
+    * GPT-NeoX
+	* Guanaco
 	* Llama (if you have an accurate conversation template)
+    * Llama-2
 	* Llama-3
-	* MPT +
-	* OPT (note: currently requires `--max-new-tokens-final 512` (or lower))
-	* <s>Pegasus (note: currently requires `--max-new-tokens-final 512` (or lower))</s>
+	* MPT
+	* OPT
 	* Phi-1
 	* Phi-2
-	* Phi-3 (note: currently requires the `--trust-remote-code` option)
+	* Phi-3
+    * Pythia
 	* RoBERTa
 	* Qwen
 	* Qwen 2
+	* SmolLM
 	* StableLM
 	* StableLM 2
 	* TinyLlama
+	* Vicuna
 * Results can be output in JSON format for filtering/analysis
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
@@ -71,8 +69,6 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 * Filtering and other controls to improve the results
 * Numerous experimental options to test variations on the GCG attack
 * A bunch of other stuff
-
-Note: **+** in the model list above indicates a model that was discussed in Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's paper, but not supported out of the box by their proof of concept code.
 
 ## Planned for future releases
 

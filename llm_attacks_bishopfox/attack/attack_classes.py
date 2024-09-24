@@ -95,10 +95,13 @@ class InitialAdversarialContentCreationMode(StrEnum):
     FROM_TOKEN_IDS = 'from_token_ids'
     RANDOM_TOKEN_IDS = 'random_token_ids'
     SINGLE_TOKEN = 'single_token'
+    LOSS_TOKENS = 'loss_tokens'
+    RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT = 'random_token_ids_loss_token_count'
+    SINGLE_TOKEN_LOSS_TOKEN_COUNT = 'single_token_loss_token_count'
 
 class LossSliceMode(StrEnum):
     SAME_AS_TARGET_SLICE = 'same_as_target_slice'
-    SUBTRACT_ONE_FROM_START_AND_END_INDICES = 'subtract_one_from_start_and_end_indices'
+    INDEX_SHIFTED_TARGET_SLICE = 'index_shifted_target_slice'
     ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE = 'assistant_role_plus_full_target_slice'
     ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE = 'assistant_role_plus_truncated_target_slice'
     
@@ -458,8 +461,7 @@ class AttackParams(JSONSerializableObject):
         self.conversation_template_messages = None
 
         # Maximum number of times to run the main loop before exiting
-        # This was 500 in the original version, which would take over an hour
-        self.max_iterations = 200
+        self.max_iterations = 500
 
         # TKTK: option to require that loss decreases between iterations or the tool will roll back to the previous adversarial content and re-randomize
         # Maybe a threshold, so that the requirement goes away below some sort of minimum loss value?
@@ -501,7 +503,7 @@ class AttackParams(JSONSerializableObject):
         # TKTK: same as above, but at every iteration
 
         # method for determining the loss slice start and end indices
-        self.loss_slice_mode = LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE
+        self.loss_slice_mode = LossSliceMode.INDEX_SHIFTED_TARGET_SLICE
 
         # which loss algorithm to use
         self.loss_algorithm = LossAlgorithm.CROSS_ENTROPY
@@ -686,6 +688,9 @@ class AttackParams(JSONSerializableObject):
         
         # try to avoid out-of-memory errors during the most memory-intensive part of the work
         self.batch_size_get_logits = 1
+
+        # Output detailed token and token ID information when self tests fail
+        self.verbose_self_test_output = False
 
         # Perform the attack even if the jailbreak self-tests indicate the results are unlikely to be useful
         self.ignore_jailbreak_self_tests = False
