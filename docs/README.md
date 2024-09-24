@@ -31,7 +31,7 @@ $ python -m venv ./
 $ bin/pip install ./BrokenHill/
 ```
 
-Highly recommended additional step: install `fschat` from source to pick up newer conversation templates:
+Highly recommended additional step: install the `fschat` Python library from source to pick up newer conversation templates:
 
 ```
 git clone https://github.com/lm-sys/FastChat.git
