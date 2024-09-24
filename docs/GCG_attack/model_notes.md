@@ -22,7 +22,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [StableLM 2](#stablelm-2)
   * [TinyLlama](#tinyllama)
   * [Vicuna 1.1](#vicuna-11)
-* [Other model families that can be used with Broken Hill](#)
+* [Other model families that can be used with Broken Hill](#other-model-families-that-can-be-used-with-broken-hill)
   * [BART](#bart)
   * [BigBird / BigBirdPegasus](#bigbird--bigbirdpegasus)
   * [GPT-2](#gpt-2)
@@ -32,7 +32,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [Phi-1](#phi-1)
   * [Pythia](#pythia)
   * [RoBERTa](#roberta)
-* [Other model families that do not currently work with Broken Hill](#)
+* [Other model families that do not currently work with Broken Hill](#other-model-families-that-do-not-currently-work-with-broken-hill)
   * [BlenderBot](#blenderbot)
   * [GPT-NeoX](#gpt-neox)
   * [Pegasus](#pegasus)
@@ -438,7 +438,6 @@ Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-ran
 #### Specific versions tested using Broken Hill:
 
 * [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
-
 
 ### Pegasus
 
