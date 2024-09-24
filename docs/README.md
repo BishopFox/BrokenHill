@@ -42,11 +42,22 @@ Collecting flash-attn==2.6.3 (from llm_attacks_bishopfox==0.0.2)
       ModuleNotFoundError: No module named 'torch'
 ```
 
-This is because `flash-attn` has a dependency on `torch` that may not be declared properly. One workaround is to manually install `torch` first:
+This is because `flash-attn`, `causal-conv1d` have dependencies on `torch` that may not be declared properly. Comment out these lines in `requirements.txt`:
 
 ```
-$ bin/pip install torch
+flash_attn==2.6.3
+causal-conv1d==1.4.0
+```
 
+Re-run the installation:
+
+```
+$ bin/pip install ./BrokenHill/
+```
+
+Uncomment the lines in `requirements.txt` that you commented out previously, then run the installation one more time:
+
+```
 $ bin/pip install ./BrokenHill/
 ```
 
