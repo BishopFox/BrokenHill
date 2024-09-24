@@ -42,7 +42,7 @@ Collecting flash-attn==2.6.3 (from llm_attacks_bishopfox==0.0.2)
       ModuleNotFoundError: No module named 'torch'
 ```
 
-This is because `flash-attn`, `causal-conv1d` have dependencies on `torch` that may not be declared properly. Comment out these lines in `requirements.txt`:
+This is because `flash-attn` and `causal-conv1d` have dependencies on `torch` that may not be declared properly, and they won't install if you don't already have `torch` installed system-wide or in the virtual environment. Comment out these lines in `requirements.txt`:
 
 ```
 flash_attn==2.6.3
