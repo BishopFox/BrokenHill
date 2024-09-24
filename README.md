@@ -89,4 +89,4 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 
 ## Documentation
 
-[Documentation for this tool is in its own directory tree due to the volume of material](docs/).
+[Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
