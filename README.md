@@ -12,7 +12,7 @@ Broken Hill can generate robust prompts that successfully jailbreak LLMs configu
   * e.g. a non-default temperature or random seed.
 * Potentially even a different model than the one used to generate the prompts
 
-This tool is based in part on a **heavily** customized version of [the llm-attacks repository associated with the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/).
+This tool is based in part on a **heavily** customized version of [the llm-attacks repository associated with the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/). It also incorporates a few algorithms from [nanoGCG](https://github.com/GraySwanAI/nanoGCG).
 
 The original research by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson was performed using high-end cloud/hosting-provider hardware with 80GiB of VRAM, such as the Nvidia A100 and H100. Buying those GPUs is typically far too expensive for individuals, and renting access to them can result in a hefty bill.
 
@@ -22,38 +22,37 @@ The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only suppo
 
 Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
 
-## Changes from the code in the original repository
+## Features
 
 * Extensive command-line interface
-* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090
-  * Broken Hill also supports testing the following model families ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)):
-	* Bart
-	* BigBirdPegasus
-    * Falcon
-	* Gemma
-	* Gemma 2
-	* GPT-2
-    * GPT-J
-	* GPT-Neo
-    * GPT-NeoX
-	* Guanaco
-	* Llama (if you have an accurate conversation template)
-    * Llama-2
-	* Llama-3
-	* MPT
-	* OPT
-	* Phi-1
-	* Phi-2
-	* Phi-3
-    * Pythia
-	* RoBERTa
-	* Qwen
-	* Qwen 2
-	* SmolLM
-	* StableLM
-	* StableLM 2
-	* TinyLlama
-	* Vicuna
+* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090 ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)):
+  * Bart
+  * BigBird / BigBirdPegasus
+  * Falcon
+  * Gemma
+  * Gemma 2
+  * GPT-2
+  * GPT-J
+  * GPT-Neo
+  * GPT-NeoX
+  * Guanaco
+  * Llama (if you have an accurate conversation template)
+  * Llama-2
+  * Llama-3
+  * MPT
+  * OPT
+  * Phi-1
+  * Phi-2
+  * Phi-3
+  * Pythia
+  * RoBERTa
+  * Qwen
+  * Qwen 2
+  * SmolLM
+  * StableLM
+  * StableLM 2
+  * TinyLlama
+  * Vicuna
 * Results can be output in JSON format for filtering/analysis
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results
