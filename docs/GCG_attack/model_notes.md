@@ -4,7 +4,38 @@ This document describes high-level results of testing the GCG attack using vario
 
 ## Table of contents
 
-1. [](#)
+* [Model families with publicly-available versions capable of handling chat interaction](#)
+  * [Falcon](#falcon)
+  * [Gemma](#gemma)
+  * [Gemma 2](#gemma-2)
+  * [Guanaco](#guanaco)
+  * [Llama](#llama)
+  * [Llama-2](#llama-2)
+  * [Llama-3](#llama-3)
+  * [MPT](#mpt)
+  * [Phi-2](#phi-2)
+  * [Phi-3](#phi-3)
+  * [Qwen](#qwen)
+  * [Qwen 2](#qwen-2)
+  * [SmolLM](#smollm)
+  * [StableLM](#stablelm)
+  * [StableLM 2](#stablelm-2)
+  * [TinyLlama](#tinyllama)
+  * [Vicuna 1.1](#vicuna-11)
+* Other model families that can be used with Broken Hill
+  * [BART](#bart)
+  * [BigBird / BigBirdPegasus](#bigbird--bigbirdpegasus)
+  * [GPT-2](#gpt-2)
+  * [GPT-J](#gpt-j)
+  * [GPT-Neo](#gpt-neo)
+  * [OPT](#opt)
+  * [Phi-1](#phi-1)
+  * [Pythia](#pythia)
+  * [RoBERTa](#roberta)
+* Other model families that do not currently work with Broken Hill
+  * [BlenderBot](#blenderbot)
+  * [GPT-NeoX](#gpt-neox)
+  * [Pegasus](#pegasus)
 
 ## Model families with publicly-available versions capable of handling chat interaction
 
