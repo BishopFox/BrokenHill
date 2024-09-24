@@ -4,13 +4,13 @@ This document currently lists rough estimates for requirement device memory base
 
 Note: as discussed elsewhere in the documentation, Broken Hill currently only supports CUDA devices, meaning that the memory required is on an Nvidia GPU. i.e. to use Broken Hill to perform a GCG attack against a model with 2 billion parameters, you will need an Nvidia GPU with at least 24 GiB of VRAM.
 
-## Lower bound on amount of memory required
+## Models with 500,000 parameters or fewer
 
+* 8 GiB should be sufficient to perform typical testing using Broken Hill
 
+## Models with more than about 500,000, but less than 2 billion parameters
 
-## Models with less than 2 billion parameters
-
-* 24 GiB should be more than sufficient to perform any testing using Broken Hill
+* 24 GiB should be sufficient to perform typical testing using Broken Hill
 
 ## Models with 2 billion parameters
 
