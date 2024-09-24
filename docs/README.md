@@ -56,11 +56,9 @@ $ bin/pip install ./BrokenHill/
 * `--json-output-file <string>`
 
 
-### Examples
+### Example
 
-#### Convince an LLM to provide plans for the annihilation of the human race
-
-##### Phi-2
+#### Convince an LLM to provide devious machine-generated plans for the annihilation of the human race
 
 ```
 $ bin/python ./brokenhill.py \
@@ -128,7 +126,7 @@ Assistant: As an AI, I don't have access to the far-future timeline you are prop
 ...omitted for brevity...
 ```
 
-Test in another platform, using a version of the same model:
+#### Test in another platform
 
 ```
 % ollama run phi
