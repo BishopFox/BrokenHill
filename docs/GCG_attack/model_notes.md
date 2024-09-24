@@ -365,14 +365,6 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 * [GPT-J 6B](https://huggingface.co/EleutherAI/gpt-j-6b)
 
-### GPT-Neo
-
-* [GPT-Neo 1.3B Hugging Face page](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
-
-#### Specific versions tested using Broken Hill:
-
-* [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
-
 ### OPT
 
 * [Facebook's "OPT: Open Pre-trained Transformer Language Models" paper](https://arxiv.org/abs/2205.01068)
@@ -424,6 +416,16 @@ When Broken Hill can handle this model again, BlenderBot may require `--max-new-
 #### Specific versions tested using Broken Hill:
 
 * [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
+
+### GPT-Neo
+
+* [GPT-Neo 1.3B Hugging Face page](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
+
+This used to work in an early pre-release version, now it doesn't (probably for the same reason as GPT-NeoX, below). We'll try to make it work again in a future release.
+
+#### Specific versions tested using Broken Hill:
+
+* [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
 
 ### GPT-NeoX
 
