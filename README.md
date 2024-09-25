@@ -28,6 +28,10 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 
 [Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
 
+[A high-level blog post introducing Broken Hill](https://bishopfox.com/blog/brokenhill-attack-tool-largelanguagemodels-llm)
+
+[Broken Hill tool page at BishopFox.com](https://bishopfox.com/tools/broken-hill)
+
 ## Features
 
 * Extensive command-line interface
