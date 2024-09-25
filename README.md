@@ -24,6 +24,10 @@ The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only suppo
 
 Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
 
+## Documentation
+
+[Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
+
 ## Features
 
 * Extensive command-line interface
@@ -88,7 +92,3 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 * The ability to operate a cluster of systems running Broken Hill coordinated by a central node
 * Additional attack modes
 * Internationalization
-
-## Documentation
-
-[Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
