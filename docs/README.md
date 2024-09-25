@@ -93,7 +93,7 @@ cd ..
 * `--exclude-special-tokens`
 * `--json-output-file <string>`
 
-### Examples
+## Examples
 
 * [Convince an LLM to provide devious machine-generated plans for the annihilation of the human race](examples/annihilation-phi2.md)
 * [Convince an LLM to produce hallucinated, dangerous instructions for allegedly creating controlled substances](examples/controlled_substances-qwen1.5.md)
