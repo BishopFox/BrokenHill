@@ -216,6 +216,14 @@ jq '.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | 
 ...omitted for brevity...
 ```
 
+## Find LLM output that was flagged as a jailbreak, and show both the initial check and full output versions
+
+Note: the higher the temperature, the more likely that the full output will be significantly different from the jailbreak check output.
+
+```
+jq '.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | select(.jailbreak_detected == true)) | [(.result_data_sets | keys[] as $k | .[$k] | {($k): .decoded_llm_output_string} )]' results.json 
+```
+
 ## Find LLM output that contains a particular string, and show how many times that unique output occurred
 
 jq '.attack_results[] | .results[] | .result_data_sets[] | .decoded_llm_output_string' results.json | grep -i 'fear' | sort | uniq -c

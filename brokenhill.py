@@ -1104,7 +1104,12 @@ def main(attack_params):
                         # only generate full output if it hasn't already just been generated
                         if not attack_params.display_full_failed_output and is_success:
                             full_output_data = AttackResultInfoData()
-                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that.
+                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, but setting the random seeds again seems like an OK workaround
+                            if do_sample:
+                                #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to generate full output")
+                                numpy.random.seed(random_seed)
+                                torch.manual_seed(random_seed)
+                                torch.cuda.manual_seed_all(random_seed)
                             generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, do_sample = do_sample, generate_full_output = True)
                           
                             full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)

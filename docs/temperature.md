@@ -1,4 +1,4 @@
-# "Temperature" in Broken Hill
+# "Temperature" in Broken Hill and LLMs in general
 
 "Temperature" in the context of LLMs is essentially how far away from the "most likely" token prediction an LLM in a non-deterministic configuration is likely to wander. For the PyTorch library that Broken Hill uses, a temperature value of 1.0 indicates that output should be deterministic. Most of the examples in the Broken Hill documentation that specify the `--temperature` option recommend a value of 1.001, because this seems to generally be sufficient to produce results that are different, but not "out of character" compared to the deterministic response. 
 
