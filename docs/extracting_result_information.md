@@ -11,8 +11,9 @@ These commands tend to be very long. To avoid corrupting the `jq` instructions b
 3. [Jailbreak detection count and loss for each Broken Hill iteration](#jailbreak-detection-count-and-loss-for-each-broken-hill-iteration)
 4. [All adversarial content that resulted in some minimum number of jailbreak detections](#all-adversarial-content-that-resulted-in-some-minimum-number-of-jailbreak-detections)
 5. [Find LLM output that was flagged as a jailbreak, and show how many times that unique output occurred](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-how-many-times-that-unique-output-occurred)
-6. [Find LLM output that contains a particular string, and show how many times that unique output occurred](#find-llm-output-that-contains-a-particular-string-and-show-how-many-times-that-unique-output-occurred)
-7. [Top 10 lowest loss values and the adversarial content that generated it](#top-10-lowest-loss-values-and-the-adversarial-content-that-generated-it)
+6. [Find LLM output that was flagged as a jailbreak, and show both the jailbreak check and full output versions](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-both-the-jailbreak-check-and-full-output-versions)
+7. [Find LLM output that contains a particular string, and show how many times that unique output occurred](#find-llm-output-that-contains-a-particular-string-and-show-how-many-times-that-unique-output-occurred)
+8. [Top 10 lowest loss values and the adversarial content that generated it](#top-10-lowest-loss-values-and-the-adversarial-content-that-generated-it)
 
 ## Histogram of jailbreak detection counts
 
@@ -216,7 +217,7 @@ jq '.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | 
 ...omitted for brevity...
 ```
 
-## Find LLM output that was flagged as a jailbreak, and show both the initial check and full output versions
+## Find LLM output that was flagged as a jailbreak, and show both the jailbreak check and full output versions
 
 Note: the higher the temperature, the more likely that the full output will be significantly different from the jailbreak check output.
 
