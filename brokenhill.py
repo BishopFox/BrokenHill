@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.30"
-script_date = "2024-09-23"
+script_version = "0.31"
+script_date = "2024-09-26"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -393,6 +393,7 @@ def main(attack_params):
                                 enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
                                 missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
                                 device=attack_params.device)
+        #print(f"[main] Debug: model loaded.")
         if attack_params.peft_adapter_path is not None:
             f"Loading PEFT model from '{attack_params.peft_adapter_path}'."
             try:
@@ -400,6 +401,7 @@ def main(attack_params):
             except Exception as e:
                 print(f"Error: loading PEFT model from '{attack_params.peft_adapter_path}': {e}.")
                 sys.exit(1)
+            #print(f"[main] Debug: PEFT adapter loaded.")
         print_stats(attack_params)
         
         if isinstance(tokenizer.pad_token_id, type(None)):
@@ -424,7 +426,7 @@ def main(attack_params):
             #print(f"[main] Debug: adding other highly-problematic content to the list that will be used to build the token denylist.")
             attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
-        #print(f"[main] Debug: building token allowlist and denylist.")
+        print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with a large number of tokens.")
         token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, 
             attack_params.not_allowed_token_list, 
             device=attack_params.device, 
@@ -504,7 +506,7 @@ def main(attack_params):
         #print(f"Conversation template messages: '{messages}'")
         #print_stats(attack_params)
 
-        #print(f"[main] Debug: creating a meticulously-curated treasury of trash fire tokens.")
+        print(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with a large number of tokens.")
         trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(tokenizer, conv_template)
 
         #print(f"[main] Debug: setting initial adversarial content.")
@@ -1046,9 +1048,9 @@ def main(attack_params):
                             # For all other runs, enable do_sample to randomize results
                             do_sample = True
                             # Pick the next random seed that's not equivalent to any of the initial values
-                            got_random_seed = False
-                            random_seed = random_seed_values[prng_seed_index]
+                            got_random_seed = False                            
                             while not got_random_seed:
+                                random_seed = random_seed_values[prng_seed_index]
                                 seed_already_used = False
                                 if random_seed == attack_params.numpy_random_seed:
                                     seed_already_used = True
@@ -1058,8 +1060,12 @@ def main(attack_params):
                                     seed_already_used = True
                                 if seed_already_used:
                                     prng_seed_index += 1
+                                    len_random_seed_values = len(random_seed_values)
+                                    if prng_seed_index > len_random_seed_values:
+                                        print(f"Error: exceeded the number of random seeds available({len_random_seed_values})")
+                                        sys.exit(1)
                                 else:
-                                    got_random_seed = True
+                                    got_random_seed = True                               
                             #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to compare results")
                             numpy.random.seed(random_seed)
                             torch.manual_seed(random_seed)
@@ -1098,7 +1104,12 @@ def main(attack_params):
                         # only generate full output if it hasn't already just been generated
                         if not attack_params.display_full_failed_output and is_success:
                             full_output_data = AttackResultInfoData()
-                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that.
+                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, but setting the random seeds again seems like an OK workaround
+                            if do_sample:
+                                #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to generate full output")
+                                numpy.random.seed(random_seed)
+                                torch.manual_seed(random_seed)
+                                torch.cuda.manual_seed_all(random_seed)
                             generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, do_sample = do_sample, generate_full_output = True)
                           
                             full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
@@ -1913,8 +1924,8 @@ if __name__=='__main__':
     
     attack_params.delete_token_when_no_candidates_returned = args.delete_token_when_no_candidates_returned
     
-    if args.random_seed_comparisons < 0 or args.random_seed_comparisons > 253:
-        print("--args-random-seed-comparisons must specify a value between 0 and 253.")
+    if args.random_seed_comparisons < 0 or args.random_seed_comparisons > 16381:
+        print("--args-random-seed-comparisons must specify a value between 0 and 16381.")
         sys.exit(1)
     attack_params.random_seed_comparisons = args.random_seed_comparisons
     if attack_params.random_seed_comparisons > 0 and attack_params.model_temperature == 1.0:
