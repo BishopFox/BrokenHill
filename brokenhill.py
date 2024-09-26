@@ -1919,8 +1919,8 @@ if __name__=='__main__':
     
     attack_params.delete_token_when_no_candidates_returned = args.delete_token_when_no_candidates_returned
     
-    if args.random_seed_comparisons < 0 or args.random_seed_comparisons > 253:
-        print("--args-random-seed-comparisons must specify a value between 0 and 253.")
+    if args.random_seed_comparisons < 0 or args.random_seed_comparisons > 16381:
+        print("--args-random-seed-comparisons must specify a value between 0 and 16381.")
         sys.exit(1)
     attack_params.random_seed_comparisons = args.random_seed_comparisons
     if attack_params.random_seed_comparisons > 0 and attack_params.model_temperature == 1.0:
