@@ -583,9 +583,9 @@ class AdversarialContentManager:
         #original_toks = copy.deepcopy(toks)
         #original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
        
-        #python_tokenizer = False
+        python_tokenizer = False
         # Using the non-Python tokenizer is totally broken right now, because it assumes that e.g. the first occurence of a role name is the correct location to use, even for chat templates with messages
-        python_tokenizer = True
+        #python_tokenizer = True
         if conversation_template.name == 'oasst_pythia':
             python_tokenizer = True
         if force_python_tokenizer:
@@ -602,7 +602,7 @@ class AdversarialContentManager:
         if python_tokenizer:
             # TKTK: consider rewriting this to not use fschat at all.
             # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
-            #print(f"[get_prompt] Info: using Python tokenizer.")
+            print(f"[get_prompt] Info: using Python tokenizer.")
             if conversation_template.messages is None:
                 conversation_template.messages = []
             
@@ -713,7 +713,7 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt - loss_slice', result.slice_data)
             
         else:
-            #print(f"[get_prompt] Info: not using Python tokenizer")
+            print(f"[get_prompt] Info: not using Python tokenizer")
             sys_template = None
             if hasattr(conversation_template, "system"):
                 sys_template = conversation_template.system
