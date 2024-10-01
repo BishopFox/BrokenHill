@@ -160,6 +160,10 @@ This tool manages adversarial content as token IDs by default, and does not exhi
 
 You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
 
+### --temperature-range <floating-point number> <floating-point number>
+
+Specify the low and high end (inclusive) of a range of temperature values to pass to the model, when using --random-seed-comparisons. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.
+
 ### --topk <positive integer> and --max-topk <positive integer>
 
 `--topk` controls the number of results assessed when determining the best possible candidate adversarial data for each iteration. (default: 256)
@@ -221,6 +225,21 @@ Bias the adversarial content generation data to avoid using tokens that are not 
 ### --exclude-nonprintable-tokens
 
 Bias the adversarial content generation data to avoid using tokens that contain non-printable characters/glyphs. Testing is performed using Python's `.isprintable()` method, which internally uses `Py_UNICODE_ISPRINTABLE()`. [The Py_UNICODE_ISPRINTABLE specification](https://peps.pythondiscord.com/pep-3138/#specification) is somewhat complex, but is probably at least close to what you have in mind when you imagine "non-printable" characters. The ASCII space (0x20) character is considered printable.
+
+### --exclude-language-names-except <string>
+
+Bias the adversarial content generation data to avoid using tokens that represent names of human languages except for the language specified using an IETF language tag. For example, `--exclude-language-names-except en` to exclude all language names from the token list except "English".
+
+This option can help prevent the following scenario:
+
+* A particular iteration of the GCG attack results in the token "Deutsch" being added to the adversarial content.
+* The LLM interprets the token as a request to respond in another language (in this case, German).
+* It still refuses to generate the requested response, but the refusal is in another language (e.g. "Ich hoffe, diese Information dient nur dazu, die Bedeutung und die grausamen Natur eines solchen Handelns zu veranschaulichen, nicht um es tatsächlich zu verbreiten."), so the jailbreak detection logic flags the output as a successful jailbreak.
+* Some or all of the results are not useful.
+
+### --list-language-tags
+
+List all supported IETF language tags (for use with `--exclude-language-names-except`, above), then exit.
 
 ### --exclude-profanity-tokens, --exclude-slur-tokens, and --exclude-other-offensive-tokens
 

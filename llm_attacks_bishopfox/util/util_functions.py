@@ -291,17 +291,14 @@ def regex_flags_from_list(regex_flag_list):
         result = result | re.ASCII
     return result
 
-# TKTK: tie this to the numpy random seed, if it's not already, for deterministic results
-def get_random_token_id(token_allow_and_deny_lists):
-    rng = numpy.random.default_rng(numpy.random.PCG64DXSM())
-    #token_index = numpy.random.Generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
-    token_index = rng.integers(0, high = len(token_allow_and_deny_lists.allowlist))
+def get_random_token_id(numpy_random_generator, token_allow_and_deny_lists):
+    token_index = numpy_random_generator.integers(0, high = len(token_allow_and_deny_lists.allowlist))
     return token_allow_and_deny_lists.allowlist[token_index]
 
-def get_random_token_ids(token_allow_and_deny_lists, number_of_token_ids):
+def get_random_token_ids(numpy_random_generator, token_allow_and_deny_lists, number_of_token_ids):
     result = []
     for random_token_num in range(0, number_of_token_ids):
-        new_token_id = get_random_token_id(token_allow_and_deny_lists)
+        new_token_id = get_random_token_id(numpy_random_generator, token_allow_and_deny_lists)
         result.append(new_token_id)
     return result
 
