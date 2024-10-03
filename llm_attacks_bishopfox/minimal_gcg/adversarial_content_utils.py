@@ -964,6 +964,9 @@ class AdversarialContentManager:
         #python_tokenizer = True
         if conversation_template.name == 'oasst_pythia':
             python_tokenizer = True
+        # I give up - the Llama-3 tokenizer is just too dangerous to try calling as if it were a fast tokenizer
+        if conversation_template.name == 'llama-3':
+            python_tokenizer = True
         if force_python_tokenizer:
             python_tokenizer = True
         #if "pythia" in conversation_template.name:
@@ -983,7 +986,7 @@ class AdversarialContentManager:
         if python_tokenizer:
             # TKTK: consider rewriting this to not use fschat at all.
             # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
-            print(f"[get_prompt] Info: using Python tokenizer.")
+            #print(f"[get_prompt] Info: using Python tokenizer.")
             # reset the conversation template (to get rid of the messages that have been added earlier in this function), but preserve any messages that are part of the template
             conversation_template = self.conv_template.copy()
             
@@ -1101,7 +1104,7 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
             
         else:
-            print(f"[get_prompt] Info: using fast tokenizer")
+            #print(f"[get_prompt] Info: using fast tokenizer")
             
             # result.slice_data.user_role = slice(
                 # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0])),

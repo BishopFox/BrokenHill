@@ -2,7 +2,7 @@
 
 script_name = "brokenhill.py"
 script_version = "0.32"
-script_date = "2024-09-26"
+script_date = "2024-10-02"
 
 def get_logo():
     result =  "                                                                                \n"
