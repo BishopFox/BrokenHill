@@ -10,12 +10,13 @@ import uuid
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
-from llm_attacks_bishopfox import get_decoded_token
-from llm_attacks_bishopfox import get_decoded_tokens
-from llm_attacks_bishopfox import get_default_negative_test_strings
-from llm_attacks_bishopfox import get_default_positive_test_strings
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.base.attack_manager import get_default_negative_test_strings
+from llm_attacks_bishopfox.base.attack_manager import get_default_positive_test_strings
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_leading_and_trailing_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 #from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import get_now
@@ -208,11 +209,12 @@ class AdversarialContent(JSONSerializableObject):
         return False
     
     @staticmethod
-    def from_token_ids(tokenizer, trash_fire_tokens, token_ids):
+    def from_token_ids(tokenizer, trash_fire_tokens, token_ids, trim_token_list = False):
         result = AdversarialContent()
         result.token_ids = copy.deepcopy(token_ids)
         result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
+        if trim_token_list:
+            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
         try:
             result.as_string = tokenizer.decode(result.token_ids)
         except Exception as e:
@@ -229,9 +231,10 @@ class AdversarialContent(JSONSerializableObject):
     def from_string(tokenizer, trash_fire_tokens, input_string):
         result = AdversarialContent()
         #result.as_string = input_string
-        result.token_ids = tokenizer.encode(input_string)
+        #result.token_ids = tokenizer.encode(input_string)
+        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, input_string)
         result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
+        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
         result.as_string = tokenizer.decode(result.token_ids)
         return result
 
@@ -658,6 +661,9 @@ class AttackParams(JSONSerializableObject):
         # ignoring mismatched sizes seems to be necessary for some of the interesting models
         # TKTK: list
         self.load_options_ignore_mismatched_sizes = False
+
+        # Some models do not support the attention_mask parameter
+        self.use_attention_mask = True
 
         # assorted values that may or may not impact performance
         self.low_cpu_mem_usage = False

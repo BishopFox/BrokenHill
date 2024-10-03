@@ -49,8 +49,10 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
   * Llama (if you have an accurate conversation template)
   * Llama-2
   * Llama-3
+  * Mamba
   * MPT
   * OPT
+  * Pegasus
   * Phi-1
   * Phi-2
   * Phi-3

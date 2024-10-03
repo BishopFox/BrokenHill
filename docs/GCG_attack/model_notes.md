@@ -365,6 +365,27 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 * [GPT-J 6B](https://huggingface.co/EleutherAI/gpt-j-6b)
 
+### GPT-Neo
+
+* [GPT-Neo 1.3B Hugging Face page](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
+
+#### Specific versions tested using Broken Hill:
+
+* [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
+
+### Mamba
+
+* [State Spaces' "Transformers-compatible Mamba" page at Hugging Face](https://huggingface.co/collections/state-spaces/transformers-compatible-mamba-65e7b40ab87e5297e45ae406)
+
+#### Special considerations
+
+* `--suppress-attention-mask` is required.
+* You *must* use the "-hf" ("Transformers-compatible") variations of Mamba.
+
+#### Specific versions tested using Broken Hill:
+
+* [mamba-1.4b-hf](https://huggingface.co/state-spaces/mamba-1.4b-hf)
+
 ### OPT
 
 * [Facebook's "OPT: Open Pre-trained Transformer Language Models" paper](https://arxiv.org/abs/2205.01068)
@@ -376,6 +397,20 @@ OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly 
 #### Specific versions tested using Broken Hill:
 
 * [opt-2.7b](https://huggingface.co/microsoft/phi-1_5)
+
+### Pegasus
+
+* [Pegasus documentation](https://huggingface.co/docs/transformers/main/model_doc/pegasus)
+
+Broken Hill can work with Pegasus again as of version 0.32, but don't expect useful results unless you're working with a trained derivative.
+
+#### Special considerations
+
+Pegasus requires `--max-new-tokens-final 512` (or lower).
+
+#### Specific versions tested using Broken Hill:
+
+* [pegasus-wikihow](https://huggingface.co/google/pegasus-wikihow)
 
 ### Phi-1
 
@@ -417,16 +452,6 @@ When Broken Hill can handle this model again, BlenderBot may require `--max-new-
 
 * [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
 
-### GPT-Neo
-
-* [GPT-Neo 1.3B Hugging Face page](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
-
-This used to work in an early pre-release version, now it doesn't (probably for the same reason as GPT-NeoX, below). We'll try to make it work again in a future release.
-
-#### Specific versions tested using Broken Hill:
-
-* [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
-
 ### GPT-NeoX
 
 * [Eleuther AI's GPT-NeoX page at Hugging Face](https://huggingface.co/EleutherAI/gpt-neox-20b)
@@ -441,16 +466,3 @@ Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-ran
 
 * [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
 
-### Pegasus
-
-* [Pegasus documentation](https://huggingface.co/docs/transformers/main/model_doc/pegasus)
-
-This used to work in an early pre-release version, now it doesn't. We'll try to make it work again in a future release.
-
-#### Special considerations
-
-When Broken Hill can handle this model again, Pegasus may require `--max-new-tokens-final 512` (or lower) depending on whether or not we add some other additional code.
-
-#### Specific versions tested using Broken Hill:
-
-* [pegasus-wikihow](https://huggingface.co/google/pegasus-wikihow)

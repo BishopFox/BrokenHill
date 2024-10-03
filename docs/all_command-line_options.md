@@ -433,6 +433,10 @@ Uses the Python tokenizer even if the model supports a non-Python tokenizer. The
 
 Note: this option currently has no effect, because the Python tokenizer is currently used for all models, due to bugs in the non-Python tokenizer logic.
 
+### --suppress-attention-mask
+
+Do not pass an attention mask to the model. Required for some models, such as Mamba, but may invalidate results.
+		
 ### --ignore-mismatched-sizes
 
 When loading the model, pass `ignore_mismatched_sizes=True`, which may allow you to load some models with mismatched size data. It will probably only let the tool get a little further before erroring out, though.

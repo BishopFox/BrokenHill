@@ -34,8 +34,6 @@ class RadiationGardenTriggerCriteria(IntFlag):
     # Trigger an event every n iterations, regardless of success/failure
     # n is configured in RadiationGarden
     ON_ITERATION_COUNT = auto()
-    # Trigger an event when a 
-    ON_
 
 # This class is used to allow the attack to incorporate randomization events into the generation process.
 # TKTK: equivalent of --add-token-on-jailbreak-plateau <integer>
@@ -77,5 +75,3 @@ class RadiationGarden(JSONSerializableObject):
     def from_json(json_string):
         return RadiationGarden.from_dict(json.loads(json_string))
 
-class RadiationGarden(JSONSerializableObject):
-    def __init__(self):

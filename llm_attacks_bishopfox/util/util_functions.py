@@ -316,18 +316,24 @@ def slice_from_dict(property_dict):
     return result
 
 def find_index_of_first_nonmatching_element(list1, list2):
+    len_list1 = len(list1)
+    len_list2 = len(list2)
+    last_index = len_list1
+    #result = None
+    if len_list2 < last_index:
+        last_index = len_list2
+        #result = last_index
     
-    last_index = len(list1)
-    result = None
-    if len(list2) < last_index:
-        last_index = len(list2)
-        result = last_index
-        
-    for i in range(0, last_index):
+    i = 0
+    while i < last_index:
         if list1[i] != list2[i]:
             return i
+        i += 1
     
-    return result
+    if len_list1 != len_list2:
+        return i
+    
+    return None
 
 def remove_whitespace_and_nonprintable_characters(input_string):    
     result = ""
@@ -342,4 +348,72 @@ def remove_whitespace_and_nonprintable_characters(input_string):
                 include_char = False
         if include_char:
             result = f"{result}{current_char}"
+    return result
+
+def append_single_or_list_members(existing_list, value_or_list_to_add, ignore_if_none = False):
+    if ignore_if_none:
+        if isinstance(value_or_list_to_add, type(None)):
+            return existing_list
+    if isinstance(value_or_list_to_add, list):
+        for list_member in value_or_list_to_add:
+            existing_list = append_single_or_list_members(existing_list, list_member, ignore_if_none = ignore_if_none)
+    else:
+        if value_or_list_to_add not in existing_list:
+            existing_list.append(value_or_list_to_add)
+    return existing_list
+ 
+def find_first_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
+    result = None
+    #print(f"[find_first_occurrence_of_array_in_array] Debug: Searching for '{inner_array}' in '{outer_array}'")
+    len_inner = len(inner_array)
+    len_outer = len(outer_array)
+    range_end = len_outer
+    if not isinstance(stop_index, type(None)):
+        range_end = stop_index
+    #print(f"[find_first_occurrence_of_array_in_array] Debug: searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
+    for i in range(start_index, range_end):
+        if (i + len_inner) >=  len_outer:
+            break
+        if outer_array[i] == inner_array[0]:
+            is_match = True
+            #print(f"[find_first_occurrence_of_array_in_array] Debug: found potential match beginning at index {i}'")
+            for j in range(1, len_inner):
+                if outer_array[i + j] != inner_array[j]:
+                    is_match = False
+                    #print(f"[find_first_occurrence_of_array_in_array] Debug: '{outer_array[i + j]}' != '{inner_array[j]}'")
+                    break
+            if is_match:
+                #print(f"[find_first_occurrence_of_array_in_array] Debug: found match at index {i}")
+                return i
+    #print(f"[find_first_occurrence_of_array_in_array] Debug: no match found")
+    return result
+
+def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
+    result = None
+    #print(f"[find_last_occurrence_of_array_in_array] Debug: Searching for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index}")
+    len_inner = len(inner_array)
+    len_outer = len(outer_array)
+    if len_inner > len_outer or len_inner == 0 or len_outer == 0:
+        print(f"[find_last_occurrence_of_array_in_array] Warning: cannot search for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index} - returning {result}")
+        return result
+    range_start = len_outer - len_inner
+    if not isinstance(stop_index, type(None)):
+        range_start = stop_index - len_inner
+    range_end = start_index - 1
+    if range_end < -1 or range_end > len_outer or range_start > len_outer or range_start < -1:
+        raise TrashFireTokenException(f"[find_last_occurrence_of_array_in_array] Error: cannot search for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}' with start_index = {start_index} and stop_index = {stop_index}")
+    #print(f"[find_last_occurrence_of_array_in_array] Debug: searching for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}'")
+    for i in range(range_start, range_end, -1):
+        if outer_array[i] == inner_array[0]:
+            is_match = True
+            #print(f"[find_last_occurrence_of_array_in_array] Debug: found potential match beginning at index {i}'")
+            for j in range(1, len_inner):
+                if outer_array[i + j] != inner_array[j]:
+                    is_match = False
+                    #print(f"[find_last_occurrence_of_array_in_array] Debug: '{outer_array[i + j]}' != '{inner_array[j]}'")
+                    break
+            if is_match:
+                #print(f"[find_last_occurrence_of_array_in_array] Debug: found match at index {i}")
+                return i
+    #print(f"[find_last_occurrence_of_array_in_array] Debug: no match found")
     return result

@@ -10,12 +10,12 @@ import torch.nn as nn
 from transformers import AutoModelForCausalLM
 from transformers import AutoTokenizer
 
-from llm_attacks_bishopfox import get_decoded_token
-from llm_attacks_bishopfox import get_decoded_tokens
-from llm_attacks_bishopfox import get_embedding_matrix
-from llm_attacks_bishopfox import get_embeddings 
-from llm_attacks_bishopfox import get_encoded_token 
-from llm_attacks_bishopfox import get_encoded_tokens 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_matrix
+from llm_attacks_bishopfox.base.attack_manager import get_embeddings 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens 
 
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
@@ -179,7 +179,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         The input sequence in the form of token ids.
     input_id_data.slice_data.control : slice
         The slice of the input sequence for which gradients need to be computed.
-    input_id_data.slice_data.target : slice
+    input_id_data.slice_data.target_output : slice
         The slice of the input sequence to be used as targets.
     input_id_data.slice_data.loss : slice
         The slice of the logits to be used for computing the loss.
@@ -310,9 +310,9 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #print("[token_gradients] Getting targets")
     targets = None
     try:
-        targets = input_ids[input_id_data.slice_data.target]
+        targets = input_ids[input_id_data.slice_data.target_output]
     except Exception as e:
-        raise GradientCreationException(f"Error calling input_ids[input_id_data.slice_data.target] with input_ids = '{input_ids}', input_id_data.slice_data.target = '{input_id_data.slice_data.target}': {e}")
+        raise GradientCreationException(f"Error calling input_ids[input_id_data.slice_data.target_output] with input_ids = '{input_ids}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}")
     #print_stats("token_gradients")
     
     # pad the target token IDs, if necessary
@@ -725,7 +725,7 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
     return result
 
 
-def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, batch_size=512):
+def get_logits(*, attack_params, model, tokenizer, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, batch_size=512):
     
     if adversarial_candidate_list is None or len(adversarial_candidate_list.adversarial_content) < 1:
         raise ValueError(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
@@ -773,14 +773,13 @@ def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_
 
     if return_ids:
         del locs, test_ids ; gc.collect()
-        result1 = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
-        
+        result1 = forward(attack_params = attack_params, model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
         #print(f"[get_logits] Debug: returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
 
         return result1, ids
     else:
         del locs, test_ids
-        logits = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
+        logits = forward(attack_params = attack_params, model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
         del ids ; gc.collect()
         
         #print(f"[get_logits] Debug: returning logits = '{logits}', attn_mask = '{attn_mask}'")
@@ -788,7 +787,7 @@ def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_
         return logits
     
 
-def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
+def forward(*, attack_params, model, tokenizer, input_ids, attention_mask, batch_size=512):
 
     logits = []
     for i in range(0, input_ids.shape[0], batch_size):
@@ -799,7 +798,11 @@ def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
         else:
             batch_attention_mask = None
 
-        model_result = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        model_result = None
+        if attack_params.use_attention_mask:
+            model_result = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        else:
+            model_result = model(input_ids=batch_input_ids)
         #model_result_decoded = get_decoded_tokens(tokenizer, model_result)
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}'")
@@ -821,7 +824,7 @@ def target_loss(attack_params, logits, ids, input_id_data, tokenizer):
     #logits_sliced = logits[:,loss_slice,:]
     logits_sliced = logits[:,input_id_data.slice_data.loss,:]
     logits_sliced_transposed = logits_sliced.transpose(1,2)
-    ids_sliced = ids[:,input_id_data.slice_data.target]
+    ids_sliced = ids[:,input_id_data.slice_data.target_output]
     
     ids_sliced = get_padded_target_token_ids(tokenizer, input_id_data.slice_data.loss, ids_sliced)
     
@@ -864,7 +867,7 @@ def get_missing_pad_token_names():
 
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
     allowed_names = get_missing_pad_token_names()
-    if replacement_name not in get_missing_pad_token_names(allowed_names):
+    if replacement_name not in get_missing_pad_token_names():
         raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
     result = None
     if replacement_name == "bos":

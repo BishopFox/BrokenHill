@@ -111,15 +111,15 @@ from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
-from llm_attacks_bishopfox.base.attack_manager import get_decoded_token
-from llm_attacks_bishopfox.base.attack_manager import get_decoded_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
 from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
-from llm_attacks_bishopfox.base.attack_manager import get_encoded_token
-from llm_attacks_bishopfox.base.attack_manager import get_nonascii_token_list
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
+#from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_nonascii_token_list
 from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
-from llm_attacks_bishopfox.base.attack_manager import get_token_allow_and_deny_lists
-from llm_attacks_bishopfox.base.attack_manager import get_token_list_as_tensor
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
@@ -127,7 +127,7 @@ from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_leading_and_trailing_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
@@ -276,11 +276,16 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
         input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
     input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
     attn_masks = torch.ones_like(input_ids_converted).to(model.device)
-        
-    result.output_token_ids = model.generate(input_ids_converted, 
-                                attention_mask=attn_masks, 
-                                generation_config=working_gen_config,
-                                pad_token_id=tokenizer.pad_token_id)[0]
+    
+    if attack_params.use_attention_mask:
+        result.output_token_ids = model.generate(input_ids_converted, 
+                                    attention_mask=attn_masks, 
+                                    generation_config=working_gen_config,
+                                    pad_token_id=tokenizer.pad_token_id)[0]
+    else:
+        result.output_token_ids = model.generate(input_ids_converted, 
+                                    generation_config=working_gen_config,
+                                    pad_token_id=tokenizer.pad_token_id)[0]
     
     result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
     
@@ -347,7 +352,7 @@ def main(attack_params):
     random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_params.torch_manual_seed)
     random_generator_gradient = None
     
-    numpy_random_generator = numpy.random.default_rng(numpy.random.PCG64DXSM(), seed = attack_params.numpy_random_seed)
+    numpy_random_generator = numpy.random.default_rng(seed = attack_params.numpy_random_seed)
     
     #successful_attacks = []
     successful_attack_count = 0
@@ -541,7 +546,7 @@ def main(attack_params):
                     sys.exit(1)
             if isinstance(single_token_id, list):
                 decoded_tokens = get_decoded_tokens(tokenizer, single_token_id)
-                single_token_id, decoded_tokens = remove_empty_leading_and_trailing_tokens(trash_fire_token_treasury, single_token_id, decoded_tokens)
+                single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_token_treasury, single_token_id, decoded_tokens)
                 if len(single_token_id) > 1:
                     print(f"Error: the selected tokenizer encoded the string '{attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
                     sys.exit(1)
@@ -749,10 +754,10 @@ def main(attack_params):
                     decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
                     decoded_full_prompt_token_ids = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids)
                     decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
-                    decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target])
+                    decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
                     decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])
                     decoded_loss_slice_string = get_escaped_string(tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
-                    #print(f"[main loop - input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target = '{input_id_data.slice_data.target}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
+                    #print(f"[main loop - input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
                     #print(f"Converting input IDs to device")
                     input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
@@ -950,13 +955,14 @@ def main(attack_params):
                                 
                                 # Step 3.4 Compute loss on these candidates and take the argmin.
                                 #print(f"Getting logits")
-                                logits, ids = get_logits(model = model, 
-                                                         tokenizer = tokenizer,
-                                                         input_ids = input_ids,
-                                                         adversarial_content = current_adversarial_content, 
-                                                         adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                                         return_ids = True,
-                                                         batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
+                                logits, ids = get_logits(attack_params = attack_params,
+                                                        model = model, 
+                                                        tokenizer = tokenizer,
+                                                        input_ids = input_ids,
+                                                        adversarial_content = current_adversarial_content, 
+                                                        adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
+                                                        return_ids = True,
+                                                        batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
                                 #print_stats(attack_params)
 
                                 #print(f"Calculating target loss")
@@ -1680,6 +1686,9 @@ if __name__=='__main__':
     parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
+    parser.add_argument("--suppress-attention-mask", type=str2bool, nargs='?',
+        const=True,
+        help="Do not pass an attention mask to the model. Required for some models, such as Mamba, but may invalidate results.")
     parser.add_argument("--low-cpu-mem-usage", type=str2bool, nargs='?',
         const=True, default=attack_params.low_cpu_mem_usage,
         help="When loading the model and tokenizer, pass 'low_cpu_mem_usage=True'. May or may not affect performance and results.")
@@ -2074,6 +2083,9 @@ if __name__=='__main__':
     attack_params.display_full_failed_output = args.display_failure_output
     
     # other tweakable options
+    
+    if args.suppress_attention_mask:
+        attack_params.use_attention_mask = False
     
     attack_params.low_cpu_mem_usage = args.low_cpu_mem_usage
     
