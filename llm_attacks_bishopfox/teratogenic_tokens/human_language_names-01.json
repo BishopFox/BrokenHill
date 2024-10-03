@@ -1,0 +1,1577 @@
+{
+  "comment": "Based on https://en.wikipedia.org/wiki/IETF_language_tag as of 2024-09-30, because the actual IETF tag list doesn't include the native equivalent of the English name for the language (e.g. 'français' for French)",
+  "data": [
+    {
+      "english_names": [
+        "Afrikaans"
+      ],
+      "native_names": [
+        "Afrikaans"
+      ],
+      "ietf_tag": "af",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Amharic"
+      ],
+      "native_names": [
+        "አማርኛ"
+      ],
+      "ietf_tag": "am",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Arabic"
+      ],
+      "native_names": [
+        "العربية"
+      ],
+      "ietf_tag": "ar",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Mapudungun"
+      ],
+      "native_names": [
+        "Mapudungun"
+      ],
+      "ietf_tag": "arn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Moroccan Arabic"
+      ],
+      "native_names": [
+        "الدارجة المغربية"
+      ],
+      "ietf_tag": "ary",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Assamese"
+      ],
+      "native_names": [
+        "অসমীয়া"
+      ],
+      "ietf_tag": "as",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Azerbaijani"
+      ],
+      "native_names": [
+        "Azərbaycan"
+      ],
+      "ietf_tag": "az",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Bashkir"
+      ],
+      "native_names": [
+        "Башҡорт"
+      ],
+      "ietf_tag": "ba",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Belarusian"
+      ],
+      "native_names": [
+        "беларуская"
+      ],
+      "ietf_tag": "be",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Bulgarian"
+      ],
+      "native_names": [
+        "български"
+      ],
+      "ietf_tag": "bg",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Bengali"
+      ],
+      "native_names": [
+        "বাংলা"
+      ],
+      "ietf_tag": "bn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tibetan"
+      ],
+      "native_names": [
+        "བོད་ཡིག"
+      ],
+      "ietf_tag": "bo",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Breton"
+      ],
+      "native_names": [
+        "brezhoneg"
+      ],
+      "ietf_tag": "br",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Bosnian"
+      ],
+      "native_names": [
+        "bosanski/босански"
+      ],
+      "ietf_tag": "bs",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Catalan"
+      ],
+      "native_names": [
+        "català"
+      ],
+      "ietf_tag": "ca",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Central Kurdish"
+      ],
+      "native_names": [
+        "کوردیی ناوەندی"
+      ],
+      "ietf_tag": "ckb",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Corsican"
+      ],
+      "native_names": [
+        "Corsu"
+      ],
+      "ietf_tag": "co",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Czech"
+      ],
+      "native_names": [
+        "čeština"
+      ],
+      "ietf_tag": "cs",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Welsh"
+      ],
+      "native_names": [
+        "Cymraeg"
+      ],
+      "ietf_tag": "cy",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Danish"
+      ],
+      "native_names": [
+        "dansk"
+      ],
+      "ietf_tag": "da",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "German"
+      ],
+      "native_names": [
+        "Deutsch"
+      ],
+      "ietf_tag": "de",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Lower Sorbian"
+      ],
+      "native_names": [
+        "dolnoserbšćina"
+      ],
+      "ietf_tag": "dsb",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Divehi"
+      ],
+      "native_names": [
+        "ދިވެހިބަސް"
+      ],
+      "ietf_tag": "dv",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Greek"
+      ],
+      "native_names": [
+        "Ελληνικά"
+      ],
+      "ietf_tag": "el",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "English"
+      ],
+      "native_names": [
+        "English"
+      ],
+      "ietf_tag": "en",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Spanish"
+      ],
+      "native_names": [
+        "español"
+      ],
+      "ietf_tag": "es",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Estonian"
+      ],
+      "native_names": [
+        "eesti"
+      ],
+      "ietf_tag": "et",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Basque"
+      ],
+      "native_names": [
+        "euskara"
+      ],
+      "ietf_tag": "eu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Persian"
+      ],
+      "native_names": [
+        "فارسى"
+      ],
+      "ietf_tag": "fa",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Finnish"
+      ],
+      "native_names": [
+        "suomi"
+      ],
+      "ietf_tag": "fi",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Filipino"
+      ],
+      "native_names": [
+        "Filipino"
+      ],
+      "ietf_tag": "fil",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Faroese"
+      ],
+      "native_names": [
+        "føroyskt"
+      ],
+      "ietf_tag": "fo",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "French"
+      ],
+      "native_names": [
+        "français"
+      ],
+      "ietf_tag": "fr",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Frisian"
+      ],
+      "native_names": [
+        "Frysk"
+      ],
+      "ietf_tag": "fy",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Irish"
+      ],
+      "native_names": [
+        "Gaeilge"
+      ],
+      "ietf_tag": "ga",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Scottish Gaelic"
+      ],
+      "native_names": [
+        "Gàidhlig"
+      ],
+      "ietf_tag": "gd",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Gilbertese"
+      ],
+      "native_names": [
+        "Taetae ni Kiribati"
+      ],
+      "ietf_tag": "gil",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Galician"
+      ],
+      "native_names": [
+        "galego"
+      ],
+      "ietf_tag": "gl",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Swiss German"
+      ],
+      "native_names": [
+        "Schweizerdeutsch"
+      ],
+      "ietf_tag": "gsw",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Gujarati"
+      ],
+      "native_names": [
+        "ગુજરાતી"
+      ],
+      "ietf_tag": "gu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Hausa"
+      ],
+      "native_names": [
+        "Hausa"
+      ],
+      "ietf_tag": "ha",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Hebrew"
+      ],
+      "native_names": [
+        "עברית"
+      ],
+      "ietf_tag": "he",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Hindi"
+      ],
+      "native_names": [
+        "हिंदी"
+      ],
+      "ietf_tag": "hi",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Croatian"
+      ],
+      "native_names": [
+        "hrvatski"
+      ],
+      "ietf_tag": "hr",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Serbo-Croatian"
+      ],
+      "native_names": [
+        "srpskohrvatski/српскохрватски"
+      ],
+      "ietf_tag": "hrv",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Upper Sorbian"
+      ],
+      "native_names": [
+        "hornjoserbšćina"
+      ],
+      "ietf_tag": "hsb",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Hungarian"
+      ],
+      "native_names": [
+        "magyar"
+      ],
+      "ietf_tag": "hu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Armenian"
+      ],
+      "native_names": [
+        "Հայերեն"
+      ],
+      "ietf_tag": "hy",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Indonesian"
+      ],
+      "native_names": [
+        "Bahasa Indonesia"
+      ],
+      "ietf_tag": "id",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Igbo"
+      ],
+      "native_names": [
+        "Igbo"
+      ],
+      "ietf_tag": "ig",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Yi"
+      ],
+      "native_names": [
+        "ꆈꌠꁱꂷ"
+      ],
+      "ietf_tag": "ii",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Icelandic"
+      ],
+      "native_names": [
+        "íslenska"
+      ],
+      "ietf_tag": "is",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Italian"
+      ],
+      "native_names": [
+        "italiano"
+      ],
+      "ietf_tag": "it",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Inuktitut"
+      ],
+      "native_names": [
+        "Inuktitut /ᐃᓄᒃᑎᑐᑦ (ᑲᓇᑕ)"
+      ],
+      "ietf_tag": "iu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Japanese"
+      ],
+      "native_names": [
+        "日本語"
+      ],
+      "ietf_tag": "ja",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Georgian"
+      ],
+      "native_names": [
+        "ქართული"
+      ],
+      "ietf_tag": "ka",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kazakh"
+      ],
+      "native_names": [
+        "Қазақша"
+      ],
+      "ietf_tag": "kk",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Greenlandic"
+      ],
+      "native_names": [
+        "kalaallisut"
+      ],
+      "ietf_tag": "kl",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Khmer"
+      ],
+      "native_names": [
+        "ខ្មែរ"
+      ],
+      "ietf_tag": "km",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kannada"
+      ],
+      "native_names": [
+        "ಕನ್ನಡ"
+      ],
+      "ietf_tag": "kn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Korean"
+      ],
+      "native_names": [
+        "한국어"
+      ],
+      "ietf_tag": "ko",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Konkani"
+      ],
+      "native_names": [
+        "कोंकणी"
+      ],
+      "ietf_tag": "kok",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kurdish"
+      ],
+      "native_names": [
+        "Kurdî/کوردی"
+      ],
+      "ietf_tag": "ku",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kyrgyz"
+      ],
+      "native_names": [
+        "Кыргыз"
+      ],
+      "ietf_tag": "ky",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Luxembourgish"
+      ],
+      "native_names": [
+        "Lëtzebuergesch"
+      ],
+      "ietf_tag": "lb",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Lao"
+      ],
+      "native_names": [
+        "ລາວ"
+      ],
+      "ietf_tag": "lo",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Lithuanian"
+      ],
+      "native_names": [
+        "lietuvių"
+      ],
+      "ietf_tag": "lt",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Latvian"
+      ],
+      "native_names": [
+        "latviešu"
+      ],
+      "ietf_tag": "lv",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Maori"
+      ],
+      "native_names": [
+        "Reo Māori"
+      ],
+      "ietf_tag": "mi",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Macedonian"
+      ],
+      "native_names": [
+        "македонски јазик"
+      ],
+      "ietf_tag": "mk",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Malayalam"
+      ],
+      "native_names": [
+        "മലയാളം"
+      ],
+      "ietf_tag": "ml",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Mongolian"
+      ],
+      "native_names": [
+        "Монгол хэл/ᠮᠤᠨᠭᠭᠤᠯ ᠬᠡᠯᠡ"
+      ],
+      "ietf_tag": "mn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Mohawk"
+      ],
+      "native_names": [
+        "Kanien'kéha"
+      ],
+      "ietf_tag": "moh",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Marathi"
+      ],
+      "native_names": [
+        "मराठी"
+      ],
+      "ietf_tag": "mr",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Malay"
+      ],
+      "native_names": [
+        "Bahasa Malaysia"
+      ],
+      "ietf_tag": "ms",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Maltese"
+      ],
+      "native_names": [
+        "Malti"
+      ],
+      "ietf_tag": "mt",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Burmese"
+      ],
+      "native_names": [
+        "မြန်မာဘာသာ"
+      ],
+      "ietf_tag": "my",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Norwegian (Bokmål)"
+      ],
+      "native_names": [
+        "norsk (bokmål)"
+      ],
+      "ietf_tag": "nb",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Nepali"
+      ],
+      "native_names": [
+        "नेपाली (नेपाल)"
+      ],
+      "ietf_tag": "ne",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Dutch"
+      ],
+      "native_names": [
+        "Nederlands"
+      ],
+      "ietf_tag": "nl",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Norwegian (Nynorsk)"
+      ],
+      "native_names": [
+        "norsk (nynorsk)"
+      ],
+      "ietf_tag": "nn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Norwegian"
+      ],
+      "native_names": [
+        "norsk"
+      ],
+      "ietf_tag": "no",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Occitan"
+      ],
+      "native_names": [
+        "occitan"
+      ],
+      "ietf_tag": "oc",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Odia"
+      ],
+      "native_names": [
+        "ଓଡ଼ିଆ"
+      ],
+      "ietf_tag": "or",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Papiamento"
+      ],
+      "native_names": [
+        "Papiamentu"
+      ],
+      "ietf_tag": "pap",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Punjabi"
+      ],
+      "native_names": [
+        "ਪੰਜਾਬੀ / پنجابی"
+      ],
+      "ietf_tag": "pa",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Polish"
+      ],
+      "native_names": [
+        "polski"
+      ],
+      "ietf_tag": "pl",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Dari"
+      ],
+      "native_names": [
+        "درى"
+      ],
+      "ietf_tag": "prs",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Pashto"
+      ],
+      "native_names": [
+        "پښتو"
+      ],
+      "ietf_tag": "ps",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Portuguese"
+      ],
+      "native_names": [
+        "português"
+      ],
+      "ietf_tag": "pt",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "K'iche"
+      ],
+      "native_names": [
+        "K'iche"
+      ],
+      "ietf_tag": "quc",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Quechua"
+      ],
+      "native_names": [
+        "runasimi"
+      ],
+      "ietf_tag": "qu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Romansh"
+      ],
+      "native_names": [
+        "Rumantsch"
+      ],
+      "ietf_tag": "rm",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Romanian"
+      ],
+      "native_names": [
+        "română"
+      ],
+      "ietf_tag": "ro",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Russian"
+      ],
+      "native_names": [
+        "русский"
+      ],
+      "ietf_tag": "ru",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kinyarwanda"
+      ],
+      "native_names": [
+        "Kinyarwanda"
+      ],
+      "ietf_tag": "rw",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sanskrit"
+      ],
+      "native_names": [
+        "संस्कृत"
+      ],
+      "ietf_tag": "sa",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Yakut"
+      ],
+      "native_names": [
+        "саха"
+      ],
+      "ietf_tag": "sah",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sami (Northern)"
+      ],
+      "native_names": [
+        "davvisámegiella"
+      ],
+      "ietf_tag": "se",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sinhala"
+      ],
+      "native_names": [
+        "සිංහල"
+      ],
+      "ietf_tag": "si",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Slovak"
+      ],
+      "native_names": [
+        "slovenčina"
+      ],
+      "ietf_tag": "sk",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Slovenian"
+      ],
+      "native_names": [
+        "slovenski"
+      ],
+      "ietf_tag": "sl",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sami (Southern)"
+      ],
+      "native_names": [
+        "åarjelsaemiengiele"
+      ],
+      "ietf_tag": "sma",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sami (Lule)"
+      ],
+      "native_names": [
+        "julevusámegiella"
+      ],
+      "ietf_tag": "smj",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sami (Inari)"
+      ],
+      "native_names": [
+        "sämikielâ"
+      ],
+      "ietf_tag": "smn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sami (Skolt)"
+      ],
+      "native_names": [
+        "sääʹmǩiõll"
+      ],
+      "ietf_tag": "sms",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Albanian"
+      ],
+      "native_names": [
+        "shqip"
+      ],
+      "ietf_tag": "sq",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Serbian"
+      ],
+      "native_names": [
+        "srpski/српски"
+      ],
+      "ietf_tag": "sr",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Sesotho"
+      ],
+      "native_names": [
+        "Sesotho sa Leboa"
+      ],
+      "ietf_tag": "st",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Swedish"
+      ],
+      "native_names": [
+        "svenska"
+      ],
+      "ietf_tag": "sv",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Kiswahili"
+      ],
+      "native_names": [
+        "Kiswahili"
+      ],
+      "ietf_tag": "sw",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Syriac"
+      ],
+      "native_names": [
+        "ܣܘܪܝܝܐ"
+      ],
+      "ietf_tag": "syc",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tamil"
+      ],
+      "native_names": [
+        "தமிழ்"
+      ],
+      "ietf_tag": "ta",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Telugu"
+      ],
+      "native_names": [
+        "తెలుగు"
+      ],
+      "ietf_tag": "te",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tajik"
+      ],
+      "native_names": [
+        "Тоҷикӣ"
+      ],
+      "ietf_tag": "tg",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Thai"
+      ],
+      "native_names": [
+        "ไทย"
+      ],
+      "ietf_tag": "th",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Turkmen"
+      ],
+      "native_names": [
+        "türkmençe"
+      ],
+      "ietf_tag": "tk",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tswana"
+      ],
+      "native_names": [
+        "Setswana"
+      ],
+      "ietf_tag": "tn",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Turkish"
+      ],
+      "native_names": [
+        "Türkçe"
+      ],
+      "ietf_tag": "tr",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tatar"
+      ],
+      "native_names": [
+        "Татарча"
+      ],
+      "ietf_tag": "tt",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Tamazight"
+      ],
+      "native_names": [
+        "Tamazight"
+      ],
+      "ietf_tag": "tzm",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Uyghur"
+      ],
+      "native_names": [
+        "ئۇيغۇرچە"
+      ],
+      "ietf_tag": "ug",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Ukrainian"
+      ],
+      "native_names": [
+        "українська"
+      ],
+      "ietf_tag": "uk",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Urdu"
+      ],
+      "native_names": [
+        "اُردو"
+      ],
+      "ietf_tag": "ur",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Uzbek"
+      ],
+      "native_names": [
+        "Uzbek/Ўзбек"
+      ],
+      "ietf_tag": "uz",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Vietnamese"
+      ],
+      "native_names": [
+        "Tiếng Việt"
+      ],
+      "ietf_tag": "vi",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Wolof"
+      ],
+      "native_names": [
+        "Wolof"
+      ],
+      "ietf_tag": "wo",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Xhosa"
+      ],
+      "native_names": [
+        "isiXhosa"
+      ],
+      "ietf_tag": "xh",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Yoruba"
+      ],
+      "native_names": [
+        "Yoruba"
+      ],
+      "ietf_tag": "yo",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Chinese"
+      ],
+      "native_names": [
+        "中文"
+      ],
+      "ietf_tag": "zh",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    },
+    {
+      "english_names": [
+        "Zulu"
+      ],
+      "native_names": [
+        "isiZulu"
+      ],
+      "ietf_tag": "zu",
+      "use_english_names_in_allow_or_denylists": true,
+      "use_native_names_in_allow_or_denylists": true,
+      "coment": ""
+    }
+  ]
+}

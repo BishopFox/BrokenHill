@@ -6,13 +6,12 @@ import json
 from fastchat.conversation import Conversation
 from fastchat.conversation import SeparatorStyle
 
-from llm_attacks_bishopfox.base.attack_manager import get_decoded_token
-from llm_attacks_bishopfox.base.attack_manager import get_decoded_tokens
-from llm_attacks_bishopfox.base.attack_manager import get_encoded_token
-from llm_attacks_bishopfox.base.attack_manager import get_encoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_occurrence_of_array_in_array
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_occurrence_of_array_in_array
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_leading_and_trailing_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
+from llm_attacks_bishopfox.util.util_functions import find_first_occurrence_of_array_in_array
 from llm_attacks_bishopfox.util.util_functions import find_index_of_first_nonmatching_element
 from llm_attacks_bishopfox.util.util_functions import remove_whitespace_and_nonprintable_characters
 
@@ -257,11 +256,11 @@ class ConversationTemplateTester:
         if not result.existing_fschat_template.name in get_apply_chat_template_ignored_template_names():
         
             apply_template_messages = []
-            if result.existing_fschat_template.name in get_llama2_and_3_fschat_template_names():
-                llama_template_warning = f"Warning: the fschat template '{result.existing_fschat_template.name}' may (or may not) produce less accurate conversation output than the canonical Llama-2 and Llama-3 conversation templates. "
-                if result.existing_fschat_template.name in get_llama2_fschat_template_names():
-                    llama_template_warning += f"If additional warnings regarding mismatches between the conversation template at the tokenizer's apply_chat_template output appear below, consider using the custom 'llama2' conversation template included with Broken Hill as a workaround until the underlying issue in fschat is resolved."
-                result.result_messages.append(llama_template_warning)
+            # if result.existing_fschat_template.name in get_llama2_and_3_fschat_template_names():
+                # llama_template_warning = f"Warning: the template '{result.existing_fschat_template.name}' may (or may not) produce less accurate conversation output than the canonical Llama-2 and Llama-3 conversation templates. "
+                # if result.existing_fschat_template.name in get_llama2_fschat_template_names():
+                    # llama_template_warning += f"If additional warnings regarding mismatches between the conversation template at the tokenizer's apply_chat_template output appear below, consider using the custom 'llama2' conversation template included with Broken Hill as a workaround until the underlying issue in fschat is resolved."
+                # result.result_messages.append(llama_template_warning)
             try:
                 tokenizer_prompt_no_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = False)
                 got_tokenizer_chat_template_with_no_system_as_string = True

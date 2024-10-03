@@ -6,14 +6,21 @@ These commands tend to be very long. To avoid corrupting the `jq` instructions b
 
 ## Table of contents
 
-1. [Histogram of jailbreak detection counts](#histogram-of-jailbreak-detection-counts)
-2. [Unique user input that resulted in some minimum number of jailbreak detections](#unique-user-input-that-resulted-in-some-minimum-number-of-jailbreak-detections)
-3. [Jailbreak detection count and loss for each Broken Hill iteration](#jailbreak-detection-count-and-loss-for-each-broken-hill-iteration)
-4. [All adversarial content that resulted in some minimum number of jailbreak detections](#all-adversarial-content-that-resulted-in-some-minimum-number-of-jailbreak-detections)
-5. [Find LLM output that was flagged as a jailbreak, and show how many times that unique output occurred](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-how-many-times-that-unique-output-occurred)
-6. [Find LLM output that was flagged as a jailbreak, and show both the jailbreak check and full output versions](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-both-the-jailbreak-check-and-full-output-versions)
-7. [Find LLM output that contains a particular string, and show how many times that unique output occurred](#find-llm-output-that-contains-a-particular-string-and-show-how-many-times-that-unique-output-occurred)
-8. [Top 10 lowest loss values and the adversarial content that generated it](#top-10-lowest-loss-values-and-the-adversarial-content-that-generated-it)
+1. [The most recent adversarial content token IDs](#the-most-recent-adversarial-content-token-ids)
+2. [Histogram of jailbreak detection counts](#histogram-of-jailbreak-detection-counts)
+3. [Unique user input that resulted in some minimum number of jailbreak detections](#unique-user-input-that-resulted-in-some-minimum-number-of-jailbreak-detections)
+4. [Jailbreak detection count and loss for each Broken Hill iteration](#jailbreak-detection-count-and-loss-for-each-broken-hill-iteration)
+5. [All adversarial content that resulted in some minimum number of jailbreak detections](#all-adversarial-content-that-resulted-in-some-minimum-number-of-jailbreak-detections)
+6. [Find LLM output that was flagged as a jailbreak, and show how many times that unique output occurred](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-how-many-times-that-unique-output-occurred)
+7. [Find LLM output that was flagged as a jailbreak, and show both the jailbreak check and full output versions](#find-llm-output-that-was-flagged-as-a-jailbreak,-and-show-both-the-jailbreak-check-and-full-output-versions)
+8. [Find LLM output that contains a particular string, and show how many times that unique output occurred](#find-llm-output-that-contains-a-particular-string-and-show-how-many-times-that-unique-output-occurred)
+9. [Top 10 lowest loss values and the adversarial content that generated it](#top-10-lowest-loss-values-and-the-adversarial-content-that-generated-it)
+
+## The most recent adversarial content token IDs
+
+This allows one to start another Broken Hill test run more or less where a previous test was completed or cancelled.
+
+jq -r '.attack_results[] | select(.loss >= 0) | (.adversarial_content | .token_ids | join(","))' results.json | tail -n1
 
 ## Histogram of jailbreak detection counts
 

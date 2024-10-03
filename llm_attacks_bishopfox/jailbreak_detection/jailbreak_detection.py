@@ -4,8 +4,8 @@ import json
 import re
 
 from enum import StrEnum
-from llm_attacks_bishopfox import get_default_negative_test_strings
-from llm_attacks_bishopfox import get_default_positive_test_strings
+from llm_attacks_bishopfox.base.attack_manager import get_default_negative_test_strings
+from llm_attacks_bishopfox.base.attack_manager import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import regex_flags_from_list
 from llm_attacks_bishopfox.util.util_functions import regex_flags_to_list

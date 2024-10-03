@@ -10,12 +10,13 @@ import uuid
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
-from llm_attacks_bishopfox import get_decoded_token
-from llm_attacks_bishopfox import get_decoded_tokens
-from llm_attacks_bishopfox import get_default_negative_test_strings
-from llm_attacks_bishopfox import get_default_positive_test_strings
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.base.attack_manager import get_default_negative_test_strings
+from llm_attacks_bishopfox.base.attack_manager import get_default_positive_test_strings
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_leading_and_trailing_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 #from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import get_now
@@ -82,6 +83,7 @@ class PyTorchDevice():
 class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
     GCG_ATTACK_SELF_TEST  = 'gcg_attack_self_test'
+    LIST_IETF_TAGS = 'list_ietf_tags'
 
 # not currently used
 class OverallScoringFunction(StrEnum):
@@ -134,10 +136,9 @@ class AdversarialContent(JSONSerializableObject):
         result.as_string = self.as_string
         return result
     
-    def delete_random_token(self, tokenizer):
+    def delete_random_token(self, numpy_random_generator, tokenizer):
         num_tokens = len(self.token_ids)
-        rng = numpy.random.default_rng(numpy.random.PCG64DXSM())
-        deleted_token_index = rng.integers(0, high = num_tokens)
+        deleted_token_index = numpy_random_generator.integers(0, high = num_tokens)
         new_token_ids = []
         new_tokens = []
         for i in range(0, num_tokens):
@@ -148,10 +149,9 @@ class AdversarialContent(JSONSerializableObject):
         self.tokens = new_tokens
         self.as_string = tokenizer.decode(self.token_ids)
         
-    def duplicate_random_token(self, tokenizer):
+    def duplicate_random_token(self, numpy_random_generator, tokenizer):
         num_tokens = len(self.token_ids)
-        rng = numpy.random.default_rng(numpy.random.PCG64DXSM())
-        duplicated_token_index = rng.integers(0, high = num_tokens)
+        duplicated_token_index = numpy_random_generator.integers(0, high = num_tokens)
         new_token_ids = []
         new_tokens = []
         for i in range(0, num_tokens):
@@ -190,28 +190,13 @@ class AdversarialContent(JSONSerializableObject):
         result = AdversarialContent()
         super(AdversarialContent, result).set_properties_from_dict(result, property_dict)
         return result
-        
-    # def to_dict(self):
-        # result = {}
-        # result["token_ids"] = copy.deepcopy(self.token_ids)
-        # result["tokens"] = copy.deepcopy(self.tokens)
-        # result["as_string"] = self.as_string
-        # return result
 
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = AdversarialContent()
-        # result.token_ids = copy.deepcopy(property_dict["token_ids"])
-        # result.tokens = copy.deepcopy(property_dict["tokens"])
-        # result.as_string = property_dict["as_string"]
-        # return result
         
     @staticmethod
     def from_json(json_string):
-        return AttackResultInfoCollection.from_dict(json.loads(json_string))
+        return AdversarialContent.from_dict(json.loads(json_string))
     
     # This seems to happen if the number of candidates is long enough
     # Ideally I'll find a better way to avoid it than this
@@ -224,11 +209,12 @@ class AdversarialContent(JSONSerializableObject):
         return False
     
     @staticmethod
-    def from_token_ids(tokenizer, trash_fire_tokens, token_ids):
+    def from_token_ids(tokenizer, trash_fire_tokens, token_ids, trim_token_list = False):
         result = AdversarialContent()
         result.token_ids = copy.deepcopy(token_ids)
         result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
+        if trim_token_list:
+            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
         try:
             result.as_string = tokenizer.decode(result.token_ids)
         except Exception as e:
@@ -245,9 +231,10 @@ class AdversarialContent(JSONSerializableObject):
     def from_string(tokenizer, trash_fire_tokens, input_string):
         result = AdversarialContent()
         #result.as_string = input_string
-        result.token_ids = tokenizer.encode(input_string)
+        #result.token_ids = tokenizer.encode(input_string)
+        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, input_string)
         result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        result.token_ids, result.tokens = remove_empty_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
+        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
         result.as_string = tokenizer.decode(result.token_ids)
         return result
 
@@ -504,6 +491,9 @@ class AttackParams(JSONSerializableObject):
 
         # method for determining the loss slice start and end indices
         self.loss_slice_mode = LossSliceMode.INDEX_SHIFTED_TARGET_SLICE
+        
+        # for index-shifted loss slice mode, how much should it shift?
+        self.loss_slice_index_shift = -1
 
         # which loss algorithm to use
         self.loss_algorithm = LossAlgorithm.CROSS_ENTROPY
@@ -549,8 +539,10 @@ class AttackParams(JSONSerializableObject):
         self.random_seed_scoring_mode = OverallScoringFunction.MEDIAN
 
         # values that can greatly influence model behaviour
-        # temperature
-        self.model_temperature = 1.0
+        # temperature range begin
+        self.model_temperature_range_begin = 1.0
+        # temperature range end (inclusive)
+        self.model_temperature_range_end = 1.0
         # random seeds
         # The magic value 20 is from the notebook by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson
         # NumPy
@@ -580,6 +572,9 @@ class AttackParams(JSONSerializableObject):
             
             # filter out any additional tokens that consist solely of whitespace
             self.exclude_whitespace_tokens = False
+            
+            # filter out language names except the one represented by this IETF tag, if present
+            self.exclude_language_names_except = None
 
             # filter out any additional tokens that are slurs
             self.exclude_slur_tokens = False
@@ -666,6 +661,9 @@ class AttackParams(JSONSerializableObject):
         # ignoring mismatched sizes seems to be necessary for some of the interesting models
         # TKTK: list
         self.load_options_ignore_mismatched_sizes = False
+
+        # Some models do not support the attention_mask parameter
+        self.use_attention_mask = True
 
         # assorted values that may or may not impact performance
         self.low_cpu_mem_usage = False
@@ -930,49 +928,12 @@ class AttackResultInfoData(JSONSerializableObject):
         result = AttackResultInfoData()
         super(AttackResultInfoData, result).set_properties_from_dict(result, property_dict)
         return result
-    
-    # def to_dict(self):
-        # result = {}
-        # result["date_time_utc"] = self.date_time_utc
-        # result["max_new_tokens"] = self.max_new_tokens
-        # result["generated_prompt_token_ids"] = self.generated_prompt_token_ids
-        # result["llm_generation_token_ids"] = self.llm_generation_token_ids
-        # result["user_input_token_ids"] = self.user_input_token_ids
-        # result["llm_output_token_ids"] = self.llm_output_token_ids
-        # result["decoded_generated_prompt_tokens"] = self.decoded_generated_prompt_tokens
-        # result["decoded_generated_prompt_string"] = self.decoded_generated_prompt_string
-        # result["decoded_llm_generation_tokens"] = self.decoded_llm_generation_tokens
-        # result["decoded_llm_generation_string"] = self.decoded_llm_generation_string
-        # result["decoded_user_input_tokens"] = self.decoded_user_input_tokens
-        # result["decoded_user_input_string"] = self.decoded_user_input_string
-        # result["decoded_llm_output_tokens"] = self.decoded_llm_output_tokens
-        # result["decoded_llm_output_string"] = self.decoded_llm_output_string
-        # return result
 
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
     
     def copy(self):
         return AttackResultInfoData.from_dict(self.to_dict())
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = AttackResultInfoData()
-        # result.date_time_utc = property_dict["date_time_utc"]
-        # result.max_new_tokens = property_dict["max_new_tokens"]
-        # result.generated_prompt_token_ids = property_dict["generated_prompt_token_ids"]
-        # result.llm_generation_token_ids = property_dict["llm_generation_token_ids"]
-        # result.user_input_token_ids = property_dict["user_input_token_ids"]
-        # result.llm_output_token_ids = property_dict["llm_output_token_ids"]
-        # result.decoded_generated_prompt_tokens = property_dict["decoded_generated_prompt_tokens"]
-        # result.decoded_generated_prompt_string = property_dict["decoded_generated_prompt_string"]
-        # result.decoded_llm_generation_tokens = property_dict["decoded_llm_generation_tokens"]
-        # result.decoded_llm_generation_string = property_dict["decoded_llm_generation_string"]
-        # result.decoded_user_input_tokens = property_dict["decoded_user_input_tokens"]
-        # result.decoded_user_input_string = property_dict["decoded_user_input_string"]
-        # result.decoded_llm_output_tokens = property_dict["decoded_llm_output_tokens"]
-        # result.decoded_llm_output_string = property_dict["decoded_llm_output_string"]
-        # return result
 
     @staticmethod
     def from_json(json_string):
@@ -990,6 +951,8 @@ class AttackResultInfo(JSONSerializableObject):
 
         # the tokenizer path used with the engine
         self.tokenizer_path = None
+
+        self.temperature = None
 
         # random seed values, either from attack_params or the iterated list        
         self.numpy_random_seed = None        
@@ -1021,19 +984,6 @@ class AttackResultInfo(JSONSerializableObject):
                 deserialized_result_data_sets[current_key] = AttackResultInfoData.from_dict(result.result_data_sets[current_key])
             result.result.result_data_sets = deserialized_result_data_sets
         return result
-        
-    # def to_dict(self):
-        # result = {}
-        # result["ml_engine"] = self.ml_engine
-        # result["numpy_random_seed"] = self.numpy_random_seed
-        # result["torch_manual_seed"] = self.torch_manual_seed
-        # result["torch_cuda_manual_seed_all"] = self.torch_cuda_manual_seed_all
-        # result["jailbreak_detected"] = self.jailbreak_detected
-        # result["result_data_sets"] = {}
-        # for rds_name in self.result_data_sets.keys():
-            # result["result_data_sets"][rds_name] = self.result_data_sets[rds_name].to_dict()
-        
-        # return result
     
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
@@ -1046,19 +996,7 @@ class AttackResultInfo(JSONSerializableObject):
             return self.result_data_sets[k]
             break
         return None
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = AttackResultInfo()
-        # result.ml_engine = property_dict["ml_engine"]
-        # result.numpy_random_seed = property_dict["numpy_random_seed"]
-        # result.torch_manual_seed = property_dict["torch_manual_seed"]
-        # result.torch_cuda_manual_seed_all = property_dict["torch_cuda_manual_seed_all"]
-        # result.jailbreak_detected = property_dict["jailbreak_detected"]
-        # result.result_data_sets = {}
-        # for rds_name in property_dict["result_data_sets"].keys():
-            # result.result_data_sets[rds_name] = AttackResultInfoData.from_dict(property_dict["result_data_sets"][rds_name])
-                
+                    
         return result
     
     @staticmethod
@@ -1072,9 +1010,6 @@ class AttackResultInfoCollection(JSONSerializableObject):
         self.jailbreak_detection_count = 0
         self.loss = None
         self.adversarial_content = AdversarialContent()
-        #self.adversarial_token_ids = None
-        #self.adversarial_tokens = None
-        #self.adversarial_value = None
         self.complete_user_input = None
         self.unique_results = {}
         self.unique_result_count = 0
@@ -1117,44 +1052,11 @@ class AttackResultInfoCollection(JSONSerializableObject):
             result.results = deserialized_results
         return result
 
-    # def to_dict(self):
-        # result = {}
-        # result["original_creation_date_time_utc"] = self.original_creation_date_time_utc
-        # result["jailbreak_detection_count"] = self.jailbreak_detection_count
-        # result["loss"] = self.loss
-        # result["adversarial_content"] = self.adversarial_content.to_dict()
-        # #result["adversarial_token_ids"] = self.adversarial_token_ids
-        # #result["adversarial_tokens"] = self.adversarial_tokens
-        # #result["adversarial_value"] = self.adversarial_value
-        # result["complete_user_input"] = self.complete_user_input
-        # result["results"] = []
-        # for r in self.results:
-            # result["results"].append(r.to_dict())
-        # result["unique_results"] = copy.deepcopy(self.unique_results)
-        # result["unique_result_count"] = self.unique_result_count
-        
-        # return result
-
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
     
     def copy(self):
         return AttackResultInfoCollection.from_dict(self.to_dict())
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = AttackResultInfoCollection()
-        # result.original_creation_date_time_utc = property_dict["original_creation_date_time_utc"]
-        # result.jailbreak_detection_count = property_dict["jailbreak_detection_count"]
-        # result.loss = property_dict["loss"]
-        # result.adversarial_content = AdversarialContent.from_dict(property_dict["adversarial_content"])
-        # result.complete_user_input = property_dict["complete_user_input"]
-        # result.results = []
-        # for r in property_dict["results"]:
-            # result.results.append(AttackResultInfo.from_dict(r))        
-        # result.unique_results = copy.deepcopy(property_dict["unique_results"])
-        # result.unique_result_count = property_dict["unique_result_count"]
-        # return result
     
     @staticmethod
     def from_json(json_string):

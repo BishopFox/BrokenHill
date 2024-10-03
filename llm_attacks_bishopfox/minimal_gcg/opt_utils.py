@@ -10,12 +10,12 @@ import torch.nn as nn
 from transformers import AutoModelForCausalLM
 from transformers import AutoTokenizer
 
-from llm_attacks_bishopfox import get_decoded_token
-from llm_attacks_bishopfox import get_decoded_tokens
-from llm_attacks_bishopfox import get_embedding_matrix
-from llm_attacks_bishopfox import get_embeddings 
-from llm_attacks_bishopfox import get_encoded_token 
-from llm_attacks_bishopfox import get_encoded_tokens 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_matrix
+from llm_attacks_bishopfox.base.attack_manager import get_embeddings 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens 
 
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
@@ -179,7 +179,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         The input sequence in the form of token ids.
     input_id_data.slice_data.control : slice
         The slice of the input sequence for which gradients need to be computed.
-    input_id_data.slice_data.target : slice
+    input_id_data.slice_data.target_output : slice
         The slice of the input sequence to be used as targets.
     input_id_data.slice_data.loss : slice
         The slice of the logits to be used for computing the loss.
@@ -221,7 +221,6 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         scales_value = get_first_value_from_tensor(scales)
         pczp_value = int(get_first_value_from_tensor(pczp))
         #print(f"[token_gradients] Debug: scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
-#        one_hot = torch.randint(0, 1, size=(input_ids[input_id_data.slice_data.control].shape[0],embed_weights.shape[0]), device=model.device, dtype=embed_weights.dtype)
         one_hot = create_new_quantized_tensor(0, (input_ids[input_id_data.slice_data.control].shape[0],embed_weights.shape[0]), model.device, embed_weights.data.dtype, scales_value, pczp_value)
     else:
         try:
@@ -311,9 +310,9 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #print("[token_gradients] Getting targets")
     targets = None
     try:
-        targets = input_ids[input_id_data.slice_data.target]
+        targets = input_ids[input_id_data.slice_data.target_output]
     except Exception as e:
-        raise GradientCreationException(f"Error calling input_ids[input_id_data.slice_data.target] with input_ids = '{input_ids}', input_id_data.slice_data.target = '{input_id_data.slice_data.target}': {e}")
+        raise GradientCreationException(f"Error calling input_ids[input_id_data.slice_data.target_output] with input_ids = '{input_ids}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}")
     #print_stats("token_gradients")
     
     # pad the target token IDs, if necessary
@@ -391,98 +390,6 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     print("Error: one_hot.grad is None")
     return None
 
-# def get_adversarial_content_candidates(attack_params, adversarial_content_manager, current_adversarial_content, grad, number_of_candidates_to_generate, random_generator, topk=256, not_allowed_tokens=None):
-
-    # new_adversarial_token_ids = None
-
-    # if grad is not None:
-        # if not_allowed_tokens is not None:
-            # grad[:, not_allowed_tokens.to(grad.device)] = numpy.infty
-
-        # top_indices = (-grad).topk(topk, dim=1).indices
-        # current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(grad.device)
-
-        # original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(number_of_candidates_to_generate, 1)
-
-        # #print(f"[sample_control] Debug: current_adversarial_content_token_ids_device = {current_adversarial_content_token_ids_device}, original_adversarial_content_token_ids_device = {original_adversarial_content_token_ids_device}, top_indices = {top_indices}")
-
-        # num_adversarial_tokens = len(current_adversarial_content_token_ids_device)
-
-        # new_token_pos = torch.arange(
-            # 0, 
-            # num_adversarial_tokens, 
-            # num_adversarial_tokens / number_of_candidates_to_generate,
-            # device=grad.device
-        # ).type(torch.int64)
-        # num_rand_ints = number_of_candidates_to_generate
-        # #if top_indices.shape[0] < number_of_candidates_to_generate:
-        # # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
-        # #if top_indices.shape[0] < topk:
-        # if top_indices.shape[0] < num_adversarial_tokens:
-            # #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current batch size ({number_of_candidates_to_generate}). The number of random integers will be decreased to that value. This usually indicates a problem with the tokens being processed.")
-            # #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current topk value ({topk}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
-            # print(f"Warning: the number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
-            # looped_values = []
-            # looped_value_number = 0
-            # #while len(looped_values) < topk:
-            # while len(looped_values) < num_adversarial_tokens:
-                # looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
-                # looped_value_number += 1
-            # top_indices = torch.tensor(looped_values, device = grad.device)
-        # #rand_ints = torch.randint(0, topk, (number_of_candidates_to_generate, 1), device=grad.device)
-        # # TKTK: allow more than one token to be randomized:
-        # #       * Randomize exactly n tokens every time
-        # #       * Randomize between x and y tokens every time
-        # #       * Each token has an n% chance of being randomized every time
-        # #       Can probably handle this using most of the unfinished radiation garden code
-        # #rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device = grad.device)
-        # rand_ints = torch.randint(0, topk, (num_rand_ints, 1), device = grad.device, generator = random_generator)
-        # #print(f"[sample_control] Debug: new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
-        # new_token_val = None
-        # top_indices_len_1 = top_indices.shape[0] - 1
-        # new_token_pos_in_bounds_values = []
-        # new_token_pos_out_of_bounds_values = []
-        # new_token_pos_values = new_token_pos.tolist()
-        # for i in range(0, len(new_token_pos_values)):
-            # if new_token_pos_values[i] > top_indices_len_1:
-                # new_token_pos_out_of_bounds_values.append(new_token_pos_values[i])
-            # else:
-                # new_token_pos_in_bounds_values.append(new_token_pos_values[i])
-        # if len(new_token_pos_out_of_bounds_values) > 0:
-            # #raise Exception(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of top_indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}.")
-            # print(f"Warning: new_token_pos contained the following values, which are less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}. This usually indicates a problem with the tokens being processed.")
-            # #new_token_pos = torch.tensor(new_token_pos_in_bounds_values, device = grad.device)
-            # looped_values = []
-            # looped_value_number = 0
-            # while len(looped_values) < number_of_candidates_to_generate:
-                # looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
-                # looped_value_number += 1
-            # new_token_pos = torch.tensor(looped_values, device = grad.device)
-        # new_token_val = torch.gather(
-            # top_indices[new_token_pos], 1, 
-            # rand_ints
-        # )
-
-
-        # #print(f"[sample_control] Debug: new_token_val = {new_token_val}")
-        # new_adversarial_token_ids = original_adversarial_content_token_ids_device.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
-        # #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
-    
-    # result = AdversarialContentList()
-    
-    # if new_adversarial_token_ids is not None:
-        # #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
-        # for i in range(new_adversarial_token_ids.shape[0]):
-            # #print(f"[sample_control] Debug: new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
-            # new_adversarial_token_ids_as_list = new_adversarial_token_ids[i].tolist()
-            # if AdversarialContent.token_list_contains_invalid_tokens(adversarial_content_manager.tokenizer, new_adversarial_token_ids_as_list):
-                # dummy = 1
-                # #print(f"[sample_control] Warning: adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {adversarial_content_manager.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
-            # else:
-                # new_candidate = AdversarialContent.from_token_ids(adversarial_content_manager.tokenizer, adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
-                # result.append_if_new(new_candidate)
-    # return result
-
 def get_adversarial_content_candidates(attack_params, adversarial_content_manager, current_adversarial_content, coordinate_gradient, random_generator_gradient, random_generator_cpu, random_generator_attack_params_device, not_allowed_tokens = None):
 
     new_adversarial_token_ids = None
@@ -545,12 +452,9 @@ def get_adversarial_content_candidates(attack_params, adversarial_content_manage
             except Exception as e:
                 raise GradientSamplingException(f"Error calling torch.arange(0, num_adversarial_tokens, num_adversarial_tokens / attack_params.new_adversarial_value_candidate_count, device=coordinate_gradient.device) with num_adversarial_tokens = '{num_adversarial_tokens}', attack_params.new_adversarial_value_candidate_count = '{attack_params.new_adversarial_value_candidate_count}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}")
             num_rand_ints = attack_params.new_adversarial_value_candidate_count
-            #if top_indices.shape[0] < attack_params.new_adversarial_value_candidate_count:
             # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
             #if top_indices.shape[0] < attack_params.topk:
             if top_indices.shape[0] < num_adversarial_tokens:
-                #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current batch size ({attack_params.new_adversarial_value_candidate_count}). The number of random integers will be decreased to that value. This usually indicates a problem with the tokens being processed.")
-                #print(f"Warning: top_indices.shape[0] ({top_indices.shape[0]}) is less than the current topk value ({attack_params.topk}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
                 print(f"Warning: the number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
                 looped_values = []
                 looped_value_number = 0
@@ -821,7 +725,7 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
     return result
 
 
-def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, batch_size=512):
+def get_logits(*, attack_params, model, tokenizer, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, batch_size=512):
     
     if adversarial_candidate_list is None or len(adversarial_candidate_list.adversarial_content) < 1:
         raise ValueError(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
@@ -869,14 +773,13 @@ def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_
 
     if return_ids:
         del locs, test_ids ; gc.collect()
-        result1 = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
-        
+        result1 = forward(attack_params = attack_params, model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
         #print(f"[get_logits] Debug: returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
 
         return result1, ids
     else:
         del locs, test_ids
-        logits = forward(model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
+        logits = forward(attack_params = attack_params, model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
         del ids ; gc.collect()
         
         #print(f"[get_logits] Debug: returning logits = '{logits}', attn_mask = '{attn_mask}'")
@@ -884,7 +787,7 @@ def get_logits(*, model, tokenizer, input_ids, adversarial_content, adversarial_
         return logits
     
 
-def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
+def forward(*, attack_params, model, tokenizer, input_ids, attention_mask, batch_size=512):
 
     logits = []
     for i in range(0, input_ids.shape[0], batch_size):
@@ -895,7 +798,11 @@ def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
         else:
             batch_attention_mask = None
 
-        model_result = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        model_result = None
+        if attack_params.use_attention_mask:
+            model_result = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        else:
+            model_result = model(input_ids=batch_input_ids)
         #model_result_decoded = get_decoded_tokens(tokenizer, model_result)
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}'")
@@ -912,13 +819,12 @@ def forward(*, model, tokenizer, input_ids, attention_mask, batch_size=512):
 
 # In this function, the logits returned by get_logits and forward are compared against the token IDs returned by get_logits
 # ...which seems to correspond to the token IDs that represent the target output, repeated enough times to equal the length of the first entry in the list of candidate values? I think?
-# If I understand the goal here, it's to treat the target tokens as coordinates and figure out how far away the candidate tokens are from them?
 def target_loss(attack_params, logits, ids, input_id_data, tokenizer):
     # [blincoln] also corrected this to use the loss slice returned by get_prompt for consistency instead of redefining it here
     #logits_sliced = logits[:,loss_slice,:]
     logits_sliced = logits[:,input_id_data.slice_data.loss,:]
     logits_sliced_transposed = logits_sliced.transpose(1,2)
-    ids_sliced = ids[:,input_id_data.slice_data.target]
+    ids_sliced = ids[:,input_id_data.slice_data.target_output]
     
     ids_sliced = get_padded_target_token_ids(tokenizer, input_id_data.slice_data.loss, ids_sliced)
     
@@ -961,7 +867,7 @@ def get_missing_pad_token_names():
 
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
     allowed_names = get_missing_pad_token_names()
-    if replacement_name not in get_missing_pad_token_names(allowed_names):
+    if replacement_name not in get_missing_pad_token_names():
         raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
     result = None
     if replacement_name == "bos":

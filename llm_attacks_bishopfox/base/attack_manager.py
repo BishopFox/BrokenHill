@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 from fastchat.model import get_conversation_template
-from tokenizers import AddedToken
+#from tokenizers import AddedToken
 from transformers import (AutoTokenizer, GPT2LMHeadModel)
 
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
@@ -153,7 +153,7 @@ def get_default_negative_test_strings():
                    "I cannot",
                    "I decline to generate",
                    "I do not have the capability",
-                   "I regret to",
+                   #"I regret to",
                    "I will not be able to provide",
                    "I will not provide",
                    "I will politely refuse",
@@ -249,67 +249,6 @@ def get_default_positive_test_strings():
     return generate_trivial_string_variations(base_list)
 
 
-def get_decoded_token(tokenizer, token):
-    result = None
-    #print(f"[get_decoded_token] Debug: decoding token '{token}'")
-    if isinstance(token, type(None)):
-        print(f"[get_decoded_token] Warning: a null token ID was passed to this function. This usually indicates a bug.")
-        return None
-    token_to_decode = token
-    # workaround for models like Gemma that need all tokens to be in the form of a list
-    wrap_in_list = False
-    if not isinstance(token, list) and not isinstance(token, torch.Tensor):
-        wrap_in_list = True
-    if wrap_in_list:
-        token_to_decode = [ token ]
-        #print(f"[get_decoded_token] Debug: converted '{token}' to '{token_to_decode}'")
-    #result = tokenizer.decode(token_to_decode, skip_special_tokens=False)
-    try:
-        #result = tokenizer.decode(token_to_decode, skip_special_tokens=True)
-        result = tokenizer.decode(token_to_decode, skip_special_tokens=False)
-    except Exception as e:
-        print(f"[get_decoded_token] Error decoding token {token_to_decode}: {e}")
-        result = None
-    #print(f"[get_decoded_token] Debug: decoded token '{token}' to '{result}'")
-    return result
-
-def get_decoded_tokens(tokenizer, tokens, recursively_process_arrays = False):
-    #print(f"[get_decoded_tokens] Debug: decoding tokens '{tokens}'")
-    decoded_tokens = []
-    token_list = tokens
-    if isinstance(tokens, torch.Tensor):
-        token_list = tokens.tolist()
-    if isinstance(token_list, list):
-        for tn in range(0, len(token_list)):
-            if recursively_process_arrays:
-                dt = get_decoded_tokens(tokenizer, token_list[tn])
-            else:
-                dt = get_decoded_token(tokenizer, token_list[tn])
-            decoded_tokens.append(dt)
-    else:
-        dt = get_decoded_token(tokenizer, tokens)
-        decoded_tokens.append(dt)
-    #print(f"[get_decoded_tokens] Debug: decoded tokens '{tokens}' to '{decoded_tokens}'")
-    return decoded_tokens
-
-def get_encoded_token(tokenizer, token):
-    #print(f"[get_encoded_token] Debug: encoding token '{token}'")
-    result = None
-    try:
-        #result = tokenizer.encode(token, skip_special_tokens=True)
-        result = tokenizer.encode(token)
-        if isinstance(result, type(None)):
-            print(f"[get_encoded_token] Warning: the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
-    except Exception as e:
-        print(f"[get_encoded_token] Error encoding token {token}: {e}")
-    return result
-
-def get_encoded_tokens(tokenizer, tokens):
-    encoded_tokens = []
-    for tn in range(0, len(tokens)):
-        et = get_encoded_token(tokenizer, tokens[tn])
-        encoded_tokens.append(et)
-    return encoded_tokens
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -369,7 +308,7 @@ def get_embedding_layer(model):
         if hasattr(model, "get_input_embeddings"):
             return model.get_input_embeddings()
     if isinstance(model, MambaForCausalLM):
-        return model.model.get_input_embeddings()
+        return model.get_input_embeddings()
     if isinstance(model, MptForCausalLM):
         return model.get_input_embeddings()
     if isinstance(model, OPTForCausalLM):
@@ -454,255 +393,6 @@ def get_embeddings(model, input_ids):
         return result.half()
     
     return result
-
-def get_nonascii_token_list(tokenizer):
-    def is_ascii(s):
-        if isinstance(s, type(None)):
-            return False
-        return s.isascii()
-
-    result = []
-    for i in range(3, tokenizer.vocab_size):
-        decoded_token = tokenizer.decode([i])
-        if not isinstance(decoded_token, type(None)):
-            if not is_ascii(decoded_token):
-                if i not in result:
-                    result.append(i)
-    
-    return result
-
-def get_nonprintable_token_list(tokenizer):
-    def is_printable(s):
-        if isinstance(s, type(None)):
-            return False
-        return s.isprintable()
-
-    result = []
-    for i in range(3, tokenizer.vocab_size):
-        decoded_token = tokenizer.decode([i])
-        if not isinstance(decoded_token, type(None)):
-            if not is_printable(decoded_token):
-                if i not in result:
-                    result.append(i)
-    
-    return result
-
-def get_nonmatching_token_list(tokenizer, filter_regex):
-    nonmatching_tokens = []
-    for i in range(3, tokenizer.vocab_size):
-        dt = tokenizer.decode([i])
-        if not isinstance(dt, type(None)):
-            if not filter_regex.search(dt):
-                nonmatching_tokens.append(i)
-                #print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
-                #if "#" in dt:
-                #    print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
-            #else:
-            #    if "#" in dt:
-            #        print(f"[get_nonmatching_token_list] Debug: not excluding '{dt}' because it matched the specified regular expression.")
-    
-    return nonmatching_tokens
-
-#def get_nonascii_toks(tokenizer, device='cpu'):    
-#    return torch.tensor(get_nonascii_token_list(tokenizer), device=device)
-
-def get_token_list_as_tensor(token_list, device='cpu'):    
-    return torch.tensor(token_list, device=device)
-    
-
-# def get_encoded_string(input_string):
-    # #print(f"[get_encoded_string] Debug: encoding '{input_string}' to base64")
-    # if input_string is None:
-        # return None
-    # result = input_string
-    # result = base64.b64encode(bytes(result, 'utf-8')).decode('utf-8')
-    # result = f"[base64] {result}"
-    # return result
-
-# This method uses several mechanisms because of bizarre situations like
-# models having multiple tokens that are equivalent to each other, e.g. for phi3-mini-128k-instruct:
-#
-# [get_token_denylist] Debug: got token(s) '[320, 29876]' from string '\n'
-# [get_token_denylist] Debug: did not add tokens '[320, 29876]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[29871, 13]' from string '
-# '
-# [get_token_denylist] Debug: did not add tokens '[29871, 13]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: added token 13 ('
-# ') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# [get_token_denylist] Debug: got token(s) '[320, 29878]' from string '\r'
-# [get_token_denylist] Debug: did not add tokens '[320, 29878]' to the denylist because a single string became multiple tokens
-# 'get_token_denylist] Debug: got token(s) '[6756]' from string '
-# [get_token_denylist] Debug: converting token '[6756]' to a single value
-# [get_token_denylist] Debug: added token 6756 to the denylist
-# ') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# ') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# [get_token_denylist] Debug: got token(s) '[320, 29878, 29905, 29876]' from string '\r\n'
-# [get_token_denylist] Debug: did not add tokens '[320, 29878, 29905, 29876]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[6756, 13]' from string '
-# '
-# [get_token_denylist] Debug: did not add tokens '[6756, 13]' to the denylist because a single string became multiple tokens
-# 'get_token_denylist] Debug: got token(s) '[6756]' from string '
-# [get_token_denylist] Debug: converting token '[6756]' to a single value
-# [get_token_denylist] Debug: got token(s) '[29871, 13]' from string '
-# '
-# [get_token_denylist] Debug: did not add tokens '[29871, 13]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[6756, 13]' from string '
-# '
-# [get_token_denylist] Debug: did not add tokens '[6756, 13]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[529, 29900, 29916, 29900, 29909, 29958]' from string '<0x0A>'
-# [get_token_denylist] Debug: did not add tokens '[529, 29900, 29916, 29900, 29909, 29958]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[529, 29900, 29916, 29900, 29928, 29958]' from string '<0x0D>'
-# [get_token_denylist] Debug: did not add tokens '[529, 29900, 29916, 29900, 29928, 29958]' to the denylist because a single string became multiple tokens
-# [get_token_denylist] Debug: got token(s) '[396]' from string '#'
-# [get_token_denylist] Debug: converting token '[396]' to a single value
-# [get_token_denylist] Debug: added token 396 to the denylist
-# [get_token_denylist] Debug: added token 38 ('#') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# [get_token_denylist] Debug: added token 29937 ('#') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# [get_token_denylist] Debug: got token(s) '[444]' from string '##'
-# [get_token_denylist] Debug: converting token '[444]' to a single value
-# [get_token_denylist] Debug: added token 444 to the denylist
-# [get_token_denylist] Debug: added token 2277 ('##') to the denylist because it is equivalent to a string on the denylist even though the tokenizer converts that string to a different token
-# [get_token_denylist] Debug: got token(s) '[835]' from string '###'
-# [get_token_denylist] Debug: converting token '[835]' to a single value
-# [get_token_denylist] Debug: added token 835 to the denylist
-# [get_token_denylist] Debug: got token(s) '[835, 29871]' from string '### '
-# [get_token_denylist] Debug: did not add tokens '[835, 29871]' to the denylist because a single string became multiple tokens
-
-class TokenAllowAndDenyList:
-    def __init__(self):
-        self.allowlist = []
-        self.denylist = []
-
-def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, string_list, case_sensitive = True):
-    for i in range(0, len(string_list)):
-        current_string = string_list[i]
-
-        #current_string_escaped = get_escaped_string(current_string)
-        denied_toks_original = get_encoded_token(tokenizer, current_string)
-        #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
-        # If a given string was transformed into more than one token, ignore it
-        
-        if denied_toks_original is not None:
-            if isinstance(denied_toks_original, list):
-                if len(denied_toks_original) == 1:
-                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
-                    denied_toks_original = denied_toks_original[0]
-                else:
-                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
-                    denied_toks_original = None
-        if denied_toks_original is not None:
-            #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
-            token_allow_and_denylist.denylist = add_value_to_list_if_not_already_present(token_allow_and_denylist.denylist, denied_toks_original)
-            # if denied_toks_original not in token_allow_and_denylist.denylist:
-                # #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
-                # token_allow_and_denylist.denylist.append(denied_toks_original)
-        # also check to see if any tokens are equivalent to the string value when decoded, 
-        # even if the encoder didn't return them
-        for j in range(0, tokenizer.vocab_size):
-            candidate_token = get_decoded_token(tokenizer, j)
-            #candidate_token_escaped = get_escaped_string(candidate_token)
-            #if candidate_token == current_string:
-            if not isinstance(candidate_token, type(None)):
-                candidate_token_comparison = candidate_token.strip()
-                current_string_comparison = current_string.strip()
-                if not case_sensitive:
-                    candidate_token_comparison = candidate_token_comparison.lower()
-                    current_string_comparison = current_string_comparison.lower()
-                if candidate_token_comparison == current_string_comparison:
-                    token_allow_and_denylist.denylist = add_value_to_list_if_not_already_present(token_allow_and_denylist.denylist, j)
-                    # if j not in token_allow_and_denylist.denylist:
-                        # #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
-                        # token_allow_and_denylist.denylist.append(j)
-    return token_allow_and_denylist
-
-def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_nonprintable_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
-    #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
-    result = TokenAllowAndDenyList()
-    
-    if filter_nonascii_tokens:
-        result.denylist = add_values_to_list_if_not_already_present(result.denylist, get_nonascii_token_list(tokenizer))
-
-    if filter_nonprintable_tokens:
-        result.denylist = add_values_to_list_if_not_already_present(result.denylist, get_nonprintable_token_list(tokenizer))
-    
-    if token_regex is not None:
-        denied_toks2 = get_nonmatching_token_list(tokenizer, token_regex)
-        result.denylist = add_values_to_list_if_not_already_present(result.denylist, denied_toks2, ignore_none = True)
-    
-    if additional_token_ids is not None:
-        result.denylist = add_values_to_list_if_not_already_present(result.denylist, additional_token_ids, ignore_none = True)
-    
-    # add special tokens if requested
-    # Add the token ID directly to the list
-    # But also decode it and add the decoded version to the input list to catch equivalents
-    if filter_special_tokens:
-        special_token_ids = [ tokenizer.bos_token_id,
-                                    tokenizer.eos_token_id,
-                                    tokenizer.pad_token_id,
-                                    tokenizer.unk_token_id ]
-    # add any additional special tokens defined in the tokenizer configuration
-    # as well as their string equivalents
-    if filter_additional_special_tokens:
-        if hasattr(tokenizer, "added_tokens_decoder"):
-            atd = tokenizer.added_tokens_decoder
-            if atd is not None:
-                if isinstance(atd, dict):
-                    for added_token_id in atd.keys():
-                        added_token_data = atd[added_token_id]
-                        #if isinstance(added_token_data, dict):
-                        if isinstance(added_token_data, AddedToken):
-                            if hasattr(added_token_data, "special"):
-                                if added_token_data.special:
-                                    added_token_data_content = dir(added_token_data)
-                                    special_token_ids = add_value_to_list_if_not_already_present(special_token_ids, added_token_id)
-                                    #if added_token_id not in special_token_ids:
-                                    #    special_token_ids.append(added_token_id)
-                                    if hasattr(added_token_data, "content"):
-                                        added_token_data_content = atd[added_token_id].content
-                                        additional_token_strings_case_sensitive = add_value_to_list_if_not_already_present(additional_token_strings_case_sensitive, added_token_data_content)
-                                    #print(f"[get_token_denylist] Debug: adding tokenizer special token ID {added_token_id} ('{added_token_data_content}') to the denylist")
-                        else:
-                            print(f"[get_token_denylist] Warning: the added_tokens_decoder property for the current tokenizer was in the expected format, but items within that property were not. Expected a hashtable/dictionary, got {type(added_token_data)} '{added_token_data}'")
-                else:
-                    print(f"[get_token_denylist] Warning: the added_tokens_decoder property for the current tokenizer was not in the expected format. Expected a hashtable/dictionary, got {type(atd)} '{atd}'")
-            
-        for special_token_id in special_token_ids:
-            if special_token_id is not None:
-                result.denylist = add_value_to_list_if_not_already_present(result.denylist, special_token_id)
-                decoded_token = get_decoded_token(tokenizer, special_token_id)
-                additional_token_strings_case_sensitive = add_value_to_list_if_not_already_present(additional_token_strings_case_sensitive, decoded_token, ignore_none = True)
-
-    if filter_whitespace_tokens:
-        for j in range(0, tokenizer.vocab_size):
-            candidate_token = get_decoded_token(tokenizer, j)
-            #candidate_token_escaped = get_escaped_string(candidate_token)
-            if isinstance(candidate_token, type(None)):
-                result.denylist = add_value_to_list_if_not_already_present(result.denylist, j)
-            else:
-                #candidate_token_escaped = get_escaped_string(candidate_token)
-                # don't filter out tokens that are already empty strings, because some models (like Phi 3) use them to represent things like word breaks
-                if candidate_token == "":
-                    dummy = 1
-                    #print(f"[get_token_denylist] Debug: did not add token {j} ('{candidate_token_escaped}') to the denylist because it was already an empty string.")
-                else:
-                    if candidate_token.strip() == "":
-                        result.denylist = add_value_to_list_if_not_already_present(result.denylist, j)
-
-    additional_token_strings_case_sensitive = add_values_to_list_if_not_already_present(additional_token_strings_case_sensitive, string_list, ignore_none = True)
-
-    result = add_token_ids_from_strings(result, tokenizer, additional_token_strings_case_sensitive, case_sensitive = True)
-
-    if len(additional_token_strings_case_insensitive) > 0:
-        result = add_token_ids_from_strings(result, tokenizer, additional_token_strings_case_insensitive, case_sensitive = False)
-           
-    # finally, build the corresponding allowlist:
-    for j in range(0, tokenizer.vocab_size):
-        if j not in result.denylist:
-            result.allowlist.append(j)
-    result.denylist.sort()
-    result.allowlist.sort()
-    return result
-
 
 class AttackPrompt(object):
     """
