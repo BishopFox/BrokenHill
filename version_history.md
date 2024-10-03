@@ -3,7 +3,7 @@
 # 0.32 - 2024-10-02
 
 * Added the following options:
-  * `--exclude-language-names-except`
+  * `--exclude-language-names-except` and `--list-language-tags`
   * `--suppress-attention-mask`
   * `--temperature-range`
 * Improved handling of conversation templates with priming messages
@@ -11,6 +11,9 @@
 * Improved handling of generated conversation data
 * Performance improvements, especially during start-up
 * Improved randomization handling
+* Added basic support for Mamba
+* Verified that Pegasus more or less works again
+* Reorganized some of the code
 
 # 0.31 - 2024-09-26
 
