@@ -10,6 +10,7 @@ Some or all of these opinions may change based on continued testing and developm
 4. [Choosing the initial adversarial content](#choosing-the-initial-adversarial-content)
 5. [Results can be fragile](#results-can-be-fragile)
 6. [Chat template formatting is critical](#chat-template-formatting-is-critical)
+7. [Jailbreak detection is only as good as your rule set](#jailbreak-detection-is-only-as-good-as-your-rule-set)
 
 ## Pay attention to the output of Broken Hill's self-tests
 
@@ -314,3 +315,15 @@ In both cases, the jailbreak counts failed to reach the previous high watermark 
 Next, we tried reverting the change and duplicating the first token one time, so that the list of token IDs began with 18080, 18080, 22719. This reduced the jailbreak count to 15/25, but also seemed to break out of the rut that the previous test had gotten stuck in. Out of the first ten iterations, eight of the jailbreak counts were 12 or higher, versus the downward-trending curve of the first two attempts.
 
 More data is necessary before we make any strong recommendations here, but it seems that this approach can be useful, with the caveat that adding more than one token at a time may be as much (or more!) of a setback as restarting testing from the beginning with a longer list of initial tokens.
+
+## Jailbreak detection is only as good as your rule set
+
+Broken Hill includes a default jailbreak detection rule set based on a denylist approach. We've tried to tune it reasonably well to minimize both false positives and false negatives. However, because of the essentially infinite possible ways that an LLM may respond to a given input, it's far from perfect.
+
+Some LLMs will respond using colourful, poetic language when a jailbreak is attempted. This can cause false negatives. For example, Phi-3 might generate text that begins with "Atticus, I regret I can't write anything to endanger the safety of anyone." Superficially, this appears to be a refusal to generate the requested material - it contains the phrases "I regret", "I can't write", and "endanger the safety". But it may then offer to "create an imaginary and fictional scenario" in which it then does provide a jailbroken response.
+
+Some LLMs will also respond in different languages when certain words are included in the adversarial content. This doesn't mean the result is necessarily jailbroken or not - it just means that the default detection rule set is most likely not going to work correctly at all. The use of `--exclude-language-names-except en` can help prevent this, but not eliminate it entirely.
+
+As a result, when reviewing raw statistics that result from the default jailbreak detection ruleset, be somewhat skeptical of the jailbreak count.
+
+For maximum accuracy, [craft a custom ruleset using an allowlist approach, as discussed in the walkthrough of Derek Rush's LLM CTF](../GCG_attack/One_Prompt_To_Rule_Them_All-Derek_CTF.md) where possible.
