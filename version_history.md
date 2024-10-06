@@ -1,5 +1,10 @@
 # Broken Hill version history
 
+# 0.33 - 2024-10-07
+
+* Fixed a bug related to `--rollback-on-jailbreak-count-threshold`
+* Improvements to profanity list
+
 # 0.32 - 2024-10-02
 
 * Added the following options:
@@ -15,7 +20,7 @@
 * Verified that Pegasus more or less works again
 * Reorganized some of the code
 
-# 0.31 - 2024-09-26
+# 0.31 - 2024-09-26  
 
 * Added Ollama wrapper and associated example
 * Improved randomization handling

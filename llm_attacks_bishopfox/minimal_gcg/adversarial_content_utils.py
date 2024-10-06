@@ -1247,7 +1247,7 @@ class AdversarialContentManager:
         result.full_prompt_token_ids = current_token_ids
         result.input_token_ids = current_token_ids[:result.slice_data.target_output.stop]
 
-        #self.print_slice_info("get_prompt", result.slice_data, current_token_ids)
+        self.print_slice_info("get_prompt", result.slice_data, current_token_ids)
 
         #conversation_template.messages = []
 

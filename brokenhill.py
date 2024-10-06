@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.32"
-script_date = "2024-10-02"
+script_version = "0.33"
+script_date = "2024-10-07"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -745,6 +745,8 @@ def main(attack_params):
                         if attack_params.reencode_adversarial_content_every_iteration:
                             reencoded_token_ids = tokenizer.encode(current_adversarial_content.as_string)
                             current_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, reencoded_token_ids)
+                    
+                    adversarial_content_manager.adversarial_content = current_adversarial_content
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with current_adversarial_content = '{current_adversarial_content.get_short_description()}'")
@@ -1039,6 +1041,8 @@ def main(attack_params):
                             #attack_results_current_iteration.loss = current_loss_as_float
                             attack_results_current_iteration.loss = current_adversarial_content.original_loss
 
+                    #TKTK: generate the prompt once here and then reuse it instead of regenerating it identically for each LLM
+
                     # preserve the RNG states because the code in this section is likely to reset them a bunch of times
                     # they're preserved twice because this is inside a block that may not occur
                     # but if they're altered, it will be in the next section
@@ -1216,6 +1220,7 @@ def main(attack_params):
                             tested_adversarial_content.append_if_new(current_adversarial_content)
                             # roll back
                             adversarial_content = last_known_good_adversarial_content.copy()
+                            current_adversarial_content = adversarial_content
 
                     # only update the "last-known-good" results if no rollback was triggered (for any reason)
                     # otherwise, if someone has multiple rollback options enabled, and only one of them is tripped, the other path will end up containing bad data
