@@ -10,6 +10,7 @@ import torch.nn as nn
 from transformers import AutoModelForCausalLM
 from transformers import AutoTokenizer
 
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.base.attack_manager import get_embedding_matrix
@@ -591,7 +592,12 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
                                 #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_params.candidate_filter_tokens_max}).")
                                 filtered_due_to_excessive_token_count.append(adversarial_candidate)
                         if attack_params.attempt_to_keep_token_count_consistent:
-                            if candidate_token_count != current_adversarial_content_token_count:
+                            # Test whether or not the candidate can be decoded to a string, then re-encoded to token IDs without changing the number of tokens
+                            # Note that this doesn't guarantee a lossless conversion. For example, if two tokens in the input become one token in the output, but a different token in the input becomes two tokens in the output, this check will still succeed.
+                            #reencoded_candidate_token_ids = adversarial_content_manager.tokenizer.encode(adversarial_candidate.as_string, skip_special_tokens=True)
+                            reencoded_candidate_token_ids = encode_string_for_real_without_any_cowboy_funny_business(adversarial_content_manager.tokenizer, adversarial_candidate.as_string)
+                            #if candidate_token_count != current_adversarial_content_token_count:
+                            if len(reencoded_candidate_token_ids) != candidate_token_count:
                                 include_candidate = False
                                 #print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
                                 filtered_due_to_nonmatching_token_count.append(adversarial_candidate)

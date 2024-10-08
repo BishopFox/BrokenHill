@@ -7,6 +7,7 @@
   * [the "Extracting information from Broken Hill result JSON files" guide](docs/extracting_result_information.md) has been updated to reflect the changes
 * Fixed a bug that caused `--rollback-on-jailbreak-count-threshold` to not actually roll back, introduced during a previous refactoring
 * When `--display-failure-output` is omitted, the `unique_results` field of result data now excludes strings that are the shorter versions of longer LLM output generated during the first stage of a successful jailbreak detection, to save users the time of filtering them out manually
+* `--attempt-to-keep-token-count-consistent` now more closely mimics the check used in [the original demonstration produced by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/)
 * Improvements to profanity list
 
 # 0.32 - 2024-10-02

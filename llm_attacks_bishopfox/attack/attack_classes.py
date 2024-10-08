@@ -943,7 +943,9 @@ class AttackResultInfo(JSONSerializableObject):
 # The class that represents all of the data for a given Broken Hill iteration that should be written to persistent storage
 class AttackResultInfoCollection(JSONSerializableObject):
     def __init__(self):
-        # name is qualified because the initial results could be augmented later
+        # "original" because the initial results could be augmented later
+        self.iteration_number = None
+        self.total_processing_time_seconds = None
         self.original_creation_date_time_utc = get_time_string()
         self.jailbreak_detection_count = 0
         self.loss = None

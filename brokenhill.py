@@ -727,10 +727,12 @@ def main(attack_params):
                 break
             else:
                 try:
+                    attack_results_current_iteration = AttackResultInfoCollection()
+                    attack_results_current_iteration.iteration_number = main_loop_iteration_number + 1
                     print(f"---------")
-                    current_dt = get_now()
-                    current_ts = get_time_string(current_dt)
-                    current_elapsed_string = get_elapsed_time_string(start_dt, current_dt)
+                    iteration_start_dt = get_now()
+                    current_ts = get_time_string(iteration_start_dt)
+                    current_elapsed_string = get_elapsed_time_string(start_dt, iteration_start_dt)
                     print(f"{current_ts} - Main loop iteration {main_loop_iteration_number + 1} of {attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {successful_attack_count}")
                     overall_result_data.end_date_time = current_ts
                     overall_result_data.elapsed_time_string = current_elapsed_string
@@ -774,8 +776,7 @@ def main(attack_params):
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats(attack_params)
 
-                    best_new_adversarial_content = None
-                    attack_results_current_iteration = AttackResultInfoCollection()
+                    best_new_adversarial_content = None                    
                     
                     # preserve the RNG states because the code in this section is likely to reset them a bunch of times
                     torch_rng_state = torch.get_rng_state()
@@ -1075,7 +1076,7 @@ def main(attack_params):
                             attack_data_current_iteration.is_canonical_result = True
                             attack_results_current_iteration.set_values(tokenizer, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
                         else:
-                            if randomized_test_number == attack_params.random_seed_comparisons:
+                            if randomized_test_number == attack_params.random_seed_comparisons or attack_params.model_temperature_range_begin == attack_params.model_temperature_range_end:
                                 current_temperature = attack_params.model_temperature_range_end
                             else:
                                 current_temperature = attack_params.model_temperature_range_begin + (((attack_params.model_temperature_range_end - attack_params.model_temperature_range_begin) / float(attack_params.random_seed_comparisons) * randomized_test_number))
@@ -1190,6 +1191,10 @@ def main(attack_params):
                     if attack_results_current_iteration.jailbreak_detection_count > 0:
                         successful_attack_count += 1
                     
+                    iteration_end_dt = get_now()
+                    iteration_elapsed = iteration_end_dt - iteration_start_dt
+                    attack_results_current_iteration.total_processing_time_seconds = iteration_elapsed.total_seconds()
+                    
                     #attack_data.append(attack_data_current_iteration)
                     #attack_data.append(attack_results_current_iteration)
                     overall_result_data.attack_results.append(attack_results_current_iteration)
@@ -1272,12 +1277,13 @@ def main(attack_params):
                     gc.collect()
                     #if "cuda" in attack_params.device:
                     #    torch.cuda.empty_cache()
-                
+                                    
                 # Neither of the except KeyboardInterrupt blocks currently do anything because some inner code in another module is catching it first
                 except KeyboardInterrupt:
                     #import pdb; pdb.Pdb(nosigint=True).post_mortem()
                     print(f"Exiting main loop early by request")
                     user_aborted = True
+                
             if is_success and attack_params.break_on_success:
                 break
             main_loop_iteration_number += 1
@@ -1580,7 +1586,7 @@ if __name__=='__main__':
 
     parser.add_argument("--attempt-to-keep-token-count-consistent", type=str2bool, nargs='?',
         const=True, default=attack_params.attempt_to_keep_token_count_consistent,
-        help="If this option is specified, *and* --reencode-every-iteration is also specified, enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. It will also still allow the number of tokens to change slightly over time, because the comparison uses the re-encoded adversarial content, and re-encoding can result in the token count changing. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are a more precise method.")
+        help="Enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions), using  `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` in combination with `--add-token-when-no-candidates-returned` or `--delete-token-when-no-candidates-returned` may be more effective.")
 
     parser.add_argument("--add-token-when-no-candidates-returned", type=str2bool, nargs='?',
         const=True, default=attack_params.add_token_when_no_candidates_returned,

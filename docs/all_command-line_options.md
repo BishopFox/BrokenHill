@@ -146,6 +146,8 @@ The original code written by the authors of [the "Universal and Transferable Adv
 
 This tool manages adversarial content as token IDs by default, and does not exhibit the behaviour described above as a result. If you would like to re-enable that behaviour, include the `--reencode-every-iteration` option.
 
+[This topic is discussed in more detail in the "Re-encoding at every iteration (the `--reencode-every-iteration` option in Broken Hill)" document](re-encoding.md).
+
 ### --number-of-tokens-to-update-every-iteration <positive integer>
 
 *Experimental* Update more than one token during every iteration.
@@ -156,13 +158,13 @@ This tool manages adversarial content as token IDs by default, and does not exhi
 
 ### --temperature <floating-point number>
 
-'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results. Higher values are likely to cause more "creative" or "colourful" output.
+'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results. Higher values are likely to cause more "creative" or "colourful" output. [This value is discussed in detail in the "'Temperature' in Broken Hill and LLMs in general" document](temperature.md).
 
-You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails.
+You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails. 
 
 ### --temperature-range <floating-point number> <floating-point number>
 
-Specify the low and high end (inclusive) of a range of temperature values to pass to the model, when using --random-seed-comparisons. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.
+Specify the low and high end (inclusive) of a range of [temperature values](temperature.md) to pass to the model, when using --random-seed-comparisons. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.
 
 ### --topk <positive integer> and --max-topk <positive integer>
 
@@ -312,7 +314,9 @@ If this value is specified, candidate adversarial strings will be filtered out i
 
 ### --attempt-to-keep-token-count-consistent
 
-Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. It will also still allow the number of tokens to change slightly over time, because the comparison uses the re-encoded adversarial content, and re-encoding can result in the token count changing. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are a more precise method.
+Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2.
+
+If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions), using  `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` in combination with `--add-token-when-no-candidates-returned` or `--delete-token-when-no-candidates-returned` may be more effective.
 
 ## Controlling the data that's used to calculate loss at every iteration
 

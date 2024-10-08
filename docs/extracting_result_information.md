@@ -110,6 +110,12 @@ jq -r '.attack_results[] | [.jailbreak_detection_count, .loss, (.adversarial_con
 
 In these examples, the `jailbreak_detection_count` value may appear inaccurate. This is because the data was collected during a Broken Hill session where `--display-failure-output` was *not* specified. As you can see in the output of the more complex command, this causes two `result_data_sets` entries for tests against a particular LLM configuration that resulted in a jailbreak detection: `jailbreak_check` and `full_output`. `jailbreak_detection_count` is a count that applies to the jailbreak check, and is not incremented by the full output generation (if it occurs). You *could* exclude one or the other by modifying the `jq` statements, but because the output may be completely different when randomized testing is enabled, we don't recommend excluding either of them.
 
+### Just the adversarial content in string form
+
+This is useful for generating an input file to use with `ollama_wrapper.sh`.
+
+jq '.attack_results[] | select(.jailbreak_detection_count >= 1) | (.decoded_user_input_string)' results.json
+
 ### Jailbreak count, loss, whether or not the canonical LLM instance was jailbroken, and user input
 
 jq -r '.attack_results[] | select(.jailbreak_detection_count >= 1) | [.jailbreak_detection_count, .loss, (.results[] | select(.is_canonical_result == true) | .jailbreak_detected), (.decoded_user_input_string)] | join("\t")' results.json
