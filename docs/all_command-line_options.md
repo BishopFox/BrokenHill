@@ -312,7 +312,7 @@ If this value is specified, candidate adversarial strings will be filtered out i
 
 ### --attempt-to-keep-token-count-consistent
 
-Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are generally much better options.
+Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. It will also still allow the number of tokens to change slightly over time, because the comparison uses the re-encoded adversarial content, and re-encoding can result in the token count changing. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` are a more precise method.
 
 ## Controlling the data that's used to calculate loss at every iteration
 

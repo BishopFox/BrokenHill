@@ -133,3 +133,5 @@ Please see [the Frequently-asked questions (FAQ) document](FAQ.md).
 ## Additional information
 
 [The "How the greedy coordinate gradient (GCG) attack works" document](GCG_attack/gcg_attack.md) attempts to explain (at a high level) what's going on when Broken Hill performs a GCG attack.
+
+[Broken Hill version history](version_history.md)

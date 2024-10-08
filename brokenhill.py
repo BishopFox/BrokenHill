@@ -2,7 +2,7 @@
 
 script_name = "brokenhill.py"
 script_version = "0.33"
-script_date = "2024-10-07"
+script_date = "2024-10-08"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -250,7 +250,8 @@ def print_stats(attack_params):
     display_string += "---\n"
     print(display_string)
 
-def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
+#def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
+def generate(attack_params, model, tokenizer, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
     working_gen_config = gen_config
     # Copy the generation config to avoid changing the original
     if gen_config is None:
@@ -269,7 +270,8 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
     result = GenerationResults()
     result.max_new_tokens = working_gen_config.max_new_tokens
 
-    result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+    #result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+    result.input_token_id_data = input_token_id_data
     input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
     input_ids_sliced = input_ids
     if not include_target_content:
@@ -295,19 +297,22 @@ def generate(attack_params, model, tokenizer, adversarial_content_manager, adver
     
     return result
     
-def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
+#def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
+def check_for_attack_success(attack_params, model, tokenizer, input_token_id_data, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
     generation_results = generate(attack_params,
                                         model, 
                                         tokenizer, 
-                                        adversarial_content_manager, 
-                                        adversarial_content, 
+                                        #adversarial_content_manager, 
+                                        #adversarial_content, 
+                                        input_token_id_data, 
                                         temperature,
                                         gen_config = gen_config,
                                         do_sample = do_sample,
                                         include_target_content = include_target_content)
                                             
     result_ar_info_data = AttackResultInfoData()
-    result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+    #result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+    result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
     
     #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
     #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
@@ -656,11 +661,13 @@ def main(attack_params):
         
         #print(f"Debug: testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, "")
+        jailbreak_check_input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
                                                 model, 
                                                 tokenizer,
-                                                adversarial_content_manager, 
-                                                empty_adversarial_content,
+                                                #adversarial_content_manager, 
+                                                #empty_adversarial_content,
+                                                jailbreak_check_input_token_id_data,
                                                 1.0,
                                                 jailbreak_detector,
                                                 do_sample = False)
@@ -677,8 +684,9 @@ def main(attack_params):
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
                                                 model, 
                                                 tokenizer,
-                                                adversarial_content_manager, 
-                                                empty_adversarial_content,
+                                                #adversarial_content_manager, 
+                                                #empty_adversarial_content,
+                                                jailbreak_check_input_token_id_data,
                                                 1.0,
                                                 jailbreak_detector,
                                                 do_sample = False,
@@ -1041,7 +1049,8 @@ def main(attack_params):
                             #attack_results_current_iteration.loss = current_loss_as_float
                             attack_results_current_iteration.loss = current_adversarial_content.original_loss
 
-                    #TKTK: generate the prompt once here and then reuse it instead of regenerating it identically for each LLM
+                    #TKTK: generate the prompt once here using get_prompt and then reuse it instead of regenerating it identically for each LLM
+                    best_new_adversarial_content_input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
 
                     # preserve the RNG states because the code in this section is likely to reset them a bunch of times
                     # they're preserved twice because this is inside a block that may not occur
@@ -1055,16 +1064,17 @@ def main(attack_params):
                     prng_seed_index = -1
                     for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
                         prng_seed_index += 1
-                        attack_data_current_iteration = AttackResultInfo()
-                        attack_data_current_iteration.model_path = attack_params.model_path
-                        attack_data_current_iteration.tokenizer_path = attack_params.tokenizer_path
+                        attack_data_current_iteration = AttackResultInfo()                        
                         attack_data_current_iteration.numpy_random_seed = attack_params.numpy_random_seed
                         attack_data_current_iteration.torch_manual_seed = attack_params.torch_manual_seed
                         attack_data_current_iteration.torch_cuda_manual_seed_all = attack_params.torch_cuda_manual_seed_all
                         current_temperature = attack_params.model_temperature_range_begin
                         # For the first run, leave the model in its default do_sample configuration
                         do_sample = False
-                        if randomized_test_number > 0:
+                        if randomized_test_number == 0:
+                            attack_data_current_iteration.is_canonical_result = True
+                            attack_results_current_iteration.set_values(tokenizer, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
+                        else:
                             if randomized_test_number == attack_params.random_seed_comparisons:
                                 current_temperature = attack_params.model_temperature_range_end
                             else:
@@ -1103,8 +1113,9 @@ def main(attack_params):
                         is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
                                                 model, 
                                                 tokenizer,
-                                                adversarial_content_manager, 
-                                                current_adversarial_content,
+                                                #adversarial_content_manager, 
+                                                #current_adversarial_content,
+                                                best_new_adversarial_content_input_token_id_data,
                                                 current_temperature,
                                                 jailbreak_detector,
                                                 do_sample = do_sample)            
@@ -1112,10 +1123,6 @@ def main(attack_params):
                         if is_success:
                             attack_data_current_iteration.jailbreak_detected = True
                             attack_results_current_iteration.jailbreak_detection_count += 1
-                        
-                        # Get the current full user input from the first successful test
-                        if attack_results_current_iteration.complete_user_input is None:
-                            attack_results_current_iteration.complete_user_input = adversarial_content_manager.get_complete_input_string(jailbreak_check_generation_results.input_token_id_data)
 
                         #print(f"Passed:{is_success}\nCurrent best new adversarial content: '{current_adversarial_content.get_short_description()}'")
                         
@@ -1130,15 +1137,17 @@ def main(attack_params):
                         # only generate full output if it hasn't already just been generated
                         if not attack_params.display_full_failed_output and is_success:
                             full_output_data = AttackResultInfoData()
-                            # Note: for randomized variations where do_sample is True, the "full output" here will almost certainly differ from the values generated during jailbreak detection. I can't think of a great way around that, but setting the random seeds again seems like an OK workaround                            
+                            # Note: set random seeds for randomized variations where do_sample is True so that full output begins with identical output to shorter version
                             if do_sample:
                                 #print(f"[main loop] Temporarily setting all random seeds to {random_seed} to generate full output")
                                 numpy.random.seed(random_seed)
                                 torch.manual_seed(random_seed)
                                 torch.cuda.manual_seed_all(random_seed)
-                            generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, current_temperature, do_sample = do_sample, generate_full_output = True)
+                            #generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, current_temperature, do_sample = do_sample, generate_full_output = True)
+                            generation_results = generate(attack_params, model, tokenizer, best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
                           
-                            full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+                            #full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
+                            full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
                         
@@ -1164,7 +1173,8 @@ def main(attack_params):
                     
                     attack_results_current_iteration.update_unique_output_values()
                     iteration_status_message = f"-----------------\n"
-                    iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.results[0].get_first_result_data_set().decoded_user_input_string}\n---\n"
+                    #iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.results[0].get_first_result_data_set().decoded_user_input_string}\n---\n"
+                    iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.decoded_user_input_string}\n---\n"
                     iteration_status_message += f"Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}, with {attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
                     for uov_string in attack_results_current_iteration.unique_results.keys():
                         uov_count = attack_results_current_iteration.unique_results[uov_string]
@@ -1219,8 +1229,10 @@ def main(attack_params):
                             # add the rejected result to the list of tested results to avoid getting stuck in a loop
                             tested_adversarial_content.append_if_new(current_adversarial_content)
                             # roll back
-                            adversarial_content = last_known_good_adversarial_content.copy()
-                            current_adversarial_content = adversarial_content
+                            #adversarial_content = last_known_good_adversarial_content.copy()
+                            #current_adversarial_content = adversarial_content
+                            current_adversarial_content = last_known_good_adversarial_content.copy()
+                            
 
                     # only update the "last-known-good" results if no rollback was triggered (for any reason)
                     # otherwise, if someone has multiple rollback options enabled, and only one of them is tripped, the other path will end up containing bad data
@@ -1568,7 +1580,7 @@ if __name__=='__main__':
 
     parser.add_argument("--attempt-to-keep-token-count-consistent", type=str2bool, nargs='?',
         const=True, default=attack_params.attempt_to_keep_token_count_consistent,
-        help="If this option is specified, *and* --reencode-every-iteration is also specified, enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are generally much better options.")
+        help="If this option is specified, *and* --reencode-every-iteration is also specified, enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. It will also still allow the number of tokens to change slightly over time, because the comparison uses the re-encoded adversarial content, and re-encoding can result in the token count changing. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions) --adversarial-candidate-filter-tokens-min and --adversarial-candidate-filter-tokens-max are a more precise method.")
 
     parser.add_argument("--add-token-when-no-candidates-returned", type=str2bool, nargs='?',
         const=True, default=attack_params.add_token_when_no_candidates_returned,

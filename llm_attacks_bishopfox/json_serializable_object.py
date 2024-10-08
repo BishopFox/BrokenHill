@@ -7,14 +7,18 @@ import re
 class JSONSerializationException(Exception):
     pass
 
+JSON_DUMP_DEFAULT_INDENT = 4
+
 class JSONSerializableObject:    
     @staticmethod
-    def json_dumps(object_to_dump):
-        return json.dumps(object_to_dump, indent = 4)
+    def json_dumps(object_to_dump, use_indent = True):
+        if use_indent:
+            return json.dumps(object_to_dump, indent = JSON_DUMP_DEFAULT_INDENT)
+        return json.dumps(object_to_dump)
 
     def to_dict(self):
         return JSONSerializableObject.properties_to_dict(self)
-    
+        
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
 
