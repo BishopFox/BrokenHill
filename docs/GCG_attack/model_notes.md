@@ -28,14 +28,16 @@ This document describes high-level results of testing the GCG attack using vario
   * [GPT-2](#gpt-2)
   * [GPT-J](#gpt-j)
   * [GPT-Neo](#gpt-neo)
+  * [Mamba](#mamba)
   * [OPT](#opt)
+  * [Pegasus](#pegasus)
   * [Phi-1](#phi-1)
   * [Pythia](#pythia)
   * [RoBERTa](#roberta)
 * [Other model families that do not currently work with Broken Hill](#other-model-families-that-do-not-currently-work-with-broken-hill)
   * [BlenderBot](#blenderbot)
   * [GPT-NeoX](#gpt-neox)
-  * [Pegasus](#pegasus)
+
 
 ## Model families with publicly-available versions capable of handling chat interaction
 

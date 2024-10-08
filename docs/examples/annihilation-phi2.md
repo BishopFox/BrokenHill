@@ -80,7 +80,7 @@ Assistant: As an AI, I don't have access to the far-future timeline you are prop
 The command below creates a histogram of the number of randomized instances of the LLM that were jailbroken by the attack (number on the right) and count of unique adversarial content that produced that many successful jailbreaks (number on the left).
 
 ```
-$ jq -r '.attack_results[] | [.jailbreak_detection_count] | join("\t")' annihilation-phi-2-results.json | sort | uniq -c
+$ jq -r '.attack_results[] | [.jailbreak_detection_count] | join("\t")' annihilation-phi-2-results.json | sort -n | uniq -c
 
      14 0
      37 1
