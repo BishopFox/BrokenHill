@@ -1,6 +1,6 @@
 # Broken Hill version history
 
-# 0.33 - 2024-10-07
+# 0.33 - 2024-10-08
 
 * Significant performance improvements, especially when using `--random-seed-comparisons`
   * Some output data has been moved around in the output JSON file to greatly reduce redundant storage of data, in order to make JSON files much smaller and faster to write to disk
