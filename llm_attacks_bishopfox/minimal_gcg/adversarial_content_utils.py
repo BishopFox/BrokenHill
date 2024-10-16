@@ -186,6 +186,19 @@ def get_stablelm2_conversation_template():
     conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
     conv_template.sep_style=fastchat.conversation.SeparatorStyle.CHATML
     conv_template.sep = "<|im_end|>"
+    conv_template.stop_str = None
+    return conv_template
+    
+def get_felladrin_llama_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="felladrin-llama-chat"
+    conv_template.system_template = """<|im_start|>system
+{system_message}"""
+    conv_template.system_message=""
+    conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
+    conv_template.sep_style=fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep = "<|im_end|>"
+    conv_template.stop_str = None
     return conv_template
 
 def register_missing_conversation_template(attack_params, fschat_added_support, template_name, template):
@@ -205,6 +218,8 @@ def register_missing_conversation_templates(attack_params):
     fschat_added_support = []
 
     register_missing_conversation_template(attack_params, fschat_added_support, "blenderbot", get_blenderbot_conversation_template())
+    
+    register_missing_conversation_template(attack_params, fschat_added_support, "felladrin-llama-chat", get_felladrin_llama_conversation_template())
     
     register_missing_conversation_template(attack_params, fschat_added_support, "gemma", get_gemma_conversation_template())
     
@@ -395,10 +410,18 @@ class PromptAndInputIDCollection(JSONSerializableObject):
         self.slice_data = PromptSliceData()
     
     def get_user_input_token_ids(self):
-        result = self.full_prompt_token_ids[self.slice_data.user_role.stop:self.slice_data.assistant_role.start]
+        #result = self.full_prompt_token_ids[self.slice_data.user_role.stop:self.slice_data.assistant_role.start]
+        start_index = self.slice_data.user_role.stop
+        # handle any placement of base prompt and adversarial content
+        end_index = self.slice_data.control.stop
+        if self.slice_data.goal.stop > end_index:
+            end_index = self.slice_data.goal.stop
+        result = self.full_prompt_token_ids[start_index:end_index]
         return result
     
     def get_input_ids_as_tensor(self):
+        if isinstance(self.input_token_ids, torch.Tensor):
+            return self.input_token_ids
         return torch.tensor(self.input_token_ids)
 
     def to_dict(self):
@@ -460,13 +483,43 @@ class AdversarialContentManager:
             #print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}'")
             print(f"[{source_method_name}] Debug: slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}', tokens = {tokens[slice_dictionary[slice_name]]}")
 
+    def get_slice_info_for_validation_check(self, slice_data, slice_dictionary, ordered_slice_list, slice_number):
+        slice_name = ordered_slice_list[slice_number]
+        formatted_slice_name = f"the {slice_name} slice"
+        slice_start = None
+        slice_stop = None
+        if " and " in ordered_slice_list[slice_number]:
+            formatted_slice_name = f"the {slice_name} slices"
+            if ordered_slice_list[slice_number] == "goal and control":
+                slice_start = slice_data.goal.start
+                if slice_data.control.start < slice_start:
+                    slice_start = slice_data.control.start
+                slice_stop = slice_data.control.stop
+                if slice_data.goal.stop > slice_stop:
+                    slice_stop = slice_data.goal.stop
+            if ordered_slice_list[slice_number] == "target_output and loss":
+                slice_start = slice_data.loss.start
+                if slice_data.target_output.start < slice_start:
+                    slice_start = slice_data.target_output.start
+                slice_stop = slice_data.target_output.stop
+                if slice_data.loss.stop > slice_stop:
+                    slice_stop = slice_data.loss.stop
+        else:
+            current_slice_start = slice_dictionary[slice_name].start
+            slice_stop = slice_dictionary[slice_name].stop
+        return slice_name, slice_start, slice_stop
+
     def validate_slice_data(self, source_method_name, slice_data, token_ids, decoded_tokens):
         invalid_slice_dictionary = {}
         #print(f"[validate_slice_data - {source_method_name}] Debug: token_ids = {token_ids}, decoded_tokens = {decoded_tokens}")
         slice_dictionary = slice_data.get_slice_dictionary()
+        all_slices_are_not_none = True
+        found_at_least_one_slice = False
         for slice_name in slice_dictionary.keys():
             sl = slice_dictionary[slice_name]
-            if sl is not None:
+            if sl is None:
+                all_slices_are_not_none = False
+            else:
                 is_valid = True
                 if isinstance(sl.start, type(None)) or isinstance(sl.stop, type(None)):
                     is_valid = False
@@ -475,9 +528,13 @@ class AdversarialContentManager:
                     if slice_name == "system":
                         if isinstance(sl.start, type(None)) and not isinstance(sl.stop, type(None)):
                             is_valid = True
-                if not is_valid:
+                if is_valid:
+                    found_at_least_one_slice = True
+                else:
                     invalid_slice_dictionary[slice_name] = sl
                 #print(f"[validate_slice_data - {source_method_name}] Debug: slice '{slice_name}' = '{sl}', is_valid = {is_valid}.")
+        if not found_at_least_one_slice:
+            all_slices_are_not_none = False
         if len(invalid_slice_dictionary.keys()) > 0:
             message = f"[{source_method_name}] Warning: one or more slices have None values instead of start or stop values. This generally indicates an issue with the tokenizing or parsing logic. The slice(s) with None values are: "
             for slice_name in invalid_slice_dictionary.keys():
@@ -485,6 +542,33 @@ class AdversarialContentManager:
                 message += f"{slice_name}: {sl},"
             message = message[:-1]
             print(message)
+        
+        if all_slices_are_not_none:
+            nonsensical_slice_boilerplate = " This usually indicates a bug in the conversation-parsing logic of Broken Hill. Please contact a developer with reproduction steps if the issue has not already been reported."
+            ordered_slice_list = [ "system", "user_role", "goal and control", "assistant_role", "target_output and loss" ]
+            for current_slice_number in range(0, len(ordered_slice_list) - 1):
+                current_slice_name, current_slice_start, current_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, current_slice_number)
+                #print(f"[validate_slice_data] Debug: current_slice_name = '{current_slice_name}', current_slice_start = {current_slice_start}, current_slice_stop = {current_slice_stop}")
+                if current_slice_start is not None and current_slice_stop is not None:
+                    if current_slice_start > current_slice_stop:
+                        print(f"Error: the start index for {current_slice_name} ({current_slice_start}) is greater than the stop index for the same slice ({current_slice_stop}).{nonsensical_slice_boilerplate}")
+                for comparison_slice_number in range(current_slice_number + 1, len(ordered_slice_list)):
+                    comparison_slice_name, comparison_slice_start, comparison_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, comparison_slice_number)
+                    #print(f"[validate_slice_data] Debug: comparison_slice_name = '{comparison_slice_name}', comparison_slice_start = {comparison_slice_start}, comparison_slice_stop = {comparison_slice_stop}")
+                    if current_slice_start is not None and comparison_slice_start is not None:
+                        if current_slice_start > comparison_slice_start:
+                            print(f"Error: the start index for {current_slice_name} ({current_slice_start}) is greater than the start index for {comparison_slice_name} ({comparison_slice_start}).{nonsensical_slice_boilerplate}")
+                    if current_slice_stop is not None and comparison_slice_start is not None:
+                        if current_slice_stop > comparison_slice_start:
+                            # ignore this for the target_output and loss slice, because the overlap is expected
+                            if current_slice_name != "assistant_role" or comparison_slice_name != "target_output and loss":
+                                print(f"Error: the stop index for {current_slice_name} ({current_slice_stop}) is greater than the start index for {comparison_slice_name} ({comparison_slice_start}).{nonsensical_slice_boilerplate}")
+        self.user_role = None
+        self.goal = None
+        self.control = None
+        self.assistant_role = None
+        self.target_output = None
+        self.loss = None
         #self.print_slice_info(f"validate_slice_data - {source_method_name}", slice_data, token_ids)
 
     def extend_slice_if_next_token_is_in_list(self, decoded_tokens, current_slice, token_string_list):
@@ -806,9 +890,12 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (non-Python) - system', result.slice_data, current_token_ids, current_decoded_tokens)
 
             # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
+            base_prompt_index = result.prompt.rindex(self.attack_params.base_prompt)
             result.slice_data.goal = slice(
-                encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.attack_params.base_prompt)),
-                encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.attack_params.base_prompt) + len(self.attack_params.base_prompt))
+                #encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.attack_params.base_prompt)),
+                #encoded_conversation_template_prompt.char_to_token(result.prompt.find(self.attack_params.base_prompt) + len(self.attack_params.base_prompt))                
+                encoded_conversation_template_prompt.char_to_token(base_prompt_index),
+                encoded_conversation_template_prompt.char_to_token(base_prompt_index + len(self.attack_params.base_prompt))
             )
             self.validate_slice_data('get_prompt (non-Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
             
@@ -816,9 +903,12 @@ class AdversarialContentManager:
             if working_adversarial_content.as_string == "":
                 result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
             else:
+                working_adversarial_content_index = result.prompt.rindex(working_adversarial_content.as_string)
                 result.slice_data.control = slice(
-                    encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
-                    encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
+                    #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
+                    #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
+                    encoded_conversation_template_prompt.char_to_token(working_adversarial_content_index),
+                    encoded_conversation_template_prompt.char_to_token(working_adversarial_content_index + len(working_adversarial_content.as_string))
                 )
             self.validate_slice_data('get_prompt (non-Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
             # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
@@ -848,7 +938,8 @@ class AdversarialContentManager:
 
             #self.print_slice_info("get_prompt", result.slice_data, current_token_ids)
             #print(f"[get_prompt] Debug: result.prompt = '{result.prompt}', self.attack_params.target_output = '{self.attack_params.target_output}'")
-            prompt_find_self_target = result.prompt.find(self.attack_params.target_output)
+            #prompt_find_self_target = result.prompt.find(self.attack_params.target_output)
+            prompt_find_self_target = result.prompt.rindex(self.attack_params.target_output)
             #print(f"[get_prompt] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
             prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
             if isinstance(prompt_find_self_target_c2t, type(None)):

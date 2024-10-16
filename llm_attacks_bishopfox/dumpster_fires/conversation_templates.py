@@ -106,6 +106,20 @@ def fschat_conversation_template_from_json(fschat_conversation_template_json):
     result_dict = fschat_conversation_template_from_dict(fschat_conversation_template_json)    
     return json.loads(result_dict)
 
+# get a map of fschat role names to IDs
+def get_fschat_role_name_to_id_map(fschat_conversation_template):
+    result = {}
+    for i in range(0, len(fschat_conversation_template.roles)):
+        result[fschat_conversation_template.roles[i]] = i
+    return result
+
+# get a map of fschat IDs to role names
+def get_fschat_id_to_role_name_map(fschat_conversation_template):
+    result = {}
+    for i in range(0, len(fschat_conversation_template.roles)):
+        result[i] = fschat_conversation_template.roles[i]
+    return result
+
 
 class TokenizerCannotApplyChatTemplateException(Exception):
     pass
@@ -207,7 +221,7 @@ class TokenizerConversationTemplateTestResult:
         self.existing_fschat_template_handles_system_message_and_system_role_identically = False
         self.existing_fschat_template_and_tokenizer_template_system_handling_matches = False
         self.template_comparison_result = None
-        
+
 class ConversationTemplateTester:
     def __init__(self, adversarial_content_manager, model):
         self.adversarial_content_manager = adversarial_content_manager
@@ -226,19 +240,42 @@ class ConversationTemplateTester:
         
         # Test system message support
         system_message = "BROKEN_HILL_TEST_SYSTEM_MESSAGE"
+        # If the template already includes a system message, concatenate it and the test message together.
+        # for templates like Gemma that have a <bos>-style initial string in the system message.
+        if not isinstance(result.existing_fschat_template.system_message, type(None)):
+            system_message = f"{result.existing_fschat_template.system_message}{system_message}"
         # Create a two-step conversation between the user and the LLM to make validating the end of an LLM message versus the end of the conversation easier
         user_message_1 = "BROKEN_HILL_TEST_USER_MESSAGE_1"
         user_message_2 = "BROKEN_HILL_TEST_USER_MESSAGE_2"
         assistant_message_1 = "BROKEN_HILL_TEST_ASSISTANT_MESSAGE_1"
         assistant_message_2 = "BROKEN_HILL_TEST_ASSISTANT_MESSAGE_2"
 
-        tokenizer_chat_template_messages_with_system = [
-                {"role": tokenizer_chat_template_system_role, "content": system_message},
-                {"role": tokenizer_chat_template_user_role, "content": user_message_1},
-                {"role": tokenizer_chat_template_assistant_role, "content": assistant_message_1},
-                {"role": tokenizer_chat_template_user_role, "content": user_message_2},
-                {"role": tokenizer_chat_template_assistant_role, "content": assistant_message_2}
-            ]
+        tokenizer_chat_template_messages_with_system = [ {"role": tokenizer_chat_template_system_role, "content": system_message} ]
+                
+        # add in any existing template messages
+        if result.existing_fschat_template.messages is not None:
+            if len(result.existing_fschat_template.messages) > 0:
+                # Build a map of fschat template role names to tokenizer template role names
+                #ft_role_name_to_id_map = get_fschat_role_name_to_id_map(result.existing_fschat_template)
+                ft_id_to_role_name_map = get_fschat_id_to_role_name_map(result.existing_fschat_template)
+                ft_role_name_to_tokenizer_role_name_map = {}
+                add_messages = True
+                if 0 in ft_id_to_role_name_map.keys():
+                    ft_role_name_to_tokenizer_role_name_map[ft_id_to_role_name_map[0]] = tokenizer_chat_template_user_role
+                else:
+                    add_messages = False
+                if 1 in ft_id_to_role_name_map.keys():
+                    ft_role_name_to_tokenizer_role_name_map[ft_id_to_role_name_map[1]] = tokenizer_chat_template_assistant_role
+                else:
+                    add_messages = False
+                if add_messages:
+                    for role, message in result.existing_fschat_template.messages:
+                        tokenizer_chat_template_messages_with_system.append({"role": ft_role_name_to_tokenizer_role_name_map[role], "content": message})
+        
+        tokenizer_chat_template_messages_with_system.append({"role": tokenizer_chat_template_user_role, "content": user_message_1})
+        tokenizer_chat_template_messages_with_system.append({"role": tokenizer_chat_template_assistant_role, "content": assistant_message_1})
+        tokenizer_chat_template_messages_with_system.append({"role": tokenizer_chat_template_user_role, "content": user_message_2})
+        tokenizer_chat_template_messages_with_system.append({"role": tokenizer_chat_template_assistant_role, "content": assistant_message_2})
         
         tokenizer_chat_template_messages_without_system = tokenizer_chat_template_messages_with_system[1:]
         
@@ -303,12 +340,8 @@ class ConversationTemplateTester:
 
         working_copy_list = [existing_fschat_template_working_copy_system_message, existing_fschat_template_working_copy_system_role, existing_fschat_template_working_copy_no_system]
         
-        #existing_fschat_template_working_copy_system_message.set_system_message(system_message = system_message)
-        # for templates like Gemma that need a <bos>-style initial string
-        if isinstance(existing_fschat_template_working_copy_system_message.system_message, type(None)):
-            existing_fschat_template_working_copy_system_message.system_message = system_message
-        else:
-            existing_fschat_template_working_copy_system_message.system_message += system_message
+        existing_fschat_template_working_copy_system_message.set_system_message(system_message = system_message)
+
         existing_fschat_template_working_copy_system_role.append_message(tokenizer_chat_template_system_role, system_message)
 
         for conversation_template in working_copy_list:

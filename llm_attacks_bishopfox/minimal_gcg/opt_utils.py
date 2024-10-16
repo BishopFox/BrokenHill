@@ -123,7 +123,8 @@ def get_padded_target_token_ids(tokenizer, loss_slice, target_ids):
         result = target_ids_as_list
     
     if return_tensor:
-        result = torch.tensor(result, device = target_ids.device)
+        if not isinstance(result, torch.Tensor):
+            result = torch.tensor(result, device = target_ids.device)
     
     #print(f"[get_padded_target_token_ids] Debug: original_target_ids_length = {original_target_ids_length}, len(result) = {len(result)}, len(target_ids_as_list) = {len(target_ids_as_list)}, len_loss_slice = {len_loss_slice}, result = '{result}', target_ids_as_list = '{target_ids_as_list}'")
     
@@ -192,10 +193,11 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     """
 
     #print_stats("token_gradients")
-    #print("[token_gradients] Getting embedding weight matrix")
+    #print("[token_gradients] Debug: Getting embedding weight matrix")
     #print(f"[token_gradients] Debug: model.model.embed_tokens = {model.model.embed_tokens}")
     embed_weights = get_embedding_matrix(model)
     #print(f"[token_gradients] Debug: embed_weights = {embed_weights}")
+    #print(f"[token_gradients] Debug: embed_weights.shape = {embed_weights.shape}")
     #print_stats("token_gradients")
 
     #print(f"[token_gradients] Debug: embed_weights.dtype={embed_weights.dtype}")
@@ -203,6 +205,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     quantized_tensors = False
     if embed_weights is not None:
         if hasattr(embed_weights, "quantization_scheme"):
+            print(f"[token_gradients] Debug: embed_weights has quantization_scheme property, assuming quantized tensors")
             quantized_tensors = True
         if embed_weights.data is not None and len(embed_weights.data) > 0:
             #print(f"[token_gradients] Debug: type(embed_weights.data) = {type(embed_weights.data)}")
@@ -210,9 +213,21 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
             #if hasattr(embed_weights.data, "qscheme"):
             #    print(f"[token_gradients] Debug: embed_weights.data.qscheme = {embed_weights.data.qscheme}")
             if embed_weights.data.is_quantized:
+                print(f"[token_gradients] Debug: embed_weights.data.is_quantized is True, assuming quantized tensors")
                 quantized_tensors = True
+        else:
+            raise GradientCreationException(f"Can't create a gradient when embed_weights.data is null or empty.")
+    
+    #print(f"[token_gradients] Debug: input_id_data.slice_data.control = {input_id_data.slice_data.control}")
+    #print(f"[token_gradients] Debug: input_ids = {input_ids}")
+    input_ids_decoded = get_decoded_tokens(tokenizer, input_ids)
+    #print(f"[token_gradients] Debug: input_ids_decoded = {input_ids_decoded}")
+    #print(f"[token_gradients] Debug: input_ids[input_id_data.slice_data.control].shape = {input_ids[input_id_data.slice_data.control].shape}")
+    
+    if input_ids[input_id_data.slice_data.control].shape[0] < 1:
+        raise GradientCreationException(f"Can't create a gradient when the adversarial content ('control') slice of the input ID data has no content.")
 
-    #print("[token_gradients] Getting one_hot")
+    #print("[token_gradients] Debug: Getting one_hot")
     one_hot = None
     scales_value = None
     pczp_value = None
@@ -233,8 +248,14 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         except Exception as e:
             raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_ids[input_id_data.slice_data.control].shape[0], embed_weights.shape[0], device=model.device, dtype=embed_weights.dtype) with input_ids = '{input_ids}', input_ids[input_id_data.slice_data.control] = '{input_ids[input_id_data.slice_data.control]}', input_ids[input_id_data.slice_data.control].shape = '{input_ids[input_id_data.slice_data.control].shape}', embed_weights = '{embed_weights}', embed_weights.shape = '{embed_weights.shape}', dtype = '{dtype}': {e}")        
     #print_stats("token_gradients")
+    #print(f"[token_gradients] Debug: one_hot = {one_hot}")
+    #print(f"[token_gradients] Debug: scales_value = {scales_value}")
+    #print(f"[token_gradients] Debug: pczp_value = {pczp_value}")
+    
+    if one_hot.shape[0] < 1:
+        raise GradientCreationException(f"Got an empty list when trying to create the one_hot tensor.")
 
-    #print("[token_gradients] Getting one_hot scatter")
+    #print("[token_gradients] Debug: Getting one_hot scatter")
     one_hot_ones = None
     if quantized_tensors:
 #        one_hot_ones = torch.randint(1, 2, size=(one_hot.shape[0],1), device=model.device, dtype=embed_weights.dtype)
@@ -245,6 +266,8 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         except Exception as e:
             raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device=model.device, dtype=embed_weights.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}")
 
+    #print(f"[token_gradients] Debug: one_hot_ones = {one_hot_ones}")
+
     try:
         one_hot.scatter_(
             1, 
@@ -254,17 +277,21 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     except Exception as e:
         raise GradientCreationException(f"Error calling one_hot.scatter_(1, input_ids[input_id_data.slice_data.control].unsqueeze(1), one_hot_ones) with input_ids[input_id_data.slice_data.control].unsqueeze(1) = '{input_ids[input_id_data.slice_data.control].unsqueeze(1)}', one_hot_ones = '{one_hot_ones}': {e}")
     #print_stats("token_gradients")
+    
+    #print(f"[token_gradients] Debug: one_hot_ones = {one_hot_ones}")
 
-    #print("[token_gradients] one_hot.requires_grad_()")
+    #print("[token_gradients] Debug: one_hot.requires_grad_()")
     one_hot.requires_grad_()
     #print_stats("token_gradients")
 
-    #print("[token_gradients] Getting input_embeds")
+    #print("[token_gradients] Debug: Getting input_embeds")
     input_embeds = (one_hot @ embed_weights).unsqueeze(0)
     #print_stats("token_gradients")
     
+    #print(f"[token_gradients] Debug: input_embeds = {input_embeds}")
+    
     # now stitch it together with the rest of the embeddings
-    #print("[token_gradients] Getting embeddings")
+    #print("[token_gradients] Debug: Getting embeddings")
     embeds = None
     try:
         embeds = get_embeddings(model, input_ids.unsqueeze(0)).detach()
@@ -272,7 +299,9 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         raise GradientCreationException(f"Error calling get_embeddings(model, input_ids.unsqueeze(0)).detach() with input_ids.unsqueeze(0) = '{input_ids.unsqueeze(0)}': {e}")
     #print_stats("token_gradients")
 
-    #print("[token_gradients] Getting full_embeds")
+    #print(f"[token_gradients] Debug: embeds = {embeds}")
+
+    #print("[token_gradients] Debug: Getting full_embeds")
     full_embeds = None
     # try:
         # full_embeds = torch.cat(
@@ -297,24 +326,28 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #full_embeds = full_embeds.to(torch.float32)
     #print_stats("token_gradients")
 
+    #print(f"[token_gradients] Debug: full_embeds = {full_embeds}")
     #print(f"[token_gradients] Debug: full_embeds.dtype: {full_embeds.dtype}")
     
-    #print("[token_gradients] Getting logits")
+    #print("[token_gradients] Debug: Getting logits")
     logits = None
     #try:
     #    logits = model(inputs_embeds=full_embeds).logits
+    # TKTK: is there a way to limit this up front to just the user input/adversarial content and the messages that follow? That should reduce device memory consumption considerably.
     logits = model(inputs_embeds=full_embeds).logits
     #except Exception as e:
     #    raise GradientCreationException(f"Error calling model(inputs_embeds=full_embeds).logits with full_embeds = '{full_embeds}': {e}")
     #print_stats("token_gradients")
+    #print(f"[token_gradients] Debug: logits = {logits}")
 
-    #print("[token_gradients] Getting targets")
+    #print("[token_gradients] Debug: Getting targets")
     targets = None
     try:
         targets = input_ids[input_id_data.slice_data.target_output]
     except Exception as e:
         raise GradientCreationException(f"Error calling input_ids[input_id_data.slice_data.target_output] with input_ids = '{input_ids}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}")
     #print_stats("token_gradients")
+    #print(f"[token_gradients] Debug: targets = {targets}")
     
     # pad the target token IDs, if necessary
     try:
@@ -330,10 +363,10 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         # while len_loss_slice > len(targets_as_list):
             # targets_as_list.append(tokenizer.pad_token_id)
         # targets = torch.tensor(targets_as_list, device = targets.device)
+    #print(f"[token_gradients] Debug: targets (after padding, if necessary) = {targets}")
 
 
-
-    #print("[token_gradients] Getting loss")
+    #print("[token_gradients] Debug: Getting loss")
     got_loss = False
     loss = None
     loss_logits = None
@@ -341,6 +374,8 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         loss_logits = logits[0,input_id_data.slice_data.loss,:]
     except Exception as e:
         raise GradientCreationException(f"Error calling logits[0,input_id_data.slice_data.loss,:] with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}': {e}")
+
+    #print(f"[token_gradients] Debug: loss_logits = {loss_logits}")
 
     if attack_params.loss_algorithm == LossAlgorithm.CROSS_ENTROPY:
         try:
@@ -366,8 +401,10 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
         print("[token_gradients] Error: unknown loss algorithm '{attack_params.loss_algorithm}'")
         sys.exit(1)
     #print_stats("token_gradients")
+    
+    #print(f"[token_gradients] Debug: loss = {loss}")
 
-    #print("[token_gradients] loss.backward()")
+    #print("[token_gradients] Debug: loss.backward()")
     #try:
     #    loss.backward()
     loss.backward()
@@ -375,21 +412,25 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #    raise GradientCreationException(f"Error calling loss.backward(): {e}")
     #print_stats("token_gradients")
     
+    #print(f"[token_gradients] Debug: loss (after backpropagation) = {loss}")
+    
     if one_hot.grad is not None:
-        #print("[token_gradients] Cloning one_hot.grad")
+        #print("[token_gradients] Debug: Cloning one_hot.grad")
         result_gradient = one_hot.grad.clone()
         #print_stats("token_gradients")
+        
+        #print(f"[token_gradients] Debug: result_gradient = {result_gradient}")
 
-        #print("[token_gradients] Getting gradients")
+        #print("[token_gradients] Debug: Getting gradients")
         try:
             result_gradient = result_gradient / result_gradient.norm(dim=-1, keepdim=True)
         except Exception as e:
             raise GradientCreationException(f"Error calling result_gradient / result_gradient.norm(dim=-1, keepdim=True) with result_gradient = '{result_gradient}', result_gradient.norm(dim=-1, keepdim=True) = '{result_gradient.norm(dim=-1, keepdim=True)}': {e}")
         #print_stats("token_gradients")
+        #print(f"[token_gradients] Debug: result_gradient (after normalization) = {result_gradient}")
         return result_gradient
 
-    print("Error: one_hot.grad is None")
-    return None
+    raise GradientCreationException("Error: one_hot.grad is None")
 
 def get_adversarial_content_candidates(attack_params, adversarial_content_manager, current_adversarial_content, coordinate_gradient, random_generator_gradient, random_generator_cpu, random_generator_attack_params_device, not_allowed_tokens = None):
 
@@ -400,6 +441,9 @@ def get_adversarial_content_candidates(attack_params, adversarial_content_manage
             coordinate_gradient[:, not_allowed_tokens.to(coordinate_gradient.device)] = numpy.infty
 
         top_indices = (-coordinate_gradient).topk(attack_params.topk, dim=1).indices
+        if top_indices.shape[0] < 1:
+            raise GradientSamplingException(f"No top indices were generated from the coordinate gradient. Coordinate gradient was: {coordinate_gradient}.")
+        
         current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(coordinate_gradient.device)
 
         original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(attack_params.new_adversarial_value_candidate_count, 1)
@@ -620,7 +664,7 @@ def get_filtered_cands(attack_params, adversarial_content_manager, new_adversari
                                 #print(f"[get_filtered_cands] Debug: '{adversarial_candidate_message_represenation}' represented as '{adversarial_candidate.as_string}' passed the regular expression filter")
                             else:
                                 include_candidate = False
-                                print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_params.token_filter_regex}'.")
+                                print(f"[get_filtered_cands] Debug: rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_params.candidate_filter_regex}'.")
                                 filtered_due_to_not_matching_regex.append(adversarial_candidate)
                         if include_candidate and not isinstance(attack_params.candidate_filter_repetitive_tokens, type(None)) and attack_params.candidate_filter_repetitive_tokens > 0:
                             token_counts = {}

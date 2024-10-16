@@ -32,6 +32,8 @@ with open('requirements.txt', 'r') as requirements:
           version=get_version('llm_attacks_bishopfox/__init__.py'),
           install_requires=list(requirements.read().splitlines()),
           packages=base_package_list,
+          package_data={'': ['*.json']},
+          include_package_data=True,
           description='library and tooling for creating adversarial prompts for language models',
           python_requires='>=3.6',
           author='Andy Zou, Zifan Wang, Matt Fredrikson, J. Zico Kolter, Ben Lincoln',

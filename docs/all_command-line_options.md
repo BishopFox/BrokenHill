@@ -172,6 +172,10 @@ Specify the low and high end (inclusive) of a range of [temperature values](temp
 
 If the tool, during a given iteration, finds that candidate filtering has resulted in zero candidates, it will increase the `--topk` value to (n * topk), where n is the number of times zero candidates have occurred. By default, this will occur without limit. Use the `--max-topk` option to specify a value which will cause the script to exit instead of attempting to include even more candidates.
 
+### --ignore-prologue-during-gcg-operations
+
+*Experimental* If this option is specified, any system prompt and/or template messages will be ignored when performing the most memory-intensive parts of the GCG attack (but not when testing for jailbreak success). This can allow testing in some configurations that would otherwise exceed available device memory, but may affect the quality of results as well.
+
 ## Randomization
 
 These options control more or less all of the randomized operations performed by the tool. A fixed seed is used to allow reproducible results.
@@ -380,7 +384,7 @@ The maximum number of tokens to generate when testing output for a successful ja
 
 ## --max-new-tokens-final <positive integer>
 
-The maximum number of tokens to generate when generating final output for display. Shorter values will cause the output to be truncated, so it's set very high by default. The script will attempt to read the actual maximum value from the model and tokenizer and reduce this value dynamically to whichever of those two is lower if necessary. (default: 16384)
+The maximum number of tokens to generate when generating final output for display. Shorter values will cause the output to be truncated, so it's set very high by default. The script will attempt to read the actual maximum value from the model and tokenizer and reduce this value dynamically to whichever of those two is lower if necessary. (default: 1024)
 
 ## Restricting candidate adversarial content to values that are an improvement, or at least not a significant deterioration
 

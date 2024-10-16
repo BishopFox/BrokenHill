@@ -1,5 +1,6 @@
 #!/bin/env python
 
+import re
 import sys
 import torch
 
@@ -153,6 +154,32 @@ def encode_string_for_real_without_any_cowboy_funny_business(tokenizer, string):
     #print(f"[encode_string_for_real_without_any_cowboy_funny_business] input = '{string}', result = {result}")
     return result
 
+# # Gets the decoded string version of a set of token IDs, *without* any extra refuse conflagration tokens included, FOR REAL
+# def decode_token_ids_do_not_even_think_about_reaching_for_those_schofields_charlie_prince(tokenizer, token_ids):
+    # if token_ids is None:
+        # return None
+    # if len(token_ids) == 0:
+        # return ""
+    # decoded_string = tokenizer.decode(generated_prompt_token_ids)
+    # #print(f"[encode_string_for_real_without_any_cowboy_funny_business] string_encoded = {string_encoded}")
+    # # First, strip any leading dumpster inferno content
+    # # make a single-character string that definitely does not start with the same character as the input string
+    # not_the_same_string_at_all = "A"
+    # if string[0] == "A":
+        # not_the_same_string_at_all = "B"
+    # not_the_same_string_at_all_encoded = tokenizer.encode(not_the_same_string_at_all)
+    # #print(f"[encode_string_for_real_without_any_cowboy_funny_business] not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
+    # start_index = find_index_of_first_nonmatching_element(string_encoded, not_the_same_string_at_all_encoded)
+    # # Second, check for any ever-burning beacons of waste at the end of the result
+    # # make a string that is the same as the input, but has more characters at the end
+    # string_with_chaff = f"{string} 1987"
+    # string_with_chaff_encoded = tokenizer.encode(string_with_chaff)
+    # #print(f"[encode_string_for_real_without_any_cowboy_funny_business] string_with_chaff_encoded = {string_with_chaff_encoded}")
+    # stop_index = find_index_of_first_nonmatching_element(string_encoded, string_with_chaff_encoded)
+    # result = string_encoded[start_index:stop_index]
+    # #print(f"[encode_string_for_real_without_any_cowboy_funny_business] input = '{string}', result = {result}")
+    # return result
+
 # so many spaghetti code special cases to handle madness like 'This is a special token, but you can't treat it as 100% trash fire because it's also a sentinel that the parser has to look for. Also, sometimes it's more than one token! But not always!'
 def is_conversation_role_token(conversation_template, token):
     if not isinstance(token, type(None)):
@@ -277,6 +304,75 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens,
     #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
     return result_token_array, result_decoded_token_array
 
+# Third, walk step-by-step through the two sets of decoded tokens.
+# Make a string out of every non-whitespace character in the list to be searched for ("the first list").
+# e.g. if the first list is [ "I", "'", "m", " just", " a", " cow", "boy", " living", " in", " a", "cowboy", " day", "!" ],
+# the string would be "I'mjustacowboylivinginacowboyday!".
+# Start at the beginning of the list to be searched ("the second list"). Proceed forward by one token at each step.
+# Begin building a string using the current token, minus any whitespace.
+# Continue adding the characters of the following tokens (minus any whitespace) until either a character that doesn't match the first string at the same position is found, *or* the second string reaches the same length as the first string.
+# In the second case, use the index of the current starting token as the start index part of the return value.
+# Use (the index + 1) of the token that is currently being added to the second string as the stop index of the return value.
+# I implore you once again, LLM researchers, please, stop the madness.
+# Who is number one?! You are, number two.
+def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(decoded_token_list_to_search_for, decoded_token_list_to_search_within, search_start_index = None, search_end_index = None, find_last = False):
+    search_string = ""    
+    regex_whitespace = re.compile(r'\s')
+    result_start_index = None
+    result_stop_index = None
+    step_size = 1
+    range_start = 0
+    range_end = len(decoded_token_list_to_search_within)
+    compared_strings = []
+    if find_last:
+        step_size = -1
+        range_start = len(decoded_token_list_to_search_within) - 1
+        range_end = -1
+        if search_start_index is not None:
+            range_end = search_start_index - 1
+        if search_end_index is not None:
+            range_start = search_end_index - 1
+    else:
+        if search_start_index is not None:
+            range_start = search_start_index
+        if search_end_index is not None:
+            range_end = search_end_index
+        
+    for i in range(0, len(decoded_token_list_to_search_for)):
+        search_string += regex_whitespace.sub('', decoded_token_list_to_search_for[i])
+
+    #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: searching for '{search_string}' in {decoded_token_list_to_search_within}, from index {range_start} to index {range_end}, step {step_size}")
+    for i in range(range_start, range_end, step_size):
+        within_string = ""
+        result_start_index = i
+        do_continue = False
+        for j in range(i, len(decoded_token_list_to_search_within)):
+            within_string += regex_whitespace.sub('', decoded_token_list_to_search_within[j])
+            result_stop_index = j + 1
+            if len(within_string) >= len(search_string):
+                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: stopping concatenation at '{within_string}' because its length was greater than or equal to the length of '{search_string}'.")
+                break
+            current_substring = search_string[0:len(within_string)]
+            # skip checking the rest of the current subsection if the material collected so far doesn't match
+            if current_substring != within_string:
+                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: ending comparison of i = {i}, j = {j} early because '{current_substring}' != '{within_string}'")
+                do_continue = True
+                break
+        compared_strings.append(within_string)
+        if do_continue:
+            continue
+        # determine if the resulting string matches the first string
+        if len(within_string) >= len(search_string):
+            current_substring = within_string[0:len(search_string)]
+            if current_substring == search_string:
+                result = slice(result_start_index, result_stop_index)
+                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: result = '{result}'")
+                return result
+            #else:
+            #    print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: Compared '{within_string}' subset, '{current_substring}' != '{search_string}'.")
+    
+    raise TrashFireTokenException(f"Could not find {decoded_token_list_to_search_for} (represented as '{search_string}') in {decoded_token_list_to_search_within} (represented as a single string with no whitespace). Compared the search string against the following strings: {compared_strings}.")
+
 # This actually returns a slice that describes the start and end indices in the token array
 def find_first_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, strip_leading_and_trailing_tokens = False, remove_empty_leading_and_trailing_tokens = True, remove_leading_and_trailing_trash_fire_tokens = True):
     return find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = start_index, stop_index = stop_index, conversation_template = conversation_template, find_last = False, strip_leading_and_trailing_tokens = strip_leading_and_trailing_tokens, remove_empty_leading_and_trailing_tokens = remove_empty_leading_and_trailing_tokens, remove_leading_and_trailing_trash_fire_tokens = remove_leading_and_trailing_trash_fire_tokens)
@@ -311,13 +407,14 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
     
     failure_messages = []
     
+    # various ways of finding strings encoded to token form
+    # because there are a lot of weird variations on this concept depending on the LLM
     for string_token_set_num in range(0, len(string_token_variations)):
         string_tokens = string_token_variations[string_token_set_num]
         if len(string_tokens) < 1:
             raise TrashFireTokenException(f"[find_index_of_token] Error: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
         
-        #print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")
-        # hacky workarounds for garbagey behaviour by LLMs
+        #print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")        
         #string_to_search_for_array = string_to_search_for.split(" ")
         current_string_to_search_for = string_variations[string_token_set_num]
         string_to_search_for_array = current_string_to_search_for.split(" ")
@@ -346,6 +443,8 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         string_tokens = trimmed_string_tokens
         decoded_string_tokens = trimmed_decoded_string_tokens
         
+        # First, look for the encoded version of the string in the encoded version of the prompt.
+        # One would think this is all one would need to do for this function, but one would be wrong.
         #print(f"[find_index_of_token] Debug: searching for '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}' from index {start_index} to {stop_index}")
         result_start = None
         if find_last:
@@ -355,6 +454,13 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         result_stop = None
         is_failure = False
         if isinstance(result_start, type(None)):
+            # Second, look for the the first match for any of the following combinations:
+            #   * In the full prompt decoded tokens after being stripped of whitespace:
+            #       * The decoded version of the encoded string tokens
+            #       * The decoded, whitespace-stripped version of the encoded string tokens
+            #   * In the full prompt decoded tokens without being stripped of whitespace:
+            #       * The decoded version of the encoded string tokens
+            #       * The decoded, whitespace-stripped version of the encoded string tokens
             # try to find cases where tokens have spaces on either side or not at all
             decoded_tokens_processed_1 = []
             decoded_tokens_processed_2 = []
@@ -362,8 +468,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
                 processed_token = decoded_tokens[i].strip()
                 decoded_tokens_processed_1.append(processed_token)
                 decoded_tokens_processed_2.append(decoded_tokens[i])
-            # look for the first word as one string as well as individual decoded token IDs
-            for search_array in [ string_to_search_for_array, decoded_string_tokens ]:
+            for search_array in [ decoded_string_tokens, string_to_search_for_array ]:
                 for in_array in [ decoded_tokens_processed_1, decoded_tokens_processed_2 ]:
                     if isinstance(result_start, type(None)):
                         if find_last:
@@ -382,10 +487,19 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
                 result_stop = result_start + len(string_tokens)
                 # This issue is so frequent that enabling this error is too noisy
                 #print(f"[find_index_of_token] Warning: could not find '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
-                
         else:
             result_stop = result_start + len(string_tokens)
-        
+        if isinstance(result_start, type(None)):
+            # One might think "surely, no more ways of searching for the tokens are necessary after five previous variations!"
+            # But one would still be mistaken. I'm looking at you, Phi-3!
+            # The specific case that prompted this is that Phi-3 would encode the word "Wonderful!" as 'Wonder', 'ful', '!' when it occurred at the beginning of a string, but 'W', 'onder', 'ful', '!' if it occurred after the token "<|assistant|>".
+            # This is done only when the other two checks fail because it's more expensive.
+            try:
+                result = get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(decoded_string_tokens, decoded_tokens, search_start_index = start_index, search_end_index = stop_index, find_last = find_last)
+                return result
+            except TrashFireTokenException as tfte:
+                is_failure = True
+                failure_messages.append(f"{tfte}")        
         if not is_failure:
             result = slice(result_start, result_stop)
             #print(f"[find_index_of_token] Debug: result = '{result}'")

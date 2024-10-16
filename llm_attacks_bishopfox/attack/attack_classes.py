@@ -12,12 +12,12 @@ from enum import StrEnum
 from enum import auto
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.base.attack_manager import get_default_negative_test_strings
-from llm_attacks_bishopfox.base.attack_manager import get_default_positive_test_strings
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 #from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_now
@@ -491,6 +491,9 @@ class AttackParams(JSONSerializableObject):
         # CUDA
         self.torch_cuda_manual_seed_all = 20
 
+        # If this option is set to True, Broken Hill will generate a second version of the prompt to use for the memory-hungry parts of the GCG attack (gradient generation, logits, etc.).
+        # The second version of the prompt omits the system prompt (if any) and any template messages before the current user input.
+        self.ignore_prologue_during_gcg_operations = False
 
         # Candidate adversarial data filtering
         #
@@ -655,8 +658,8 @@ class AttackParams(JSONSerializableObject):
         self.generation_max_new_tokens = 32
 
         # maximum new tokens value when generating full output
-        self.full_decoding_max_new_tokens = 16384
-        #self.full_decoding_max_new_tokens = 1024
+        #self.full_decoding_max_new_tokens = 16384
+        self.full_decoding_max_new_tokens = 1024
 
         # during the candidate-generation stage, continue generating sets of random candidates until at least one is found that either has a lower loss than the current value, or increases it by no more than this amount
         self.required_loss_threshold = None

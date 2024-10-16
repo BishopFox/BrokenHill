@@ -282,9 +282,9 @@ test_input_string () {
 	output_file_counter=$((output_file_counter+1))
 }
 
-while read validline
+while read -r validline
 do
-	while read discloseline
+	while read -r discloseline
 	do
 		test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${validline} ${discloseline}"
 		test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${discloseline} ${validline}"
@@ -334,7 +334,7 @@ $ find . -type f -iname 'cand*.txt' \
 	| cut -d":" -f1 \
 	| sort -u > results-01.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep -L 'messed up' "${fn}"; \
 	done<results-01.txt > success-01.txt
 ```
@@ -342,7 +342,7 @@ $ while read fn; do \
 Generate a list of distinct prompts that produced the desired result, e.g.:
 
 ```
-$ while read fn; do \
+$ while read -r fn; do \
 	grep "This message is a valid question for a record store customer" "${fn}"; \
 	done<success-01.txt | sort -u | tee success-01-prompts.txt
 ```
@@ -384,7 +384,7 @@ test_input_string () {
 	output_file_counter=$((output_file_counter+1))
 }
 
-while read line
+while read -r line
 do
 	test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${line}"
 done<"${INPUT_FILE_1}"
@@ -420,11 +420,11 @@ $ find . -type f -iname 'cand*.txt' \
 	| cut -d":" -f1 \
 	| sort -u > results-default_and_fp16.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep -L 'messed up' "${fn}"; \
 	done<results-default_and_fp16.txt > success-default_and_fp16.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep "This message is a valid question for a record store customer" "${fn}"; \
 	done<success-default_and_fp16.txt | sort -u | tee success-default_and_fp16-prompts.txt
 ```

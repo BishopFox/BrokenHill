@@ -52,6 +52,13 @@ bin/python -u ./BrokenHill/brokenhill.py \
 	2>&1 | tee death_threat-Phi-3-mini-128k-instruct-no_randomized_LLMs.txt
 ```
 
+
+```
+
+```
+
+
+
 ### Export results that succeeded against Broken Hill's instance of Phi-3
 
 Because `--random-seed-comparisons` was not specified, every test performed by Broken Hill will have either zero or one jailbreak detection. The following command exports all adversarial content that was detected as successfully jailbreaking the instance of Phi-3 loaded by Broken Hill:
@@ -126,7 +133,7 @@ bin/python -u ./BrokenHill/brokenhill.py \
 	2>&1 | tee death_threat-Phi-3-mini-128k-instruct-with_randomized_LLMs_and_rollback.txt
 ```
 
-### Find the best results
+### Export adversarial content
 
 The command below creates a histogram of the number of randomized instances of the LLM that were jailbroken by the attack (number on the right) and count of unique adversarial content that produced that many successful jailbreaks (number on the left).
 
@@ -150,6 +157,8 @@ $ jq -r '.attack_results[] | select(.jailbreak_detection_count >= 1) | [.complet
 ### Test in another platform
 
 A future version of Broken Hill will include the ability to perform this step directly. In the meantime, Broken Hill includes a script named `ollama_wrapper.sh` that can test a large list of adversarial content against an LLM running in `ollama`.
+
+https://ollama.com/library/phi3/tags
 
 ```
 

@@ -111,22 +111,22 @@ from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
 from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
-#from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_nonascii_token_list
 from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
-from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
-from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
+#from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_nonascii_token_list
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
@@ -135,19 +135,23 @@ from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import Adversar
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import load_conversation_template
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_missing_conversation_templates
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientSamplingException
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import MellowmaxException
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import NullPaddingTokenException
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import PaddingException
+from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_adversarial_content_candidates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_logits
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_missing_pad_token_names
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer
-from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_adversarial_content_candidates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
 from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
-from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
-from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
+from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_random_token_id
@@ -318,6 +322,8 @@ def check_for_attack_success(attack_params, model, tokenizer, input_token_id_dat
     #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
     
     jailbroken = False
+    
+    jailbreak_check_result = JailbreakDetectionRuleResult.FAILURE
     
     if result_ar_info_data.decoded_llm_output_string.strip() != "":
         jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
@@ -619,10 +625,11 @@ def main(attack_params):
 
         #print(f"[main] Debug: creating adversarial content manager.")
         adversarial_content_manager = AdversarialContentManager(attack_params = attack_params,
-                      tokenizer = tokenizer, 
-                      conv_template = conv_template, 
-                      adversarial_content = initial_adversarial_content.copy(),
-                      trash_fire_tokens = trash_fire_token_treasury)
+            tokenizer = tokenizer, 
+            conv_template = conv_template, 
+            adversarial_content = initial_adversarial_content.copy(),
+            trash_fire_tokens = trash_fire_token_treasury)
+            
         #print_stats(attack_params)
          
         #print(f"Debug: Model dtype: {model.dtype}")
@@ -658,49 +665,61 @@ def main(attack_params):
         else:
             print(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
 
-        
+        empty_output_during_jailbreak_self_tests = False
         #print(f"Debug: testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-                                                model, 
-                                                tokenizer,
-                                                #adversarial_content_manager, 
-                                                #empty_adversarial_content,
-                                                jailbreak_check_input_token_id_data,
-                                                1.0,
-                                                jailbreak_detector,
-                                                do_sample = False)
+            model, 
+            tokenizer,
+            #adversarial_content_manager, 
+            #empty_adversarial_content,
+            jailbreak_check_input_token_id_data,
+            1.0,
+            jailbreak_detector,
+            do_sample = False)
         
         overall_result_data.self_test_results["GCG-no_adversarial_content"] = nac_jailbreak_check_data
         
-        if nac_jailbreak_result:
-            #print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
-            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_data.decoded_llm_output_string.strip()}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
+        nac_jailbreak_decoded_generated_prompt_string = tokenizer.decode(jailbreak_check_input_token_id_data.full_prompt_token_ids)
+        
+        nac_jailbreak_check_llm_output_stripped = nac_jailbreak_check_data.decoded_llm_output_string.strip()        
+        if nac_jailbreak_check_llm_output_stripped == "":
+            empty_output_during_jailbreak_self_tests = True
+            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string.strip()}'")
         else:
-            print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+            if nac_jailbreak_result:
+                #print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
+                print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string.strip()}'")
+            else:
+                print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
         #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-                                                model, 
-                                                tokenizer,
-                                                #adversarial_content_manager, 
-                                                #empty_adversarial_content,
-                                                jailbreak_check_input_token_id_data,
-                                                1.0,
-                                                jailbreak_detector,
-                                                do_sample = False,
-                                                include_target_content = True)
+            model, 
+            tokenizer,
+            #adversarial_content_manager, 
+            #empty_adversarial_content,
+            jailbreak_check_input_token_id_data,
+            1.0,
+            jailbreak_detector,
+            do_sample = False,
+            include_target_content = True)
         
         overall_result_data.self_test_results["GCG-simulated_ideal_adversarial_content"] = target_jailbreak_check_data
         
-        if target_jailbreak_result:
-            print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
-        else:            
-            print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
+        target_jailbreak_check_llm_output_stripped = target_jailbreak_check_data.decoded_llm_output_string.strip() 
+        if target_jailbreak_check_llm_output_stripped == "":
+            empty_output_during_jailbreak_self_tests = True
+            print(f"Error: When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string.strip()}'")
+        else:
+            if target_jailbreak_result:
+                print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+            else:            
+                print(f"Warning: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_data.decoded_llm_output_string.strip()}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack.")
 
         if attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
-            if nac_jailbreak_result or not target_jailbreak_result:
+            if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
                 if not attack_params.ignore_jailbreak_self_tests:
                     print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
                     sys.exit(1)
@@ -775,6 +794,21 @@ def main(attack_params):
                     input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats(attack_params)
+                    
+                    input_id_data_gcg_ops = input_id_data
+                    input_ids_gcg_ops = input_ids
+                    
+                    if attack_params.ignore_prologue_during_gcg_operations:
+                        conv_template_gcg_ops = conv_template.copy()
+                        conv_template_gcg_ops.system_message=""
+                        conv_template_gcg_ops.messages = []
+                        adversarial_content_manager_gcg_ops = AdversarialContentManager(attack_params = attack_params,
+                            tokenizer = tokenizer, 
+                            conv_template = conv_template_gcg_ops, 
+                            adversarial_content = current_adversarial_content.copy(),
+                            trash_fire_tokens = trash_fire_token_treasury)
+                        input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+                        input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_params.device)
 
                     best_new_adversarial_content = None                    
                     
@@ -790,11 +824,18 @@ def main(attack_params):
                     else:
                         # Step 2. Compute Coordinate Gradient
                         #print(f"Computing coordinate gradient")
-                        coordinate_gradient = token_gradients(attack_params,
-                                        model, 
-                                        tokenizer,
-                                        input_ids,
-                                        input_id_data)
+                        try:
+                            coordinate_gradient = token_gradients(attack_params,
+                                model, 
+                                tokenizer,
+                                #input_ids,
+                                input_ids_gcg_ops,
+                                #input_id_data)
+                                input_id_data_gcg_ops)
+                        except GradientCreationException as e:
+                            print(f"Error: attempting to generate a coordinate gradient failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.")
+                            sys.exit(1)
+                        #print(f"[main loop] Debug: coordinate_gradient.shape[0] = {coordinate_gradient.shape[0]}")
                         #print_stats(attack_params)
 
                         if isinstance(random_generator_gradient, type(None)):
@@ -843,6 +884,9 @@ def main(attack_params):
                                                        random_generator_cpu,
                                                        random_generator_attack_params_device,
                                                        not_allowed_tokens = not_allowed_tokens)
+                                    except GradientSamplingException as e:
+                                        print(f"Error: attempting to generate a new set of candidate adversarial data failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.")
+                                        sys.exit(1)
                                     except RuntimeError as e:
                                         print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
                                         sys.exit(1)
@@ -967,17 +1011,19 @@ def main(attack_params):
                                 # Step 3.4 Compute loss on these candidates and take the argmin.
                                 #print(f"Getting logits")
                                 logits, ids = get_logits(attack_params = attack_params,
-                                                        model = model, 
-                                                        tokenizer = tokenizer,
-                                                        input_ids = input_ids,
-                                                        adversarial_content = current_adversarial_content, 
-                                                        adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                                        return_ids = True,
-                                                        batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
+                                    model = model, 
+                                    tokenizer = tokenizer,
+                                    #input_ids = input_ids,
+                                    input_ids = input_ids_gcg_ops,
+                                    adversarial_content = current_adversarial_content, 
+                                    adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
+                                    return_ids = True,
+                                    batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
                                 #print_stats(attack_params)
 
                                 #print(f"Calculating target loss")
-                                losses = target_loss(attack_params, logits, ids, input_id_data, tokenizer)
+                                #losses = target_loss(attack_params, logits, ids, input_id_data, tokenizer)
+                                losses = target_loss(attack_params, logits, ids, input_id_data_gcg_ops, tokenizer)
                                 #print_stats(attack_params)
                                 #print(f"[main loop] Debug: losses = {losses}")
 
@@ -1046,6 +1092,7 @@ def main(attack_params):
                             print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {current_adversarial_content.original_loss}")
                             #print(f"Debug: decoded_loss_slice = '{decoded_loss_slice}'")
                             #print(f"Debug: input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
+                            #print(f"Debug: input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
                         
                             #attack_results_current_iteration.loss = current_loss_as_float
                             attack_results_current_iteration.loss = current_adversarial_content.original_loss
@@ -1469,6 +1516,9 @@ if __name__=='__main__':
     parser.add_argument("--random-seed-cuda", type=numeric_string_to_int,
         default=attack_params.torch_cuda_manual_seed_all,
         help=f"Random seed for CUDA")
+
+    parser.add_argument("--ignore-prologue-during-gcg-operations", type=str2bool, nargs='?',
+        help="If this option is specified, any system prompt and/or template messages will be ignored when performing the most memory-intensive parts of the GCG attack (but not when testing for jailbreak success). This can allow testing in some configurations that would otherwise exceed available device memory, but may affect the quality of results as well.")
 
     parser.add_argument("--max-iterations", type=numeric_string_to_int,
         default=attack_params.max_iterations,
@@ -1940,6 +1990,10 @@ if __name__=='__main__':
     attack_params.torch_manual_seed = args.random_seed_torch
 
     attack_params.torch_cuda_manual_seed_all = args.random_seed_cuda
+
+    if args.ignore_prologue_during_gcg_operations:
+        attack_params.ignore_prologue_during_gcg_operations = True
+        print("Warning: ignoring system prompt (if any) and template messages (if any) when performing GCG-related calculations. This may affect the quality of the results for this test.")
 
     attack_params.max_iterations = args.max_iterations
     
