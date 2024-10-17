@@ -43,8 +43,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.max_iterations = 2
         self.max_new_tokens_final = 128
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
-        # default: one hour
-        self.process_timeout = 3600
+        # default: two hours, necessary for models tested on CPU
+        self.process_timeout = 7200
     
     def set_from_model_info(self, model_info):
         self.model_path = model_info.model_path

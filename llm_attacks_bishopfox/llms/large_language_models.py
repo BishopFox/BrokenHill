@@ -16,14 +16,18 @@ class LargeLanguageModelException(Exception):
 class LargeLanguageModelInfo(JSONSerializableObject):
     def __init__(self):
         self.model_name = None
+        self.model_release = None
         self.model_family = None
+        self.model_repository = None
+        self.first_party_release = False
         self.model_path = None
         self.tokenizer_path = None
         self.peft_path = None
         self.template = None
         self.size = None
+        self.parameter_count = None
         self.safe_tensors = None
-        self.custom_options = None
+        self.custom_options = None        
         self.comment = None
     
     def to_dict(self):
