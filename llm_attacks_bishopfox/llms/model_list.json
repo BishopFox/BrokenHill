@@ -32,7 +32,7 @@
 			"template": "llama2",
 			"size": 4167035336,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "APT3-1B-Base",

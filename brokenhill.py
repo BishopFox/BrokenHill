@@ -1235,7 +1235,7 @@ def main(attack_params):
                         iteration_status_message += uov_string
                         iteration_status_message += "\n"
                     iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial content: '{current_adversarial_content.get_short_description()}'\n"
+                    iteration_status_message += f"Current best new adversarial content: {current_adversarial_content.get_short_description()}\n"
                     iteration_status_message += f"-----------------\n"                    
                     print(iteration_status_message)
                     

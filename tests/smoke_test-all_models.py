@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 import argparse
+import datetime
 import json
 import os
 import selectors
@@ -10,6 +11,9 @@ import sys
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfoList
 from llm_attacks_bishopfox.tests.test_classes import BrokenHillTestParams
+from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
+from llm_attacks_bishopfox.util.util_functions import get_now
+from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from subprocess import TimeoutExpired
 
@@ -20,8 +24,16 @@ PYTHON_PROCESS_BUFFER_SIZE = 262144
 def main(test_params):
     model_info_list = LargeLanguageModelInfoList.from_bundled_json_file()
     exit_test = False
-    for model_info_num in range(0, len(model_info_list.entries)):
+    start_time = get_now()
+    start_time_string = get_time_string(dt = start_time)
+    print(f"[{start_time_string}] Starting test sequence")
+    len_model_info_list_entries = len(model_info_list.entries)
+    for model_info_num in range(0, len_model_info_list_entries):        
+        model_start_time = get_now()
         model_info = model_info_list.entries[model_info_num]
+        model_start_time_string = get_time_string(dt = model_start_time)
+        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries})")
+        
         model_test_params = test_params.copy()
         model_test_params.set_from_model_info(model_info)
         
@@ -103,9 +115,22 @@ def main(test_params):
         except Exception as e:
             print(f"Exception thrown while executing the specified command: {e}")
 
+        model_end_time = get_now()
+        model_elapsed_time = get_elapsed_time_string(model_start_time, model_end_time)
+        total_elapsed_time = get_elapsed_time_string(start_time, model_end_time)
+        model_end_time_string = get_time_string(dt = model_end_time)
+        print(f"[{model_end_time_string}] Finished testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries}). Elapsed time for this model: {model_elapsed_time}. Total elapsed time for the test sequence: {total_elapsed_time}.\n\n")
+        
+        print(
+
+    end_time = get_now()
+    total_elapsed_time = get_elapsed_time_string(start_time, end_time)
+    end_time_string = get_time_string(dt = end_time)
+    exit_message = "Finished test sequence."
     if exit_test:
-        print(f"Exiting early by request")
-        sys.exit(0)
+        exit_message = "Exiting early by request."    
+    print(f"[{end_time_string}] {exit_message} Total elapsed time: {total_elapsed_time}.")
+    sys.exit(0)
 
 if __name__=='__main__':
     smoke_test_params = BrokenHillTestParams()
