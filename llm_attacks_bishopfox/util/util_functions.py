@@ -5,6 +5,7 @@ import math
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -316,6 +317,7 @@ def slice_from_dict(property_dict):
     return result
 
 def find_index_of_first_nonmatching_element(list1, list2):
+    print(f"[find_index_of_first_nonmatching_element] Debug: list1 = {list1}, list2 = {list2}")
     len_list1 = len(list1)
     len_list2 = len(list2)
     last_index = len_list1
@@ -327,10 +329,12 @@ def find_index_of_first_nonmatching_element(list1, list2):
     i = 0
     while i < last_index:
         if list1[i] != list2[i]:
+            print(f"[find_index_of_first_nonmatching_element] Debug: result = {i}")
             return i
         i += 1
     
     if len_list1 != len_list2:
+        print(f"[find_index_of_first_nonmatching_element] Debug: len_list1 != len_list2, result = {i}")
         return i
     
     return None
@@ -417,3 +421,49 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
                 return i
     #print(f"[find_last_occurrence_of_array_in_array] Debug: no match found")
     return result
+
+# Convert a nice array of command elements to a terrible single value which can be used with bash -c.
+# Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
+def command_array_to_bash_c_argument(command_array):
+    inner_command = None
+    for i in range(0, len(command_array)):
+        current_element = shlex.quote(command_array[i])
+        if inner_command is None:
+            inner_command = current_element
+        else:
+            inner_command = f"{inner_command} {current_element}"
+    #result = shlex.quote(inner_command)
+    result = inner_command
+    return result
+
+
+# return a slice that begins with the lower of two other slices start values, and ends with the greater of their stop values.
+# Not quite a "union" operation, so I've avoided that term.
+def get_widened_slice(slice1, slice2):
+    slice_start = None
+    slice_stop = None
+    if slice1 is not None:
+        if slice1.start is not None:
+            slice_start = slice1.start
+        if slice1.stop is not None:
+            slice_stop = slice1.stop
+    if slice2 is not None:
+        if slice2.start is not None:
+            set_start = False
+            if slice_start is None:
+                set_start = True
+            else:
+                if slice2.start < slice_start:
+                    set_start = True
+            if set_start:
+                slice_start = slice2.start
+        if slice2.stop is not None:
+            set_stop = False
+            if slice_stop is None:
+                set_stop = True
+            else:
+                if slice2.stop > slice_stop:
+                    set_stop = True
+            if set_stop:
+                slice_stop = slice2.stop
+    return slice(slice_start, slice_stop)

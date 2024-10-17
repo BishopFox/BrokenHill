@@ -33,7 +33,8 @@ def get_llama2_and_3_fschat_template_names():
 
 # Templates that produce identical output to apply_chat_template, except for probably-insignificant spurious tokens at the end
 def get_stop_string_or_equivalent_is_different_template_names():
-    result = [ "llama2", "llama-3", "qwen2 ", "smollm" ]
+    #result = [ "llama2", "llama-3", "qwen", "qwen2", "redpajama-incite", "smollm", "TinyLlama" ]
+    result = [ "llama2", "llama-3", "qwen2", "smollm", "TinyLlama" ]
     return result
 
 def get_apply_chat_template_ignored_template_names():

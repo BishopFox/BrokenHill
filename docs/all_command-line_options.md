@@ -465,7 +465,7 @@ If this option is not specified, an undefined padding token will be left as-is.
 
 ### --trust-remote-code
 
-When loading the model, pass `trust_remote_code=True`, which enables execution of arbitrary Python scripts included with the model. You should probably examine those scripts first before deciding if you're comfortable with this option. Currently required for some models, such as Phi-3.
+When loading the model, pass `trust_remote_code=True`, which enables execution of arbitrary Python scripts included with the model. You should probably examine those scripts first before deciding if you're comfortable with this option. Currently required for some models, such as `mpt-1b-redpajama-200b-dolly`.
 
 ### --use-cache
 

@@ -1,11 +1,55 @@
 # Broken Hill version history
 
-# 0.34 - 2024-10-xx
+# 0.34 - 2024-10-16
 
-* Added support for the following models:
-  * 
+* Added support for the following models and families:
+  * [Azurro's APT family](https://huggingface.co/Azurro)
+    * APT
+      * [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
+      * [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
+      * [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
+      * [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)  
+  * GPT-NeoX
+    * [gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b)
+	* [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
+  * Mistral
+    * [Mistral-7B-Instruct-v0.3](https://huggingface.co/MistralAI/Mistral-7B-Instruct-v0.3)
+    * [Mistral-Nemo-Instruct-2407](https://huggingface.co/MistralAI/Mistral-Nemo-Instruct-2407)
+	* [Daredevil-7B](https://huggingface.co/mlabonne/Daredevil-7B)
+	* [Intel neural-chat-7b-v3-3](https://huggingface.co/Intel/neural-chat-7b-v3-3)
+    * [NeuralDaredevil-7B](https://huggingface.co/mlabonne/NeuralDaredevil-7B)
+  * Mixtral
+    * [Mixtral-8x7B-Instruct-v0.1](https://huggingface.co/MistralAI/Mixtral-8x7B-Instruct-v0.1)
+  * RedPajama-INCITE
+    * [RedPajama-INCITE-7B-Chat](https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Chat)
+    * [RedPajama-INCITE-Chat-3B-v1](https://huggingface.co/togethercomputer/RedPajama-INCITE-Chat-3B-v1)
+  * Snowflake Arctic
+  * SOLAR
+    * [SOLAR-10.7B-Instruct-v1.0](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)
+    * [TinySolar-248m-4k-code-instruct](https://huggingface.co/upstage/TinySolar-248m-4k-code-instruct)
+* Added support for the following models derived from model families already supported by Broken Hill:
+  * Gemma-derived models
+    * [Vikhr-Gemma-2B-instruct](https://huggingface.co/Vikhrmodels/Vikhr-Gemma-2B-instruct)
+  * Llama-2-derived models
+    * [Swallow-7b-instruct-hf](https://huggingface.co/tokyotech-llm/Swallow-7b-instruct-hf)
+	* [Swallow-MS-7b-instruct-v0.1](https://huggingface.co/tokyotech-llm/Swallow-MS-7b-instruct-v0.1)
+    * [youri-7b-chat](https://huggingface.co/rinna/youri-7b-chat) (derived from Llama-2)
+  * Llama-3-derived models
+    * [Llama-3-Swallow-8B-Instruct-v0.1](tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1)
+    * [llama-3-youko-8b-instruct](https://huggingface.co/rinna/llama-3-youko-8b-instruct) (derived from Llama-3)
+  * OpenAssistant (and derived) fine-tuned variations of [Eleuther AI's Pythia model family](https://github.com/EleutherAI/pythia)
+    * [huge-roadrunner-pythia-1b-deduped-oasst](https://huggingface.co/csimokat/huge-roadrunner-pythia-1b-deduped-oasst)
+  * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF) (derived from Vicuna and therefore from Llama as well)
+  
 * Added the following custom chat templates:
+  * `daredevil`
   * `felladrin-llama-chat`
+  * `gemma+`
+  * `gptneox`
+  * `solar+`
+  * `vikhr`
+* Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
+* Added some basic automated test scripts to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
 * Added experimental `--ignore-prologue-during-gcg-operations` option.
 * A few additions to the default jailbreak detection rules.

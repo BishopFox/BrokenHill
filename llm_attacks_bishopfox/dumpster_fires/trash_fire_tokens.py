@@ -341,7 +341,7 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
     for i in range(0, len(decoded_token_list_to_search_for)):
         search_string += regex_whitespace.sub('', decoded_token_list_to_search_for[i])
 
-    #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: searching for '{search_string}' in {decoded_token_list_to_search_within}, from index {range_start} to index {range_end}, step {step_size}")
+    print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: searching for '{search_string}' in {decoded_token_list_to_search_within}, from index {range_start} to index {range_end}, step {step_size}")
     for i in range(range_start, range_end, step_size):
         within_string = ""
         result_start_index = i
@@ -350,12 +350,12 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
             within_string += regex_whitespace.sub('', decoded_token_list_to_search_within[j])
             result_stop_index = j + 1
             if len(within_string) >= len(search_string):
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: stopping concatenation at '{within_string}' because its length was greater than or equal to the length of '{search_string}'.")
+                print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: stopping concatenation at '{within_string}' because its length was greater than or equal to the length of '{search_string}'.")
                 break
             current_substring = search_string[0:len(within_string)]
             # skip checking the rest of the current subsection if the material collected so far doesn't match
             if current_substring != within_string:
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: ending comparison of i = {i}, j = {j} early because '{current_substring}' != '{within_string}'")
+                print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: ending comparison of i = {i}, j = {j} early because '{current_substring}' != '{within_string}'")
                 do_continue = True
                 break
         compared_strings.append(within_string)
@@ -366,10 +366,10 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
             current_substring = within_string[0:len(search_string)]
             if current_substring == search_string:
                 result = slice(result_start_index, result_stop_index)
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: result = '{result}'")
+                print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: result = '{result}'")
                 return result
-            #else:
-            #    print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: Compared '{within_string}' subset, '{current_substring}' != '{search_string}'.")
+            else:
+                print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: Compared '{within_string}' subset, '{current_substring}' != '{search_string}'.")
     
     raise TrashFireTokenException(f"Could not find {decoded_token_list_to_search_for} (represented as '{search_string}') in {decoded_token_list_to_search_within} (represented as a single string with no whitespace). Compared the search string against the following strings: {compared_strings}.")
 
@@ -414,7 +414,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         if len(string_tokens) < 1:
             raise TrashFireTokenException(f"[find_index_of_token] Error: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
         
-        #print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")        
+        print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")        
         #string_to_search_for_array = string_to_search_for.split(" ")
         current_string_to_search_for = string_variations[string_token_set_num]
         string_to_search_for_array = current_string_to_search_for.split(" ")
@@ -445,7 +445,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         
         # First, look for the encoded version of the string in the encoded version of the prompt.
         # One would think this is all one would need to do for this function, but one would be wrong.
-        #print(f"[find_index_of_token] Debug: searching for '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}' from index {start_index} to {stop_index}")
+        print(f"[find_index_of_token] Debug: searching for '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}' from index {start_index} to {stop_index}")
         result_start = None
         if find_last:
             result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index = start_index, stop_index = stop_index)
@@ -502,7 +502,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
                 failure_messages.append(f"{tfte}")        
         if not is_failure:
             result = slice(result_start, result_stop)
-            #print(f"[find_index_of_token] Debug: result = '{result}'")
+            print(f"[find_index_of_token] Debug: result = '{result}'")
             return result
     exception_message = ""
     for i in range(0, len(failure_messages)):
@@ -523,7 +523,7 @@ def find_last_non_garbage_token(conversation_template, tokens, decoded_tokens, t
             result = i
     if isinstance(result, type(None)):
         raise Exception(f"[find_last_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
-    #print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
+    print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
     return result
 
 def find_first_non_garbage_token(conversation_template, tokens, decoded_tokens, trash_fire_tokens, start_index = 0, stop_index = None):
@@ -534,7 +534,7 @@ def find_first_non_garbage_token(conversation_template, tokens, decoded_tokens, 
     for i in range(start_index, range_end):
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
         if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
-            #print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
+            print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
             return i
     if isinstance(result, type(None)):
         raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")

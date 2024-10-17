@@ -2,12 +2,45 @@
 	"entries":
 	[
 		{
+			"model_name": "APT-1B-Base",
+			"model_family": "APT",
+			"model_path": "Azurro/APT-1B-Base",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "llama2",
+			"size": 4241896185,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "APT2-1B-Base",
+			"model_family": "APT",
+			"model_path": "Azurro/APT2-1B-Base",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "llama2",
+			"size": 3816970200,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "APT3-1B-Instruct-v1",
+			"model_family": "APT",
+			"model_path": "Azurro/APT3-1B-Instruct-v1",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "llama2",
+			"size": 4167035336,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
 			"model_name": "APT3-1B-Base",
 			"model_family": "APT",
 			"model_path": "Azurro/APT3-1B-Base",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "llama-2",
+			"template": "llama2",
 			"size": 4167035336,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
@@ -62,10 +95,10 @@
 			"model_path": "EleutherAI/gpt-neox-20b",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "gptneox",
 			"size": 41293763742,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "pythia-1.4b",
@@ -76,7 +109,7 @@
 			"template": "zero_shot",
 			"size": 2930002184,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "bart-large-cnn",
@@ -131,7 +164,7 @@
 			"template": "felladrin-llama-chat",
 			"size": 272123144,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "Guanaco-3B-Uncensored-v2",
@@ -172,7 +205,7 @@
 			"model_path": "Google/gemma-2b-it",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "gemma",
+			"template": "gemma+",
 			"size": 5012363872,
 			"safe_tensors": true,
 			"custom_options": []
@@ -183,7 +216,7 @@
 			"model_path": "Google/gemma-1.1-2b-it",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "gemma",
+			"template": "gemma+",
 			"size": 5012363872,
 			"safe_tensors": true,
 			"custom_options": []
@@ -194,7 +227,7 @@
 			"model_path": "Google/gemma-2-2b-it",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "gemma",
+			"template": "gemma+",
 			"size": 5228717488,
 			"safe_tensors": true,
 			"custom_options": []
@@ -220,6 +253,17 @@
 			"size": 435755784,
 			"safe_tensors": true,
 			"custom_options": []
+		},
+		{
+			"model_name": "SmolLM-135M-Instruct",
+			"model_family": "",
+			"model_path": "HuggingFaceTB/SmolLM-135M-Instruct",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "smollm",
+			"size": 269060552,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "SmolLM-1.7B-Instruct",
@@ -249,10 +293,10 @@
 			"model_path": "KoboldAI/GPT-NeoX-20B-Erebus",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "gptneox",
 			"size": 41293881230,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "OPT-6.7B-Erebus",
@@ -263,7 +307,7 @@
 			"template": "zero_shot",
 			"size": 13317059541,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "fastchat-t5-3b-v1.0",
@@ -315,7 +359,7 @@
 			"model_path": "huggyllama/llama-7b",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "llama2",
 			"size": 13476876661,
 			"safe_tensors": true,
 			"custom_options": []
@@ -351,12 +395,56 @@
 			"template": "llama-3",
 			"size": 16060556376,
 			"safe_tensors": true,
+			"custom_options": [ "--system-prompt-from-file", "BrokenHill/data/llama3_system_prompt.txt" ]
+		},
+		{
+			"model_name": "Meta-Llama-Guard-2-8B",
+			"model_family": "",
+			"model_path": "meta-llama/Meta-Llama-Guard-2-8B",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "llama-3",
+			"size": 16060556376,
+			"safe_tensors": true,
+			"custom_options": [ ]
+		},
+		{
+			"model_name": "Llama-Guard-3-8B",
+			"model_family": "",
+			"model_path": "meta-llama/Llama-Guard-3-8B",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "llama-3",
+			"size": 16060556376,
+			"safe_tensors": true,
+			"custom_options": [ ]
+		},
+		{
+			"model_name": "Orca-2-7b",
+			"model_family": "",
+			"model_path": "Microsoft/Orca-2-7b",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "orca-2",
+			"size": 26953860317,
+			"safe_tensors": true,
 			"custom_options": []
 		},
 		{
 			"model_name": "phi-1",
 			"model_family": "",
 			"model_path": "Microsoft/phi-1",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "zero_shot",
+			"size": 2836578696,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "phi-1_5",
+			"model_family": "",
+			"model_path": "Microsoft/phi-1_5",
 			"tokenizer_path": "",
 			"peft_path": "",
 			"template": "zero_shot",
@@ -385,6 +473,50 @@
 			"size": 7642181880,
 			"safe_tensors": true,
 			"custom_options": []
+		},
+		{
+			"model_name": "Phi-3-small-128k-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3-small-128k-instruct",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "phi3",
+			"size": 14784589056,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Phi-3-medium-128k-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3-medium-128k-instruct",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "phi3",
+			"size": 27920504728,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Phi-3.5-mini-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3.5-mini-instruct",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "phi3",
+			"size": 7642181880,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Mistral-7B-Instruct-v0.2",
+			"model_family": "",
+			"model_path": "MistralAI/Mistral-7B-Instruct-v0.2",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "mistral",
+			"size": 14483498016,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "Mistral-7B-Instruct-v0.3",
@@ -425,7 +557,7 @@
 			"model_path": "mlabonne/Daredevil-7B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "mistral",
+			"template": "daredevil",
 			"size": 14483498040,
 			"safe_tensors": true,
 			"custom_options": []
@@ -436,7 +568,7 @@
 			"model_path": "mlabonne/NeuralDaredevil-7B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "mistral",
+			"template": "daredevil",
 			"size": 14483497728,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
@@ -450,7 +582,7 @@
 			"template": "mpt",
 			"size": 5245893681,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "mpt-7b-chat",
@@ -524,10 +656,22 @@
 			"model_path": "openchat/openchat-3.6-8b-20240522",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "openchat_3.5",
+			"template": "llama-3",
 			"size": 16060556384,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "openchat_3.5 seems like it would be the correct template, but is not"
+		},
+		{
+			"model_name": "Qwen-7B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen-7B-Chat",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "qwen",
+			"size": 15442677288,
+			"safe_tensors": true,
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "Qwen-1_8B-Chat",
@@ -537,6 +681,17 @@
 			"peft_path": "",
 			"template": "qwen",
 			"size": 3673678272,
+			"safe_tensors": true,
+			"custom_options": [ "--trust-remote-code" ]
+		},
+		{
+			"model_name": "Qwen1.5-0.5B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen1.5-0.5B-Chat",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "qwen",
+			"size": 1239173352,
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -550,6 +705,17 @@
 			"size": 3673690696,
 			"safe_tensors": true,
 			"custom_options": []
+		},
+		{
+			"model_name": "Qwen2-0.5B-Instruct",
+			"model_family": "",
+			"model_path": "Qwen/Qwen2-0.5B-Instruct",
+			"tokenizer_path": "",
+			"peft_path": "",
+			"template": "qwen2",
+			"size": 988097824,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "Qwen2-1.5B-Instruct",
@@ -582,7 +748,7 @@
 			"template": "alpaca",
 			"size": 15442677504,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "youri-7b-chat",
@@ -623,7 +789,7 @@
 			"model_path": "StabilityAI/stablelm-2-1_6b-chat",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "stablelm",
+			"template": "stablelm2",
 			"size": 6578099872,
 			"safe_tensors": true,
 			"custom_options": []
@@ -637,7 +803,7 @@
 			"template": "zero_shot",
 			"size": 5488766864,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--suppress-attention-mask" ]
 		},
 		{
 			"model_name": "stable-vicuna-13B-HF",
@@ -670,7 +836,7 @@
 			"template": "chatglm",
 			"size": 13416906785,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "chatglm2-6b",
@@ -681,7 +847,7 @@
 			"template": "chatglm2",
 			"size": 12487241401,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "chatglm3-6b",
@@ -692,7 +858,7 @@
 			"template": "chatglm3",
 			"size": 12487194904,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "glm-4-9b-chat",
@@ -703,7 +869,7 @@
 			"template": "chatglm3",
 			"size": 18799941256,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "falcon-7b-instruct",
@@ -756,7 +922,7 @@
 			"model_path": "togethercomputer/GPT-NeoXT-Chat-Base-20B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "redpajama-incite",
+			"template": "gptneox",
 			"size": 41293915901,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
@@ -767,7 +933,7 @@
 			"model_path": "togethercomputer/Pythia-Chat-Base-7B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "redpajama-incite",
+			"template": "oasst_pythia",
 			"size": 13848989318,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
@@ -822,7 +988,7 @@
 			"model_path": "tokyotech-llm/Swallow-MS-7b-instruct-v0.1",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "mistral",
+			"template": "llama2",
 			"size": 14660445224,
 			"safe_tensors": true,
 			"custom_options": []
@@ -831,9 +997,9 @@
 			"model_name": "tiny-random-GPTNeoXForCausalLM-safetensors",
 			"model_family": "",
 			"model_path": "trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors",
-			"tokenizer_path": "",
+			"tokenizer_path": "EleutherAI/gpt-neox-20b",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "gptneox",
 			"size": 404996,
 			"safe_tensors": true,
 			"custom_options": []
@@ -844,7 +1010,7 @@
 			"model_path": "upstage/SOLAR-10.7B-Instruct-v1.0",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "solar",
+			"template": "solar+",
 			"size": 21463098376,
 			"safe_tensors": true,
 			"custom_options": []
@@ -855,10 +1021,10 @@
 			"model_path": "upstage/TinySolar-248m-4k-code-instruct",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "solar",
+			"template": "solar+",
 			"size": 496040208,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "Vikhr-7B-instruct_0.4",
@@ -866,7 +1032,7 @@
 			"model_path": "Vikhrmodels/Vikhr-7B-instruct_0.4",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "vikhr",
 			"size": 15255168080,
 			"safe_tensors": true,
 			"custom_options": []
@@ -877,7 +1043,7 @@
 			"model_path": "Vikhrmodels/Vikhr-Gemma-2B-instruct",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "gemma",
+			"template": "gemma+",
 			"size": 10457400944,
 			"safe_tensors": true,
 			"custom_options": []
@@ -888,7 +1054,7 @@
 			"model_path": "Vikhrmodels/VikhrT5-240m",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "zero_shot",
+			"template": "vikhr",
 			"size": 1150886642,
 			"safe_tensors": false,
 			"custom_options": []
@@ -902,7 +1068,7 @@
 			"template": "oasst_pythia",
 			"size": 306838155,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		}
 	]
 }

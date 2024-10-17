@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import selectors
 import subprocess
 import sys
 
@@ -28,18 +29,38 @@ def main(test_params):
             model_test_params.device = "cpu"        
         model_test_params.set_output_file_base_name()
         
-        standard_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-output.txt")
-        error_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-errors.txt")
+        standard_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-subprocess_output.txt")
+        error_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-subprocess_errors.txt")
         
-        model_command_array = model_test_params.get_command_array()
+        #model_command_array = model_test_params.get_command_array()
+        # Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
+        model_command_array = model_test_params.get_popen_command_parameter()
         
         print(f"Executing command: {model_command_array}")
         try:
             #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-            proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+            proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
+            #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
             process_standard_output = None
             process_error_output = None
             timed_out = False
+            # # BEGIN: based on https://stackoverflow.com/questions/31833897/python-read-from-subprocess-stdout-and-stderr-separately-while-preserving-order
+            # sel = selectors.DefaultSelector()
+            # sel.register(proc.stdout, selectors.EVENT_READ)
+            # sel.register(proc.stderr, selectors.EVENT_READ)
+            # continue_reading_output = True
+            # while continue_reading_output:
+                # for key, _ in sel.select():
+                    # #data = key.fileobj.read1().decode()
+                    # data = key.fileobj.readline()
+                    # if not data:
+                        # continue_reading_output = False
+                        # break
+                    # if process_standard_output is None:
+                        # process_standard_output = data
+                    # else:
+                        # process_standard_output = f"{process_standard_output}{data}"
+            # # END: based on https://stackoverflow.com/questions/31833897/python-read-from-subprocess-stdout-and-stderr-separately-while-preserving-order
             try:
                 process_standard_output, process_error_output = proc.communicate(timeout = model_test_params.process_timeout)
             except KeyboardInterrupt:
@@ -49,6 +70,8 @@ def main(test_params):
                 proc.kill()
                 process_standard_output, process_error_output =  proc.communicate()
                 timed_out = True
+            # set returncode property
+            #proc.communicate()
             process_return_code = proc.returncode
             if timed_out:
                 print(f"Error: command timed out after {model_test_params.process_timeout} seconds")
@@ -61,13 +84,15 @@ def main(test_params):
                 #standard_output = process_standard_output.read()
                 if process_standard_output.strip() != "":
                     #safely_write_text_output_file(standard_output_log_file, standard_output)
-                    safely_write_text_output_file(standard_output_log_file, process_standard_output, file_mode = "wb")
+                    #safely_write_text_output_file(standard_output_log_file, process_standard_output, file_mode = "wb")
+                    safely_write_text_output_file(standard_output_log_file, process_standard_output)
                     print(f"Standard output written to '{standard_output_log_file}'")
             if process_error_output is not None:
                 #error_output = process_error_output.read()
                 if process_error_output.strip() != "":
                     #safely_write_text_output_file(error_output_log_file, error_output)
-                    safely_write_text_output_file(error_output_log_file, process_error_output, file_mode = "wb")
+                    #safely_write_text_output_file(error_output_log_file, process_error_output, file_mode = "wb")
+                    safely_write_text_output_file(error_output_log_file, process_error_output)
                     print(f"Error output written to '{error_output_log_file}'")
         
         except KeyboardInterrupt:
