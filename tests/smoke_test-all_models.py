@@ -120,8 +120,6 @@ def main(test_params):
         total_elapsed_time = get_elapsed_time_string(start_time, model_end_time)
         model_end_time_string = get_time_string(dt = model_end_time)
         print(f"[{model_end_time_string}] Finished testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries}). Elapsed time for this model: {model_elapsed_time}. Total elapsed time for the test sequence: {total_elapsed_time}.\n\n")
-        
-        print(
 
     end_time = get_now()
     total_elapsed_time = get_elapsed_time_string(start_time, end_time)
