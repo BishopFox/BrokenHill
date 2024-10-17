@@ -32,7 +32,7 @@ def main(test_params):
         model_start_time = get_now()
         model_info = model_info_list.entries[model_info_num]
         model_start_time_string = get_time_string(dt = model_start_time)
-        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries})")
+        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
         
         model_test_params = test_params.copy()
         model_test_params.set_from_model_info(model_info)
