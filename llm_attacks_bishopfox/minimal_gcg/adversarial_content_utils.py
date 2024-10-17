@@ -984,7 +984,7 @@ class AdversarialContentManager:
             base_prompt_start_index = result.prompt.rindex(self.attack_params.base_prompt)
             len_base_prompt = len(self.attack_params.base_prompt)
             base_prompt_end_index = base_prompt_start_index + len_base_prompt
-            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_params.base_prompt)
+            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.tokenizer, self.attack_params.base_prompt)
             
             print(f"[get_prompt (non-Python)] Debug: base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
             base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
