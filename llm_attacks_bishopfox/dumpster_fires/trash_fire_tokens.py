@@ -127,7 +127,6 @@ def get_encoded_tokens(tokenizer, tokens, exterminate_all_cowboy_nonsense = Fals
         encoded_tokens.append(et)
     return encoded_tokens
 
-
 # Gets the array of tokens that represent JUST A STRING, *without* any blazing trash fire tokens included, FOR REAL
 def encode_string_for_real_without_any_cowboy_funny_business(tokenizer, string):
     if string is None:

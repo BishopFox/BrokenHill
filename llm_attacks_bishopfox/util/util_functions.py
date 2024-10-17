@@ -466,4 +466,6 @@ def get_widened_slice(slice1, slice2):
                     set_stop = True
             if set_stop:
                 slice_stop = slice2.stop
-    return slice(slice_start, slice_stop)
+    result = slice(slice_start, slice_stop)
+    print(f"[get_widened_slice] slice1 = {slice1}, slice2 = {slice2}, result = {result}")
+    return result

@@ -30,6 +30,12 @@ from llm_attacks_bishopfox.util.util_functions import get_widened_slice
 from llm_attacks_bishopfox.util.util_functions import RequiredValueIsNoneException
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 
+# Fast tokenizers that are totally broken and will do bonkers things like return None randomly for perfectly valid char_to_token parameters.
+TEMPLATE_NAMES_USE_PYTHON_TOKENIZER = [ "llama2", "llama-2", "llama3", "llama-3", "oasst_pythia" ]
+
+# Templates that always insert a hard-stop token of some kind even when you really want them to not do that
+TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT = [ "oasst_pythia", "redpajama-incite", 'stablelm', "TinyLlama" ]
+
 class PromptGenerationException(Exception):
     pass
 
@@ -421,11 +427,15 @@ class PromptSliceData(JSONSerializableObject):
     
     # handle any placement of base prompt ("goal") and adversarial content ("control")
     def get_complete_user_input_slice(self):
-        return get_widened_slice(self.goal, self.control)
+        result = get_widened_slice(self.goal, self.control)
+        print(f"[get_complete_user_input_slice] Debug: result = {result}")
+        return result
 
     # handle any placement of target output and loss data   
     def get_target_output_and_loss_slice(self):
-        return get_widened_slice(self.target_output, self.loss)
+        result = get_widened_slice(self.target_output, self.loss)
+        print(f"[get_target_output_and_loss_slice] Debug: result = {result}")
+        return result
     
     @staticmethod
     def from_dict(property_dict):
@@ -504,7 +514,6 @@ class PromptAndInputIDCollection(JSONSerializableObject):
     @staticmethod
     def from_json(json_string):
         return PromptAndInputIDCollection.from_dict(json.loads(json_string))
-
 
 # TKTK: expand to prefix/suffix attack, and also interleaving the tokens into the base string.
 class AdversarialContentManager:
@@ -770,23 +779,19 @@ class AdversarialContentManager:
         # Remove any tokens that occur *after* the end of the target output.
         # For models like oasst-sft-4-pythia-12b-epoch-3.5 that end messages with a hard delimiter and will not generate additional content after that point.
         # Currently only enabled where necessary until it's tested more
-        remove_tokens_after_target_output = False
-       
+        remove_tokens_after_target_output = False       
+        if conversation_template.name in TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT:
+            remove_tokens_after_target_output = True
+
+        # Use the Python tokenizer instead of the fast tokenizer if:
+        # 1 - The model doesn't support a fast tokenizer
+        # 2 - The user specified the Python tokenizer
+        # 3 - The fast tokenizer is in the list of dirty outlaws that are looking to hijack the bank's stagecoach
         python_tokenizer = False
-        # Using the non-Python tokenizer is totally broken right now, because it assumes that e.g. the first occurence of a role name is the correct location to use, even for chat templates with messages
-        #python_tokenizer = True
-        if conversation_template.name == 'oasst_pythia':
-            python_tokenizer = True
-            remove_tokens_after_target_output = True
-        if conversation_template.name in [ "redpajama-incite", 'stablelm', "TinyLlama" ]:
-            remove_tokens_after_target_output = True
-        # I give up - the Llama-3 tokenizer is just too dangerous to try calling as if it were a fast tokenizer
-        if conversation_template.name == 'llama-3':
+        if conversation_template.name in TEMPLATE_NAMES_USE_PYTHON_TOKENIZER:
             python_tokenizer = True
         if force_python_tokenizer:
             python_tokenizer = True
-        #if "pythia" in conversation_template.name:
-        #    python_tokenizer = True
         # This (formerly undocumented) check is a way to determine if the model is using Python-based tokenizers. It works because Python-based tokenizers (at least in the current version of Transformers) don't support the char_to_token operation), and it's used to avoid calling char_to_token for the rest of the get_prompt method in that case.
         if not python_tokenizer:
             try:
@@ -1017,11 +1022,6 @@ class AdversarialContentManager:
                 if working_adversarial_content_token_end_index is None:
                     working_adversarial_content_token_end_index = working_adversarial_content_token_start_index + len(working_adversarial_content.token_ids)
                     print(f"[get_prompt (non-Python)] Debug: updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
-                result.slice_data.goal = slice(              
-                    working_adversarial_content_token_start_index,
-                    working_adversarial_content_token_end_index
-                )
-
                 result.slice_data.control = slice(
                     #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
                     #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
