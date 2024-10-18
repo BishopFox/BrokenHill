@@ -317,7 +317,7 @@ def slice_from_dict(property_dict):
     return result
 
 def find_index_of_first_nonmatching_element(list1, list2):
-    print(f"[find_index_of_first_nonmatching_element] Debug: list1 = {list1}, list2 = {list2}")
+    #print(f"[find_index_of_first_nonmatching_element] Debug: list1 = {list1}, list2 = {list2}")
     len_list1 = len(list1)
     len_list2 = len(list2)
     last_index = len_list1
@@ -329,12 +329,12 @@ def find_index_of_first_nonmatching_element(list1, list2):
     i = 0
     while i < last_index:
         if list1[i] != list2[i]:
-            print(f"[find_index_of_first_nonmatching_element] Debug: result = {i}")
+            #print(f"[find_index_of_first_nonmatching_element] Debug: result = {i}")
             return i
         i += 1
     
     if len_list1 != len_list2:
-        print(f"[find_index_of_first_nonmatching_element] Debug: len_list1 != len_list2, result = {i}")
+        #print(f"[find_index_of_first_nonmatching_element] Debug: len_list1 != len_list2, result = {i}")
         return i
     
     return None
@@ -434,7 +434,7 @@ def command_array_to_bash_c_argument(command_array):
             inner_command = f"{inner_command} {current_element}"
     #result = shlex.quote(inner_command)
     result = inner_command
-    print(f"[command_array_to_bash_c_argument] Debug: input = {command_array}, output = {result}")
+    #print(f"[command_array_to_bash_c_argument] Debug: input = {command_array}, output = {result}")
     return result
 
 
@@ -468,5 +468,5 @@ def get_widened_slice(slice1, slice2):
             if set_stop:
                 slice_stop = slice2.stop
     result = slice(slice_start, slice_stop)
-    print(f"[get_widened_slice] slice1 = {slice1}, slice2 = {slice2}, result = {result}")
+    #print(f"[get_widened_slice] slice1 = {slice1}, slice2 = {slice2}, result = {result}")
     return result

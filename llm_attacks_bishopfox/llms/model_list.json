@@ -6,7 +6,7 @@
 			"model_release": "APT",
 			"model_family": "Azurro APT",
 			"model_repository": "https://huggingface.co/Azurro/APT-1B-Base",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Azurro",
 			"model_path": "Azurro/APT-1B-Base",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -20,7 +20,7 @@
 			"model_release": "APT2",
 			"model_family": "Azurro APT",
 			"model_repository": "https://huggingface.co/Azurro/APT2-1B-Base",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Azurro",
 			"model_path": "Azurro/APT2-1B-Base",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -34,7 +34,7 @@
 			"model_release": "APT3",
 			"model_family": "Azurro APT",
 			"model_repository": "https://huggingface.co/Azurro/APT3-1B-Instruct-v1",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Azurro",
 			"model_path": "Azurro/APT3-1B-Instruct-v1",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -48,7 +48,7 @@
 			"model_release": "APT3",
 			"model_family": "Azurro APT",
 			"model_repository": "https://huggingface.co/Azurro/APT3-1B-Base",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Azurro",
 			"model_path": "Azurro/APT3-1B-Base",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -62,7 +62,7 @@
 			"model_release": "Alpaca",
 			"model_family": "Alpaca",
 			"model_repository": "https://huggingface.co/chavinlo/alpaca-13b",
-			"first_party_release": false,
+			"direct_developer_or_publisher": "chavinlo",
 			"model_path": "chavinlo/alpaca-13b",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -73,10 +73,10 @@
 		},
 		{
 			"model_name": "huge-roadrunner-pythia-1b-deduped-oasst",
-			"model_release": "OpenAssist Pythia",
-			"model_family": "OpenAssist Pythia",
+			"model_release": "huge-roadrunner-pythia-1b-deduped-oasst",
+			"model_family": "huge-roadrunner-pythia-1b-deduped-oasst",
 			"model_repository": "https://huggingface.co/csimokat/huge-roadrunner-pythia-1b-deduped-oasst",
-			"first_party_release": false,
+			"direct_developer_or_publisher": "Chris Simokat",
 			"model_path": "csimokat/huge-roadrunner-pythia-1b-deduped-oasst",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -90,7 +90,7 @@
 			"model_release": "GPT-J",
 			"model_family": "GPT-J",
 			"model_repository": "https://huggingface.co/EleutherAI/gpt-j-6b",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Eleuther AI",
 			"model_path": "EleutherAI/gpt-j-6b",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -104,21 +104,21 @@
 			"model_release": "GPT-Neo",
 			"model_family": "GPT-Neo",
 			"model_repository": "https://huggingface.co/EleutherAI/gpt-neo-1.3B",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Eleuther AI",
 			"model_path": "EleutherAI/gpt-neo-1.3B",
 			"tokenizer_path": "",
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 5312673800,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "gpt-neox-20b",
 			"model_release": "GPT-NeoX",
 			"model_family": "GPT-NeoX",
 			"model_repository": "https://huggingface.co/EleutherAI/gpt-neox-20b",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Eleuther AI",
 			"model_path": "EleutherAI/gpt-neox-20b",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -132,7 +132,7 @@
 			"model_release": "Pythia",
 			"model_family": "Pythia",
 			"model_repository": "https://huggingface.co/EleutherAI/pythia-1.4b",
-			"first_party_release": true,
+			"direct_developer_or_publisher": "Eleuther AI",
 			"model_path": "EleutherAI/pythia-1.4b",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -143,18 +143,24 @@
 		},
 		{
 			"model_name": "bart-large-cnn",
-			"model_family": "",
+			"model_release": "BART",
+			"model_family": "BART",
+			"model_repository": "https://huggingface.co/Facebook/bart-large-cnn",
+			"direct_developer_or_publisher": "Meta",
 			"model_path": "Facebook/bart-large-cnn",
 			"tokenizer_path": "",
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 1625222120,
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens-final", "512" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens-final", "128" ]
 		},
 		{
 			"model_name": "blenderbot-3B",
-			"model_family": "",
+			"model_release": "BlenderBot",
+			"model_family": "BlenderBot",
+			"model_repository": "https://huggingface.co/Facebook/blenderbot-3B",
+			"direct_developer_or_publisher": "Meta",
 			"model_path": "Facebook/blenderbot-3B",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -165,18 +171,24 @@
 		},
 		{
 			"model_name": "opt-2.7b",
-			"model_family": "",
+			"model_release": "OPT",
+			"model_family": "OPT",
+			"model_repository": "https://huggingface.co/Facebook/opt-2.7b",
+			"direct_developer_or_publisher": "Meta",
 			"model_path": "Facebook/opt-2.7b",
 			"tokenizer_path": "",
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 5303359381,
 			"safe_tensors": false,
-			"custom_options": [ "--max-new-tokens-final", "512" ]
+			"custom_options": [ "--max-new-tokens-final", "128" ]
 		},
 		{
 			"model_name": "roberta-base",
-			"model_family": "",
+			"model_release": "RoBERTa",
+			"model_family": "RoBERTa",
+			"model_repository": "https://huggingface.co/FacebookAI/roberta-base",
+			"direct_developer_or_publisher": "Meta",
 			"model_path": "FacebookAI/roberta-base",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -187,7 +199,10 @@
 		},
 		{
 			"model_name": "Llama-68M-Chat-v1",
-			"model_family": "",
+			"model_release": "RoBERTa",
+			"model_family": "RoBERTa",
+			"model_repository": "https://huggingface.co/Felladrin/Llama-68M-Chat-v1",
+			"direct_developer_or_publisher": "Victor Nogueira",
 			"model_path": "Felladrin/Llama-68M-Chat-v1",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -227,7 +242,8 @@
 			"template": "zero_shot",
 			"size": 11399097584,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This is a T5 model, which is not currently supported in Broken Hill."
 		},
 		{
 			"model_name": "gemma-2b-it",
@@ -271,7 +287,7 @@
 			"template": "zero_shot",
 			"size": 2275329241,
 			"safe_tensors": false,
-			"custom_options": [ "--max-new-tokens-final", "512" ]
+			"custom_options": [ "--max-new-tokens-final", "128" ]
 		},
 		{
 			"model_name": "bert-base-cased",
@@ -319,7 +335,10 @@
 		},
 		{
 			"model_name": "GPT-NeoX-20B-Erebus",
-			"model_family": "",
+			"model_release": "GPT-NeoX-20B-Erebus",
+			"model_family": "GPT-NeoX-20B-Erebus",
+			"model_repository": "https://huggingface.co/KoboldAI/GPT-NeoX-20B-Erebus",
+			"direct_developer_or_publisher": "KoboldAI",
 			"model_path": "KoboldAI/GPT-NeoX-20B-Erebus",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -330,7 +349,10 @@
 		},
 		{
 			"model_name": "OPT-6.7B-Erebus",
-			"model_family": "",
+			"model_release": "OPT-6.7B-Erebus",
+			"model_family": "OPT-6.7B-Erebus",
+			"model_repository": "https://huggingface.co/KoboldAI/OPT-6.7B-Erebus",
+			"direct_developer_or_publisher": "KoboldAI",
 			"model_path": "KoboldAI/OPT-6.7B-Erebus",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -348,7 +370,8 @@
 			"template": "zero_shot",
 			"size": 6706187737,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This is a T5 model, which is not currently supported in Broken Hill."
 		},
 		{
 			"model_name": "vicuna-7b-v1.1",
@@ -535,7 +558,7 @@
 			"template": "phi3",
 			"size": 7642181880,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ ]
 		},
 		{
 			"model_name": "Mistral-7B-Instruct-v0.2",
@@ -612,7 +635,7 @@
 			"template": "mpt",
 			"size": 5245893681,
 			"safe_tensors": false,
-			"custom_options": [ "--trust-remote-code" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--trust-remote-code" ]
 		},
 		{
 			"model_name": "mpt-7b-chat",
@@ -634,7 +657,7 @@
 			"template": "zero_shot",
 			"size": 548105171,
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens-final", "512" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens-final", "128" ]
 		},
 		{
 			"model_name": "gpt2-medium",
@@ -667,7 +690,8 @@
 			"template": "oasst_pythia",
 			"size": 5347161969,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This is a reward model, not a general-purpose text generator/chat model - it will fail in Broken Hill."
 		},
 		{
 			"model_name": "oasst-sft-4-pythia-12b-epoch-3.5",
@@ -704,8 +728,8 @@
 			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
-			"model_name": "Qwen-1_8B-Chat",
-			"model_family": "",
+			"model_name": "Qwen-1.8B-Chat",
+			"model_family": "Qwen",
 			"model_path": "Qwen/Qwen-1_8B-Chat",
 			"tokenizer_path": "",
 			"peft_path": "",
@@ -822,7 +846,7 @@
 			"template": "stablelm2",
 			"size": 6578099872,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "mamba-1.4b-hf",
@@ -833,7 +857,7 @@
 			"template": "zero_shot",
 			"size": 5488766864,
 			"safe_tensors": true,
-			"custom_options": [ "--suppress-attention-mask" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
 		},
 		{
 			"model_name": "stable-vicuna-13B-HF",
@@ -933,7 +957,7 @@
 			"size": 13476876661,
 			"safe_tensors": false,
 			"custom_options": [],
-			"comment": "Included as it's a test of the PEFT adapter functionality - size of the adapter is 639792909"
+			"comment": "Included as it's a test of the PEFT adapter functionality - size of the adapter is 639792909."
 		},
 		{
 			"model_name": "TinyLlama-1.1B-Chat-v1.0",
@@ -1087,7 +1111,8 @@
 			"template": "vikhr",
 			"size": 1150886642,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This is a T5 model, which is not currently supported in Broken Hill."
 		},
 		{
 			"model_name": "oasst_pythia-70m-deduped_webgpt",

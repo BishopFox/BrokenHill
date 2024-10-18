@@ -34,7 +34,8 @@ from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 TEMPLATE_NAMES_USE_PYTHON_TOKENIZER = [ "llama2", "llama-2", "llama3", "llama-3", "oasst_pythia" ]
 
 # Templates that always insert a hard-stop token of some kind even when you really want them to not do that
-TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT = [ "oasst_pythia", "redpajama-incite", 'stablelm', "TinyLlama" ]
+# The token is frequently "<|endoftext|>"
+TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT = [ "aquila-v1", "falcon", "falcon-chat", "gptneox", "oasst_pythia", "qwen", "qwen2", "qwen-7b-chat", "redpajama-incite", 'stablelm', "TinyLlama", "Yi-34b-chat" ]
 
 class PromptGenerationException(Exception):
     pass
@@ -428,13 +429,13 @@ class PromptSliceData(JSONSerializableObject):
     # handle any placement of base prompt ("goal") and adversarial content ("control")
     def get_complete_user_input_slice(self):
         result = get_widened_slice(self.goal, self.control)
-        print(f"[get_complete_user_input_slice] Debug: result = {result}")
+        #print(f"[get_complete_user_input_slice] Debug: result = {result}")
         return result
 
     # handle any placement of target output and loss data   
     def get_target_output_and_loss_slice(self):
         result = get_widened_slice(self.target_output, self.loss)
-        print(f"[get_target_output_and_loss_slice] Debug: result = {result}")
+        #print(f"[get_target_output_and_loss_slice] Debug: result = {result}")
         return result
     
     @staticmethod
@@ -609,7 +610,7 @@ class AdversarialContentManager:
                     found_at_least_one_slice = True
                 else:
                     invalid_slice_dictionary[slice_name] = sl       
-            print(f"[validate_slice_data - {source_method_name}] Debug: slice '{slice_name}' = '{sl}', is_valid = {is_valid}.")
+            #print(f"[validate_slice_data - {source_method_name}] Debug: slice '{slice_name}' = '{sl}', is_valid = {is_valid}.")
         if not found_at_least_one_slice:
             all_slices_are_not_none = False
         if len(invalid_slice_dictionary.keys()) > 0:
@@ -625,13 +626,13 @@ class AdversarialContentManager:
             ordered_slice_list = [ "system", "user_role", "goal and control", "assistant_role", "target_output and loss" ]
             for current_slice_number in range(0, len(ordered_slice_list) - 1):
                 current_slice_name, current_slice_start, current_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, current_slice_number)
-                print(f"[validate_slice_data] Debug: current_slice_name = '{current_slice_name}', current_slice_start = {current_slice_start}, current_slice_stop = {current_slice_stop}")
+                #print(f"[validate_slice_data] Debug: current_slice_name = '{current_slice_name}', current_slice_start = {current_slice_start}, current_slice_stop = {current_slice_stop}")
                 if current_slice_start is not None and current_slice_stop is not None:
                     if current_slice_start > current_slice_stop:
                         print(f"Error: the start index for {current_slice_name} ({current_slice_start}) is greater than the stop index for the same slice ({current_slice_stop}).{nonsensical_slice_boilerplate}")
                 for comparison_slice_number in range(current_slice_number + 1, len(ordered_slice_list)):
                     comparison_slice_name, comparison_slice_start, comparison_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, comparison_slice_number)
-                    print(f"[validate_slice_data] Debug: comparison_slice_name = '{comparison_slice_name}', comparison_slice_start = {comparison_slice_start}, comparison_slice_stop = {comparison_slice_stop}")
+                    #print(f"[validate_slice_data] Debug: comparison_slice_name = '{comparison_slice_name}', comparison_slice_start = {comparison_slice_start}, comparison_slice_stop = {comparison_slice_stop}")
                     if current_slice_start is not None and comparison_slice_start is not None:
                         if current_slice_start > comparison_slice_start:
                             print(f"Error: the start index for {current_slice_name} ({current_slice_start}) is greater than the start index for {comparison_slice_name} ({comparison_slice_start}).{nonsensical_slice_boilerplate}")
@@ -646,7 +647,7 @@ class AdversarialContentManager:
         self.assistant_role = None
         self.target_output = None
         self.loss = None
-        self.print_slice_info(f"validate_slice_data - {source_method_name}", slice_data, token_ids)
+        #self.print_slice_info(f"validate_slice_data - {source_method_name}", slice_data, token_ids)
 
     def extend_slice_if_next_token_is_in_list(self, decoded_tokens, current_slice, token_string_list):
         #print(f"[extend_slice_if_next_token_is_in_list] Debug: decoded_tokens: {decoded_tokens}, decoded current slice is {decoded_tokens[current_slice]}.")
@@ -779,9 +780,11 @@ class AdversarialContentManager:
         # Remove any tokens that occur *after* the end of the target output.
         # For models like oasst-sft-4-pythia-12b-epoch-3.5 that end messages with a hard delimiter and will not generate additional content after that point.
         # Currently only enabled where necessary until it's tested more
-        remove_tokens_after_target_output = False       
-        if conversation_template.name in TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT:
-            remove_tokens_after_target_output = True
+        #remove_tokens_after_target_output = False       
+        #if conversation_template.name in TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT:
+        #    remove_tokens_after_target_output = True
+        # This is such a common issue, I'm going to try enabling it by default
+        remove_tokens_after_target_output = True
 
         # Use the Python tokenizer instead of the fast tokenizer if:
         # 1 - The model doesn't support a fast tokenizer
@@ -818,7 +821,7 @@ class AdversarialContentManager:
             #conversation_template.append_message(conversation_template.roles[0], None)
             conversation_template.append_message(conversation_template.roles[0], f"{self.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
             current_prompt = conversation_template.get_prompt()
-            print(f"[get_prompt (Python) - find user_role_start_index] Debug: current_prompt = '{current_prompt}'")
+            #print(f"[get_prompt (Python) - find user_role_start_index] Debug: current_prompt = '{current_prompt}'")
             user_role_prompt_token_ids = self.tokenizer(current_prompt).input_ids
             user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids)
             if user_role_start_index is None:
@@ -829,7 +832,7 @@ class AdversarialContentManager:
             #conversation_template.update_last_message(f"{self.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
             conversation_template.append_message(conversation_template.roles[1], self.attack_params.target_output)
             current_prompt = conversation_template.get_prompt()
-            print(f"[get_prompt (Python) - find goal slice] Debug: current_prompt = '{current_prompt}'")
+            #print(f"[get_prompt (Python) - find goal slice] Debug: current_prompt = '{current_prompt}'")
             current_token_ids = self.tokenizer(current_prompt).input_ids
             current_decoded_tokens = get_decoded_tokens(self.tokenizer, current_token_ids)
 
@@ -850,7 +853,7 @@ class AdversarialContentManager:
 
             self.validate_slice_data('get_prompt (Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            print(f"[get_prompt (Python) - find control slice] Debug: current_prompt = '{current_prompt}'")
+            #print(f"[get_prompt (Python) - find control slice] Debug: current_prompt = '{current_prompt}'")
 
             if working_adversarial_content.as_string == "":
                 result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
@@ -870,7 +873,7 @@ class AdversarialContentManager:
 
             self.validate_slice_data('get_prompt (Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            print(f"[get_prompt (Python) - find target_output slice] Debug: current_prompt = '{current_prompt}'")
+            #print(f"[get_prompt (Python) - find target_output slice] Debug: current_prompt = '{current_prompt}'")
 
             result.slice_data.target_output = find_last_index_of_token(self.tokenizer, 
                 self.trash_fire_tokens, 
@@ -892,8 +895,8 @@ class AdversarialContentManager:
             # use the known locations of the base prompt, adversarial content, and target output slices to determine the remaining role indices
             # this section should already handle alternative adversarial content placement more or less correctly, except if it's placed in the middle of the base prompt (or interleaved)
             
-            print(f"[get_prompt (Python) - find user_role_stop_index] Debug: current_prompt = '{current_prompt}'")
-            print(f"[get_prompt (Python) - find user_role_stop_index] Debug: result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
+            #print(f"[get_prompt (Python) - find user_role_stop_index] Debug: current_prompt = '{current_prompt}'")
+            #print(f"[get_prompt (Python) - find user_role_stop_index] Debug: result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
             
             user_role_stop_index = result.slice_data.goal.start
             if result.slice_data.control.start < user_role_stop_index:
@@ -902,7 +905,7 @@ class AdversarialContentManager:
             result.slice_data.user_role = slice(user_role_start_index, user_role_stop_index)
             self.validate_slice_data('get_prompt (Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
             
-            print(f"[get_prompt (Python) - find assistant_role_start_index] Debug: result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
+            #print(f"[get_prompt (Python) - find assistant_role_start_index] Debug: result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
             
             assistant_role_start_index = result.slice_data.control.stop
             if result.slice_data.goal.stop > assistant_role_start_index:
@@ -914,7 +917,7 @@ class AdversarialContentManager:
 
             self.validate_slice_data('get_prompt (Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            print(f"[get_prompt (Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+            #print(f"[get_prompt (Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
 
             #print(f"[get_prompt] Debug: getting loss slice using mode {self.attack_params.loss_slice_mode}")
             if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
@@ -946,7 +949,7 @@ class AdversarialContentManager:
                 # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0]) + len(conversation_template.roles[0]) + 1)
             # )
             last_token_index = result.prompt.rindex(conversation_template.roles[0])
-            print(f"[get_prompt (non-Python)] Debug: last_token_index = {last_token_index}")
+            #print(f"[get_prompt (non-Python)] Debug: last_token_index = {last_token_index}")
             
             if last_token_index is None:
                 print(f"[get_prompt] Warning: couldn't find conversation role 0 '{conversation_template.roles[0]}' in prompt '{result.prompt}'")
@@ -954,7 +957,7 @@ class AdversarialContentManager:
                 if conversation_template.name in get_llama2_and_3_fschat_template_names():
                     try:
                         last_token_index_2 = result.prompt.rindex(conversation_template.roles[0], 0, last_token_index)
-                        print(f"[get_prompt (non-Python)] Debug: last_token_index_2 = {last_token_index_2}")
+                        #print(f"[get_prompt (non-Python)] Debug: last_token_index_2 = {last_token_index_2}")
                         if last_token_index_2 is not None:
                             last_token_index = last_token_index_2
                     except Exception as e:
@@ -962,17 +965,17 @@ class AdversarialContentManager:
                         # last_token_index is already correct
                         #print(f"[get_prompt (non-Python)] Debug: exception while getting second token index for user role using fast tokenizer: {e}")
             
-            print(f"[get_prompt (non-Python)] Debug: result.prompt = {result.prompt}")
-            print(f"[get_prompt (non-Python)] Debug: last_token_index = {last_token_index}")
-            print(f"[get_prompt (non-Python)] Debug: encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
+            #print(f"[get_prompt (non-Python)] Debug: result.prompt = {result.prompt}")
+            #print(f"[get_prompt (non-Python)] Debug: last_token_index = {last_token_index}")
+            #print(f"[get_prompt (non-Python)] Debug: encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
             decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.tokenizer, encoded_conversation_template_prompt.input_ids)
-            print(f"[get_prompt (non-Python)] Debug: decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
+            #print(f"[get_prompt (non-Python)] Debug: decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
             
             user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
-            print(f"[get_prompt (non-Python)] Debug: user_role_start_index = {user_role_start_index}")
+            #print(f"[get_prompt (non-Python)] Debug: user_role_start_index = {user_role_start_index}")
             user_role_end_index = encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[0]) + 1)
-            print(f"[get_prompt (non-Python)] Debug: user_role_start_index = {user_role_start_index}")
-            print(f"[get_prompt (non-Python)] Debug: user_role_end_index = {user_role_end_index}")
+            #print(f"[get_prompt (non-Python)] Debug: user_role_start_index = {user_role_start_index}")
+            #print(f"[get_prompt (non-Python)] Debug: user_role_end_index = {user_role_end_index}")
             
             result.slice_data.user_role = slice(
                 user_role_start_index,
@@ -991,16 +994,16 @@ class AdversarialContentManager:
             base_prompt_end_index = base_prompt_start_index + len_base_prompt
             encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.tokenizer, self.attack_params.base_prompt)
             
-            print(f"[get_prompt (non-Python)] Debug: base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
+            #print(f"[get_prompt (non-Python)] Debug: base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
             base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
             base_prompt_token_end_index = encoded_conversation_template_prompt.char_to_token(base_prompt_end_index)
-            print(f"[get_prompt (non-Python)] Debug: base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
+            #print(f"[get_prompt (non-Python)] Debug: base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
             if base_prompt_token_end_index is None:
                 # I don't know why some tokenizers return None for perfectly valid end indices here.
                 # I don't know anything anymore.
                 # This fallback approach is not guaranteed to be accurate, but should be nearly all of the time
                 base_prompt_token_end_index = base_prompt_token_start_index + len(encoded_base_prompt)
-                print(f"[get_prompt (non-Python)] Debug: updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
+                #print(f"[get_prompt (non-Python)] Debug: updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
             result.slice_data.goal = slice(              
                 base_prompt_token_start_index,
                 base_prompt_token_end_index
@@ -1015,13 +1018,13 @@ class AdversarialContentManager:
                 len_working_adversarial_content = len(working_adversarial_content.as_string)
                 working_adversarial_content_end_index = working_adversarial_content_start_index + len_working_adversarial_content
                 
-                print(f"[get_prompt (non-Python)] Debug: working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
+                #print(f"[get_prompt (non-Python)] Debug: working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
                 working_adversarial_content_token_start_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_start_index)
                 working_adversarial_content_token_end_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_end_index)
-                print(f"[get_prompt (non-Python)] Debug: working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
+                #print(f"[get_prompt (non-Python)] Debug: working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
                 if working_adversarial_content_token_end_index is None:
                     working_adversarial_content_token_end_index = working_adversarial_content_token_start_index + len(working_adversarial_content.token_ids)
-                    print(f"[get_prompt (non-Python)] Debug: updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
+                    #print(f"[get_prompt (non-Python)] Debug: updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
                 result.slice_data.control = slice(
                     #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
                     #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
@@ -1055,12 +1058,12 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (non-Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
             self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
-            print(f"[get_prompt (non-Python)] Debug: result.prompt = '{result.prompt}', self.attack_params.target_output = '{self.attack_params.target_output}'")
+            #print(f"[get_prompt (non-Python)] Debug: result.prompt = '{result.prompt}', self.attack_params.target_output = '{self.attack_params.target_output}'")
             prompt_find_self_target = result.prompt.rindex(self.attack_params.target_output)
-            print(f"[get_prompt (non-Python)] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
+            #print(f"[get_prompt (non-Python)] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
             prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
             if isinstance(prompt_find_self_target_c2t, type(None)):
-                print(f"[get_prompt (non-Python)] Warning: got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                #print(f"[get_prompt (non-Python)] Warning: got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                 prompt_find_self_target_c2t = result.slice_data.assistant.stop
             prompt_combined_c2t = None
             add_length = len(self.attack_params.target_output) + 1
@@ -1071,14 +1074,14 @@ class AdversarialContentManager:
                     prompt_combined_c2t = prompt_find_self_target_c2t
                     break
             # Subtract one more than the first valid value so that the length of the slice is correct
-            print(f"[get_prompt (non-Python)] Debug: prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
+            #print(f"[get_prompt (non-Python)] Debug: prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
             result.slice_data.target_output = slice(
                 prompt_find_self_target_c2t,
                 prompt_combined_c2t + 1
             )
             self.validate_slice_data('get_prompt (non-Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
             
-            print(f"[get_prompt (non-Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+            #print(f"[get_prompt (non-Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
             if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
 

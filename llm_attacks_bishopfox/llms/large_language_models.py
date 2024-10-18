@@ -19,7 +19,7 @@ class LargeLanguageModelInfo(JSONSerializableObject):
         self.model_release = None
         self.model_family = None
         self.model_repository = None
-        self.first_party_release = False
+        self.direct_developer_or_publisher = False
         self.model_path = None
         self.tokenizer_path = None
         self.peft_path = None

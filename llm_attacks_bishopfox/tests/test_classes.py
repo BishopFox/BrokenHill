@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+import copy
 import datetime
 import json
 import os
@@ -30,6 +31,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.python_params = [ '-u' ]
         self.broken_hill_path = "./BrokenHill/brokenhill.py"
         self.device = None
+        self.enable_cuda_blocking_mode = True
         self.output_file_directory = None
         self.output_file_base_name = None
         self.model_path = None
@@ -42,9 +44,12 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.initial_adversarial_string = None        
         self.max_iterations = 2
         self.max_new_tokens_final = 128
+        self.perform_cpu_tests = True
+        self.perform_cuda_tests = True
+        self.ignore_jailbreak_test_results = False
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
-        # default: three hours, necessary for some models tested on CPU
-        #self.process_timeout = 14400
+        # default: ten hours, necessary for some models tested on CPU
+        #self.process_timeout = 36000
         # Five minutes to test only models that will fit in the GPU
         self.process_timeout = 300
     
@@ -62,9 +67,17 @@ class BrokenHillTestParams(JSONSerializableObject):
         result = re.sub(r'[\\/:]', '-', result)
         result = re.sub(r'[ ]', '_', result)
         self.output_file_base_name = result    
+    
+    def get_json_output_path(self):
+        result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-results.json")
+        return result
         
-    def get_command_array(self):
-        result = []        
+    def get_console_output_path(self):
+        result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-output.txt")
+        return result
+    
+    def get_command_array(self, base_command_array = []):
+        result = copy.deepcopy(base_command_array)
         result.append(self.python_path)
         for i in range(0, len(self.python_params)):
             result.append(self.python_params[i])
@@ -102,10 +115,13 @@ class BrokenHillTestParams(JSONSerializableObject):
         if self.max_new_tokens_final is not None:
             if '--max-new-tokens-final' not in self.custom_options:
                 result.append('--max-new-tokens-final')
-                result.append(f"{self.max_new_tokens_final}")        
+                result.append(f"{self.max_new_tokens_final}")
+        if self.ignore_jailbreak_test_results:
+            if "--ignore-jailbreak-self-tests" not in self.custom_options:
+                result.append("--ignore-jailbreak-self-tests")
         if self.output_file_directory is not None and self.output_file_base_name is not None and self.output_file_directory.strip() != "" and self.output_file_base_name.strip() != "":
             result.append('--json-output-file')
-            result.append(os.path.join(self.output_file_directory, f"{self.output_file_base_name}-results.json"))        
+            result.append(self.get_json_output_path())        
         
         for i in range(0, len(self.custom_options)):
             result.append(self.custom_options[i])
@@ -114,13 +130,16 @@ class BrokenHillTestParams(JSONSerializableObject):
     
     # gets the value to pass to subprocess.Popen, regardless of whether it's a nice array of elements or an array with a few elements and an awful escaped shell string
     def get_popen_command_parameter(self, redirect_output = True):
-        command_array = self.get_command_array()
+        base_command_array = []
+        if self.enable_cuda_blocking_mode:
+            base_command_array.append("CUDA_LAUNCH_BLOCKING=1")
+        command_array = self.get_command_array(base_command_array = base_command_array)
         if self.shell_path is None or self.shell_path.strip() == "":
             return command_array
         command_array.append(POST_COMMAND_PLACEHOLDER)
         command_array_as_bash_c_arg = command_array_to_bash_c_argument(command_array)
         if redirect_output:
-            log_path = shlex.quote(os.path.join(self.output_file_directory, f"{self.output_file_base_name}-output.txt"))
+            log_path = shlex.quote(self.get_console_output_path())
             command_array_as_bash_c_arg = command_array_as_bash_c_arg.replace(POST_COMMAND_PLACEHOLDER, f" > {log_path} 2>&1")
         else:
             command_array_as_bash_c_arg = command_array_as_bash_c_arg.replace(POST_COMMAND_PLACEHOLDER, "")
