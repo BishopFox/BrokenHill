@@ -434,6 +434,7 @@ def command_array_to_bash_c_argument(command_array):
             inner_command = f"{inner_command} {current_element}"
     #result = shlex.quote(inner_command)
     result = inner_command
+    print(f"[command_array_to_bash_c_argument] Debug: input = {command_array}, output = {result}")
     return result
 
 

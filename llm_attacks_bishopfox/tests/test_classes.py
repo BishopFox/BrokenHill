@@ -44,14 +44,17 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.max_new_tokens_final = 128
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
         # default: three hours, necessary for some models tested on CPU
-        self.process_timeout = 14400
+        #self.process_timeout = 14400
+        # Five minutes to test only models that will fit in the GPU
+        self.process_timeout = 300
     
     def set_from_model_info(self, model_info):
         self.model_path = model_info.model_path
         self.tokenizer_path = model_info.tokenizer_path
         self.peft_path = model_info.peft_path
         self.template = model_info.template
-        self.custom_options = add_values_to_list_if_not_already_present(self.custom_options, model_info.custom_options)
+        for i in range(0, len(model_info.custom_options)):
+            self.custom_options.append(model_info.custom_options[i])
     
     def set_output_file_base_name(self):
         time_string = get_time_string(dt = datetime.datetime.now(tz = datetime.timezone.utc))
