@@ -42,7 +42,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.base_prompt = None
         self.target_output = None
         self.initial_adversarial_string = None        
-        self.max_iterations = 1
+        #self.max_iterations = 1
+        self.max_iterations = 2
         self.max_new_tokens_final = 128
         self.perform_cpu_tests = True
         self.perform_cuda_tests = True
@@ -52,6 +53,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         #self.process_timeout = 36000
         # one hour
         self.process_timeout = 3600
+        # two hours
+        self.process_timeout = 7200
         # Five minutes to test only models that will fit in the GPU
         #self.process_timeout = 300
     
