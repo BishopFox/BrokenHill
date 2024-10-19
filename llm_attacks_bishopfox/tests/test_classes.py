@@ -42,7 +42,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.base_prompt = None
         self.target_output = None
         self.initial_adversarial_string = None        
-        self.max_iterations = 2
+        self.max_iterations = 1
         self.max_new_tokens_final = 128
         self.perform_cpu_tests = True
         self.perform_cuda_tests = True
@@ -50,8 +50,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
         # default: ten hours, necessary for some models tested on CPU
         #self.process_timeout = 36000
+        # one hour
+        self.process_timeout = 3600
         # Five minutes to test only models that will fit in the GPU
-        self.process_timeout = 300
+        #self.process_timeout = 300
     
     def set_from_model_info(self, model_info):
         self.model_path = model_info.model_path
@@ -68,6 +70,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         result = re.sub(r'[ ]', '_', result)
         self.output_file_base_name = result    
     
+    def get_model_path(self):
+        result = os.path.join(self.base_llm_path, self.model_path)
+        return result
+        
     def get_json_output_path(self):
         result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-results.json")
         return result
@@ -87,7 +93,7 @@ class BrokenHillTestParams(JSONSerializableObject):
             result.append(self.device)
         if self.model_path is not None and self.model_path.strip() != "":
             result.append('--model')
-            result.append(os.path.join(self.base_llm_path, self.model_path))
+            result.append(self.get_model_path())
         if self.tokenizer_path is not None and self.tokenizer_path.strip() != "":
             result.append('--tokenizer')
             result.append(os.path.join(self.base_llm_path, self.tokenizer_path))

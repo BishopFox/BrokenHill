@@ -109,6 +109,7 @@ from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
+from llm_attacks_bishopfox.attack.attack_classes import ModelDataFormatHandling
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
 from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
@@ -410,23 +411,53 @@ def main(attack_params):
         if attack_params.tokenizer_path is not None:
             model_load_message = f"Loading model from '{attack_params.model_path}' and tokenizer from {attack_params.tokenizer_path}."
         print(model_load_message)
-        model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
-                                tokenizer_path = attack_params.tokenizer_path,
-                                low_cpu_mem_usage = attack_params.low_cpu_mem_usage, 
-                                use_cache = attack_params.use_cache,
-                                dtype = torch.float16,
-                                trust_remote_code = attack_params.load_options_trust_remote_code,
-                                ignore_mismatched_sizes = attack_params.load_options_ignore_mismatched_sizes,
-                                enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
-                                missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
-                                device=attack_params.device)
+        model_weight_type = attack_params.get_model_data_type()
+        #print(f"Debug: model_weight_type = {model_weight_type}")
+        model = None
+        tokenizer = None
+        model_config_path = None
+        model_config_dict = None
+        try:
+            model_config_path = os.path.join(attack_params.model_path, "config.json")
+            model_config_data = get_file_content(model_config_path, failure_is_critical = False)
+            model_config_dict = json.loads(model_config_data)
+        except Exception as e:            
+            print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
+        model_weight_storage_string = ""
+        if model_config_dict is not None:            
+            if "torch_dtype" in model_config_dict.keys():
+                model_torch_dtype = model_config_dict["torch_dtype"]
+                if model_torch_dtype is not None:
+                    model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
+                    print(model_weight_storage_string)
+        try:
+            model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
+                tokenizer_path = attack_params.tokenizer_path,
+                low_cpu_mem_usage = attack_params.low_cpu_mem_usage, 
+                use_cache = attack_params.use_cache,
+                dtype = model_weight_type,
+                trust_remote_code = attack_params.load_options_trust_remote_code,
+                ignore_mismatched_sizes = attack_params.load_options_ignore_mismatched_sizes,
+                enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
+                missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
+                device=attack_params.device)
+        except Exception as e:
+            tokenizer_message = ""
+            if attack_params.tokenizer_path is not None and attack_params.tokenizer_path != "":
+                tokenizer_message = ", with tokenizer path '{attack_params.tokenizer_path}'"
+            print(f"Error: exception thrown while loading model from '{attack_params.model_path}'{tokenizer_message}: {e}.")
+            sys.exit(1)
         #print(f"[main] Debug: model loaded.")
+        model_data_type_message = f"Model weight data was loaded as {model.dtype}"
+        if model_weight_storage_string != "":            
+            model_data_type_message = f"{model_weight_storage_string}, and was loaded as {model.dtype}"
+        print(f"Model and tokenizer loaded. {model_data_type_message}")
         if attack_params.peft_adapter_path is not None:
             f"Loading PEFT model from '{attack_params.peft_adapter_path}'."
             try:
                 model = PeftModel.from_pretrained(model, attack_params.peft_adapter_path)
             except Exception as e:
-                print(f"Error: loading PEFT model from '{attack_params.peft_adapter_path}': {e}.")
+                print(f"Error: exception thrown while loading PEFT model from '{attack_params.peft_adapter_path}': {e}.")
                 sys.exit(1)
             #print(f"[main] Debug: PEFT adapter loaded.")
         print_stats(attack_params)
@@ -633,8 +664,6 @@ def main(attack_params):
             
         #print_stats(attack_params)
          
-        #print(f"Debug: Model dtype: {model.dtype}")
-        
         #import pdb; pdb.Pdb(nosigint=True).set_trace()
 
         # TKTK: move this stuff and similar values into an AttackState class to support true suspend/resume
@@ -1422,6 +1451,27 @@ if __name__=='__main__':
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
+    parser.add_argument("--model-data-as-is", type=str2bool, nargs='?',
+        help="Experimental: Load the model data in whatever format it's stored in.")
+    
+    parser.add_argument("--model-data-float16", type=str2bool, nargs='?',
+        help="Force the model data to load in the 'float16' 16-bit floating point format. This is currently the default option, and specifying it explicitly will have no effect.")
+    
+    parser.add_argument("--model-data-bfloat16", type=str2bool, nargs='?',
+        help="Experimental: Force the model data to load in the 'bfloat16' 16-bit floating point format.")
+    
+    parser.add_argument("--model-data-float32", type=str2bool, nargs='?',
+        help="Experimental: Force the model data to load in the 'float32' 32-bit floating point format.")
+        
+    parser.add_argument("--model-data-float64", type=str2bool, nargs='?',
+        help="Experimental: Force the model data to load in the 'float64' 64-bit floating point format.")
+    
+    parser.add_argument("--model-data-complex64", type=str2bool, nargs='?',
+        help="Experimental: Force the model data to load in the 'complex64' format.")
+    
+    parser.add_argument("--model-data-complex128", type=str2bool, nargs='?',
+        help="Experimental: Force the model data to load in the 'complex128' format.")
+    
     parser.add_argument("--template", type=str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
 
@@ -1830,6 +1880,30 @@ if __name__=='__main__':
             print(f"The specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not appear to exist.")
             sys.exit(1)
         
+    if args.model_data_as_is:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.AS_IS
+        
+    if args.model_data_float16:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
+    
+    if args.model_data_bfloat16:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_BFLOAT16
+
+    if args.model_data_float32:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT32
+    
+    if args.model_data_float64:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT64
+    
+    if args.model_data_complex64:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX64
+    
+    if args.model_data_complex128:        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX128
+    
+    if attack_params.model_weight_format_handling != ModelDataFormatHandling.FORCE_FLOAT16:
+        print(f"Warning: using non-default behaviour for model data type. This is a highly experimental feature and will probably cause Broken Hill to crash.")
+    
     if args.template:
         attack_params.template_name = args.template
 

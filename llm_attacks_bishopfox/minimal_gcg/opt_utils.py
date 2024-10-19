@@ -21,6 +21,7 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_t
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
+from llm_attacks_bishopfox.attack.attack_classes import ModelDataFormatHandling
 
 class MellowmaxException(Exception):
     pass
@@ -928,20 +929,58 @@ def get_missing_pad_token_replacement(tokenizer, replacement_name):
         result = tokenizer.unk_token_id, tokenizer.unk_token
     return result
 
-def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype=torch.float16, trust_remote_code=True, ignore_mismatched_sizes=False, enable_hardcoded_tokenizer_workarounds = False, missing_pad_token_replacement = None, **kwargs):
+def load_model_and_tokenizer(model_path, tokenizer_path=None, device='cuda:0', dtype = torch.float16, trust_remote_code=True, ignore_mismatched_sizes=False, enable_hardcoded_tokenizer_workarounds = False, missing_pad_token_replacement = None, **kwargs):
     #print(f"[load_model_and_tokenizer] Debug: model_path = '{model_path}', tokenizer_path = '{tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
 
     #if ignore_mismatched_sizes:
     #    kwargs["ignore_mismatched_sizes"] = True
 
-    model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=dtype,
-            trust_remote_code=trust_remote_code,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-            **kwargs
-        ).to(device).eval()
-    
+    # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
+    # Inspired by the following PyTorch output:
+    #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
+    #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
+
+    model = None
+
+    if dtype is None:
+        model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                trust_remote_code=trust_remote_code,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+                **kwargs
+            ).to(device).eval()
+    else:
+        # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
+        charlie_prince_bf16 = False
+        charlie_prince_fp16 = False
+        charlie_prince_fp32 = False
+        if dtype == torch.bfloat16:
+            charlie_prince_bf16 = True
+        if dtype == torch.float16:
+            charlie_prince_fp16 = True
+        if dtype == torch.float32:
+            charlie_prince_fp32= True
+        #print(f"[load_model_and_tokenizer] Debug: dtype = {dtype}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                    model_path,
+                    torch_dtype = dtype,
+                    bf16 = charlie_prince_bf16,
+                    fp16 = charlie_prince_fp16,
+                    fp32 = charlie_prince_fp32,
+                    trust_remote_code=trust_remote_code,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                    **kwargs
+                ).to(device).eval()
+        except Exception as e:
+            #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+            model = AutoModelForCausalLM.from_pretrained(
+                    model_path,
+                    torch_dtype = dtype,
+                    trust_remote_code=trust_remote_code,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                    **kwargs
+                ).to(device).eval()                
     
     tokenizer_path_to_load = model_path
     if tokenizer_path is not None:

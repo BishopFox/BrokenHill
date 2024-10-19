@@ -470,3 +470,61 @@ def get_widened_slice(slice1, slice2):
     result = slice(slice_start, slice_stop)
     #print(f"[get_widened_slice] slice1 = {slice1}, slice2 = {slice2}, result = {result}")
     return result
+
+def torch_dtype_from_string(string):
+    s = string.lower().strip().replace("torch.", "")
+    if s == "float16":
+        return torch.float16
+    if s == "float32":
+        return torch.float32
+    if s == "bfloat16":
+        return torch.bfloat16
+    if s == "float64":
+        return torch.float64
+    if s == "complex64":
+        return torch.complex64
+    if s == "complex128":
+        return torch.complex128
+    if s == "bool":
+        return torch.bool
+    if s == "int8":
+        return torch.int8
+    if s == "uint8":
+        return torch.uint8
+    if s == "int16":
+        return torch.int16
+    if s == "int32":
+        return torch.int32
+    if s == "int64":
+        return torch.int64
+    raise Exception("Unrecognized PyTorch data type: '{string}'")
+
+def torch_dtype_to_string(dtype):
+    if dtype == torch.float16:
+        return "float16"
+    if dtype == torch.float32:
+        return "float32"
+    if dtype == torch.bfloat16:
+        return "bfloat16"
+    if dtype == torch.float64:
+        return "float64"
+    if dtype == torch.complex64:
+        return "complex64"
+    if dtype == torch.complex128:
+        return "complex128"
+    if dtype == torch.bool:
+        return "bool"
+    if dtype == torch.int8:
+        return "int8"
+    if dtype == torch.uint8:
+        return "uint8"
+    if dtype == torch.int16:
+        return "int16"
+    if dtype == torch.int32:
+        return "int32"
+    if dtype == torch.int64:
+        return "int64"
+    raise Exception("Unrecognized PyTorch data type: '{dtype}'")
+
+
+

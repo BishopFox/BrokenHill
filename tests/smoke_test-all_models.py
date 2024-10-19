@@ -14,6 +14,7 @@ from llm_attacks_bishopfox.tests.test_classes import BrokenHillTestParams
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
+from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
@@ -36,14 +37,37 @@ def main(test_params):
     len_model_info_list_entries = len(model_info_list.entries)
     failed_tests = []
     skipped_tests = []
+    succeeded_tests = []
     for model_info_num in range(0, len_model_info_list_entries):        
         model_start_time = get_now()
         model_info = model_info_list.entries[model_info_num]
-        model_start_time_string = get_time_string(dt = model_start_time)
-        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
-        
         model_test_params = test_params.copy()
         model_test_params.set_from_model_info(model_info)
+        model_start_time_string = get_time_string(dt = model_start_time)
+        model_config_dict = None
+        model_config_path = None
+        try:
+            model_config_path = os.path.join(model_test_params.get_model_path(), "config.json")
+            model_config_data = get_file_content(model_config_path, failure_is_critical = False)
+            model_config_dict = json.loads(model_config_data)
+        except Exception as e:            
+            print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
+        model_data_type = None
+        if model_config_dict is not None:            
+            if "torch_dtype" in model_config_dict.keys():
+                model_data_type = model_config_dict["torch_dtype"]                
+        if model_data_type is None:
+            model_data_type = model_info.data_type
+        if model_info.data_type is None and model_data_type is not None:
+            model_info.data_type = model_data_type
+
+        model_parameter_count_string = ""
+        model_parameter_count = model_info.get_parameter_count()
+        if model_parameter_count is not None:
+            model_parameter_count_string = f" [{model_parameter_count} parameters]"
+        print(f"[{model_start_time_string}] Testing model {model_info.model_name}{model_parameter_count_string} ({model_info_num + 1} / {len_model_info_list_entries})")
+        
+        
         
         if model_info.size > CUDA_CPU_SIZE_THRESHOLD:
             if not test_params.perform_cpu_tests:
@@ -56,6 +80,7 @@ def main(test_params):
                 print(f"Skipping this test because it would be processed on a CUDA device.\n\n")
                 skipped_tests.append(model_info.model_name)
                 continue
+        
         model_test_params.set_output_file_base_name()
         
         standard_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-subprocess_output.txt")
@@ -108,6 +133,7 @@ def main(test_params):
             else:
                 if process_return_code == 0:
                     print(f"Test executed successfully")
+                    succeeded_tests.append(model_info.model_name)
                 else:
                     print(f"!!! Error !!!: command returned code {process_return_code}")
                     failed_tests.append(model_info.model_name)
@@ -144,6 +170,12 @@ def main(test_params):
 
     if exit_test:
         exit_message = "Exiting early by request."    
+
+    if len(succeeded_tests) > 0:
+        message = "Tests of the following models succeeded:\n"
+        for i in range(0, len(succeeded_tests)):
+            message = f"{message}\t{succeeded_tests[i]}\n"
+        print(message)
 
     if len(skipped_tests) > 0:
         message = "Tests of the following models were skipped due to the specified configuration:\n"

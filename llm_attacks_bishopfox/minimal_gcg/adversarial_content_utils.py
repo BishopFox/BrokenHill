@@ -1124,7 +1124,7 @@ class AdversarialContentManager:
 
         #print(f"[get_prompt (non-Python)] Debug: conversation_template (after modifications) = '{conversation_template}'")
         final_decoded_toks = get_decoded_tokens(self.tokenizer, current_token_ids)
-        print(f"[get_prompt (non-Python)] Debug: current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
+        #print(f"[get_prompt (non-Python)] Debug: current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
         
         if remove_tokens_after_target_output:
             current_token_ids = current_token_ids[:result.slice_data.target_output.stop]

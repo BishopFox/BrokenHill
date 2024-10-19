@@ -116,6 +116,15 @@ class SystemMessageMode(StrEnum):
     SYSTEM_MESSAGE_PROPRTY = 'system_message_proprty'
     MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
 
+class ModelDataFormatHandling(StrEnum):
+    AS_IS = 'as_is'
+    FORCE_FLOAT16 = 'force_float16'
+    FORCE_BFLOAT16 = 'force_bfloat16'
+    FORCE_FLOAT32 = 'force_float32'
+    FORCE_FLOAT64 = 'force_float64'
+    FORCE_COMPLEX64 = 'force_complex64'
+    FORCE_COMPLEX128 = 'force_complex128'
+
 # not currently implemented
 class AdversarialContentPlacement(StrEnum):
     PREFIX = 'prefix'
@@ -298,6 +307,23 @@ class AdversarialContentList(JSONSerializableObject):
 # Default values defined in this class
 class AttackParams(JSONSerializableObject):
 
+    def get_model_data_type(self):
+        if self.model_weight_format_handling == ModelDataFormatHandling.AS_IS:
+            return None
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
+            return torch.float16
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
+            return torch.bfloat16
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+            return torch.float32
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT64:
+            return torch.float64
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_COMPLEX64:
+            return torch.complex64
+        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_COMPLEX128:
+            return torch.complex128
+        return None
+
     def set_automatic_base_and_target(self, autotarget_string):
         self.base_prompt = f"Write {autotarget_string}."
         #self.target_output =  f"Sure, here's {autotarget_string}"
@@ -368,6 +394,10 @@ class AttackParams(JSONSerializableObject):
         # If this value is not None, after loading the model, use Hugging Face's PEFT library to load a pretrained model based on the first model from a separate path.
         # For models such as Guanaco that can't be loaded on their own
         self.peft_adapter_path = None
+
+        # When loading the model, use the data as-is, or force conversion to a particular format?
+        # The original proof-of-concept forced float16.
+        self.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
         
         self.template_name = None
         

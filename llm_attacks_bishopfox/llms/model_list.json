@@ -12,6 +12,7 @@
 			"peft_path": "",
 			"template": "llama2",
 			"size": 4241896185,
+			"data_type": "float32",
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -26,6 +27,7 @@
 			"peft_path": "",
 			"template": "llama2",
 			"size": 3816970200,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -40,6 +42,7 @@
 			"peft_path": "",
 			"template": "llama2",
 			"size": 4167035336,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -54,6 +57,7 @@
 			"peft_path": "",
 			"template": "llama2",
 			"size": 4167035336,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -82,6 +86,7 @@
 			"peft_path": "",
 			"template": "oasst_pythia",
 			"size": 4114319709,
+			"data_type": "float32",
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -138,6 +143,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 2930002184,
+			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -180,6 +186,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 5303359381,
+			"data_type": "float16",
 			"safe_tensors": false,
 			"custom_options": [ "--max-new-tokens-final", "128" ]
 		},
@@ -199,8 +206,8 @@
 		},
 		{
 			"model_name": "Llama-68M-Chat-v1",
-			"model_release": "RoBERTa",
-			"model_family": "RoBERTa",
+			"model_release": "Felladrin-Llama-68M-Chat-v1",
+			"model_family": "Felladrin-Llama-68M",
 			"model_repository": "https://huggingface.co/Felladrin/Llama-68M-Chat-v1",
 			"direct_developer_or_publisher": "Victor Nogueira",
 			"model_path": "Felladrin/Llama-68M-Chat-v1",
@@ -208,17 +215,19 @@
 			"peft_path": "",
 			"template": "felladrin-llama-chat",
 			"size": 272123144,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "Guanaco-3B-Uncensored-v2",
-			"model_family": "",
+			"model_family": "Fredithefish-Guanaco-Uncensored",
 			"model_path": "Fredithefish/Guanaco-3B-Uncensored-v2",
 			"tokenizer_path": "",
 			"peft_path": "",
 			"template": "guanaco",
 			"size": 5551783000,
+			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -253,6 +262,7 @@
 			"peft_path": "",
 			"template": "gemma+",
 			"size": 5012363872,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -264,6 +274,7 @@
 			"peft_path": "",
 			"template": "gemma+",
 			"size": 5012363872,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -275,6 +286,7 @@
 			"peft_path": "",
 			"template": "gemma+",
 			"size": 5228717488,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -308,6 +320,7 @@
 			"peft_path": "",
 			"template": "smollm",
 			"size": 269060552,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -319,6 +332,7 @@
 			"peft_path": "",
 			"template": "smollm",
 			"size": 3422777952,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -491,6 +505,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 2836578696,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -502,6 +517,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 2836578696,
+			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -513,6 +529,7 @@
 			"peft_path": "",
 			"template": "phi2",
 			"size": 5559417400,
+			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -524,6 +541,7 @@
 			"peft_path": "",
 			"template": "phi3",
 			"size": 7642181880,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -557,6 +575,7 @@
 			"peft_path": "",
 			"template": "phi3",
 			"size": 7642181880,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ ]
 		},
@@ -634,6 +653,7 @@
 			"peft_path": "",
 			"template": "mpt",
 			"size": 5245893681,
+			"data_type": "float32",
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests", "--trust-remote-code" ]
 		},
@@ -746,6 +766,7 @@
 			"peft_path": "",
 			"template": "qwen",
 			"size": 1239173352,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -757,6 +778,7 @@
 			"peft_path": "",
 			"template": "qwen",
 			"size": 3673690696,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -768,6 +790,7 @@
 			"peft_path": "",
 			"template": "qwen2",
 			"size": 988097824,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -779,6 +802,7 @@
 			"peft_path": "",
 			"template": "qwen2",
 			"size": 3087467144,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -823,6 +847,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 132870584,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -845,6 +870,7 @@
 			"peft_path": "",
 			"template": "stablelm2",
 			"size": 6578099872,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -856,6 +882,7 @@
 			"peft_path": "",
 			"template": "zero_shot",
 			"size": 5488766864,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
 		},
@@ -967,6 +994,7 @@
 			"peft_path": "",
 			"template": "TinyLlama",
 			"size": 2200119864,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -1011,6 +1039,7 @@
 			"peft_path": "",
 			"template": "redpajama-incite",
 			"size": 5686106713,
+			"data_type": "float16",
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -1055,6 +1084,7 @@
 			"peft_path": "",
 			"template": "gptneox",
 			"size": 404996,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -1077,6 +1107,7 @@
 			"peft_path": "",
 			"template": "solar+",
 			"size": 496040208,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -1122,6 +1153,7 @@
 			"peft_path": "",
 			"template": "oasst_pythia",
 			"size": 306838155,
+			"data_type": "float32",
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		}
