@@ -49,12 +49,12 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.perform_cuda_tests = True
         self.ignore_jailbreak_test_results = False
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
-        # default: ten hours, necessary for some models tested on CPU
-        #self.process_timeout = 36000
+        # default: ten hours, necessary for some models tested on CPU, e.g. 20B parameter models
+        self.process_timeout = 36000
         # one hour
-        self.process_timeout = 3600
+        #self.process_timeout = 3600
         # two hours
-        self.process_timeout = 7200
+        #self.process_timeout = 7200
         # Five minutes to test only models that will fit in the GPU
         #self.process_timeout = 300
     

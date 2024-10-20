@@ -229,11 +229,18 @@ def print_stats(attack_params):
     system_in_use_memory = system_physical_memory - system_available_memory
     #system_memory_util_percent = system_mem_info.percent
     system_memory_util_percent = float(system_in_use_memory) / float(system_physical_memory)
-    # display_string += f"System:\n"
-    # display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
-    # display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
-    # display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
-    # display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
+    if "cpu"  in attack_params.device:
+        display_string += f"System:\n"
+        display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
+        display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
+        display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
+        display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
+            
+        display_string += f"This process:\n"
+        display_string += f"\tProcess physical memory in use: {process_physical_memory:n} bytes\n"
+        display_string += f"\tProcess virtual memory in use: {process_physical_memory:n} bytes\n"
+        if process_swap is not None:
+            display_string += f"\tProcess swap space in use: {process_swap:n} bytes\n"
 
     if "cuda"  in attack_params.device:
         for i in range(torch.cuda.device_count()):
@@ -1505,8 +1512,13 @@ if __name__=='__main__':
     parser.add_argument("--auto-target", type=str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and the tool will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
+    # TKTK: split this into --model-device and --gradient-device
     parser.add_argument("--device", default=attack_params.device, type=str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). Using anything other than CUDA is unlikely to produce satisfactory results.")
+    
+    # TKTK: add a --multi-device mode that uses torch.nn.DataParallel
+    # model= nn.DataParallel(model)
+    # model.to(device)
 
     parser.add_argument("--self-test", type=str2bool, nargs='?',
         const=True,
