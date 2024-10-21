@@ -332,12 +332,12 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     
     #print("[token_gradients] Debug: Getting logits")
     logits = None
-    #try:
-    #    logits = model(inputs_embeds=full_embeds).logits
+    try:
+        logits = model(inputs_embeds=full_embeds).logits
     # TKTK: is there a way to limit this up front to just the user input/adversarial content and the messages that follow? That should reduce device memory consumption considerably.
-    logits = model(inputs_embeds=full_embeds).logits
-    #except Exception as e:
-    #    raise GradientCreationException(f"Error calling model(inputs_embeds=full_embeds).logits with full_embeds = '{full_embeds}': {e}")
+    #logits = model(inputs_embeds=full_embeds).logits
+    except Exception as e:
+        raise GradientCreationException(f"Error calling model(inputs_embeds = full_embeds).logits with full_embeds = '{full_embeds}': {e}")
     #print_stats("token_gradients")
     #print(f"[token_gradients] Debug: logits = {logits}")
 
@@ -433,7 +433,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
 
     raise GradientCreationException("Error: one_hot.grad is None")
 
-def get_adversarial_content_candidates(attack_params, adversarial_content_manager, current_adversarial_content, coordinate_gradient, random_generator_gradient, random_generator_cpu, random_generator_attack_params_device, not_allowed_tokens = None):
+def get_adversarial_content_candidates(attack_params, adversarial_content_manager, current_adversarial_content, coordinate_gradient, random_generator_gradient, random_generator_cpu, random_generator_attack_params_device, random_generator_attack_params_gradient, not_allowed_tokens = None):
 
     new_adversarial_token_ids = None
 
@@ -445,7 +445,8 @@ def get_adversarial_content_candidates(attack_params, adversarial_content_manage
         if top_indices.shape[0] < 1:
             raise GradientSamplingException(f"No top indices were generated from the coordinate gradient. Coordinate gradient was: {coordinate_gradient}.")
         
-        current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(coordinate_gradient.device)
+        #current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids, device = attack_params.device).to(coordinate_gradient.device)
+        current_adversarial_content_token_ids_device = torch.tensor(current_adversarial_content.token_ids).to(coordinate_gradient.device)
 
         original_adversarial_content_token_ids_device = current_adversarial_content_token_ids_device.repeat(attack_params.new_adversarial_value_candidate_count, 1)
         new_token_pos = None
@@ -468,7 +469,7 @@ def get_adversarial_content_candidates(attack_params, adversarial_content_manage
             except RuntimeError as e:
                 raise GradientSamplingException(f"Couldn't generate first set of random IDs: {e}")
             try:
-                random_ids_2 = torch.randint(0, attack_params.topk, (attack_params.new_adversarial_value_candidate_count, attack_params.number_of_tokens_to_update_every_iteration, 1), device = coordinate_gradient.device, generator = random_generator_attack_params_device)
+                random_ids_2 = torch.randint(0, attack_params.topk, (attack_params.new_adversarial_value_candidate_count, attack_params.number_of_tokens_to_update_every_iteration, 1), device = coordinate_gradient.device, generator = random_generator_attack_params_gradient)
             except RuntimeError as e:
                 raise GradientSamplingException(f"Couldn't generate second set of random IDs: {e}")
             try:

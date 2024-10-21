@@ -61,11 +61,13 @@ def main(test_params):
         if model_info.data_type is None and model_data_type is not None:
             model_info.data_type = model_data_type
 
-        model_parameter_count_string = ""
-        model_parameter_count = model_info.get_parameter_count()
-        if model_parameter_count is not None:
-            model_parameter_count_string = f" [{model_parameter_count} parameters]"
-        print(f"[{model_start_time_string}] Testing model {model_info.model_name}{model_parameter_count_string} ({model_info_num + 1} / {len_model_info_list_entries})")
+        # re-do this using the improved logic, or maybe just leave it out now that it's in the main script
+        # model_parameter_count_string = ""
+        # model_parameter_count = model_info.get_parameter_count()
+        # if model_parameter_count is not None:
+            # model_parameter_count_string = f" [{model_parameter_count} parameters]"
+        #print(f"[{model_start_time_string}] Testing model {model_info.model_name}{model_parameter_count_string} ({model_info_num + 1} / {len_model_info_list_entries})")
+        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
         
         
         
@@ -93,7 +95,8 @@ def main(test_params):
         print(f"Executing command: {model_command_array}")
         try:
             #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-            proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
+            #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
+            proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, preexec_fn=os.setsid)
             #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
             process_standard_output = None
             process_error_output = None
@@ -121,7 +124,17 @@ def main(test_params):
                 exit_test = True
                 break
             except TimeoutExpired:
-                proc.kill()
+                #proc.kill()
+                # Try to kill the process group first
+                process_id = None
+                process_group_id = None
+                try:
+                    process_id = proc.pid
+                    process_group_id = os.getpgid(proc.pid)
+                    os.killpg(process_group_id, signal.SIGTERM)
+                except Exception as e:
+                    print(f"Error: unable to kill process group ID {process_group_id} for parent process {process_id}. Falling back to killing the process instead of the process group. The exception thrown was: {e}")
+                    proc.kill()
                 process_standard_output, process_error_output =  proc.communicate()
                 timed_out = True
             # set returncode property

@@ -19,6 +19,7 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
@@ -380,7 +381,11 @@ class AttackParams(JSONSerializableObject):
     def __init__(self):
         self.operating_mode = BrokenHillMode.GCG_ATTACK
         
-        self.device = 'cuda'
+        #self.device = 'cuda'
+        # the PyTorch device where the model (and everything else except the gradient, currently) should be loaded
+        self.model_device = 'cuda'
+        # the PyTorch device where the gradient operations should be performed
+        self.gradient_device = 'cuda'
         
         # back-end to use if CUDA is not available
         self.device_fallback = 'cpu'
@@ -1110,6 +1115,7 @@ class BrokenHillResultData(JSONSerializableObject):
         self.attack_results = []
         self.self_test_results = {}
         self.completed_iterations = 0
+        self.model_parameter_info_collection = None
     
     def to_dict(self):
         result = super(BrokenHillResultData, self).properties_to_dict(self)
@@ -1119,6 +1125,9 @@ class BrokenHillResultData(JSONSerializableObject):
     def from_dict(property_dict):
         result = BrokenHillResultData()
         super(BrokenHillResultData, result).set_properties_from_dict(result, property_dict)
+        
+        result.model_parameter_info_collection is not None:
+            result.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_dict(result.model_parameter_info_collection)
         
         if len(result.attack_results) > 0:
             deserialized_content = []
@@ -1135,7 +1144,7 @@ class BrokenHillResultData(JSONSerializableObject):
             for i in range(0, len(serialized_dict_keys)):
                 deserialized_dict[serialized_dict_keys[i]] = AttackResultInfoData.from_dict(result.self_test_results[serialized_dict_keys[i]])
             result.self_test_results = deserialized_dict
-        
+                
         return result
 
     def to_json(self):

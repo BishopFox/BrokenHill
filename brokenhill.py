@@ -132,6 +132,7 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import load_conversation_template
@@ -162,6 +163,8 @@ from llm_attacks_bishopfox.util.util_functions import numeric_string_to_float
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import str2bool
+from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
+from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
 from llm_attacks_bishopfox.util.util_functions import update_elapsed_time_string
 from peft import PeftModel
 from torch.quantization import quantize_dynamic
@@ -187,12 +190,20 @@ for logger in loggers:
 def check_pytorch_devices(attack_params):
     all_devices = {}
     devices_above_threshold = {}
-    if "cuda"  in attack_params.device:
-        for i in range(torch.cuda.device_count()):
-            d = PyTorchDevice.from_cuda_device_number(i)
-            all_devices[d.device_name] = d
-            if d.total_memory_utilization > torch_device_reserved_memory_warning_threshold:
-                devices_above_threshold[d.device_name] = d
+    handled_devices = []
+    for device_name in [attack_params.model_device, attack_params.gradient_device]:
+        if device_name in handled_devices:
+            continue
+        handled_devices.append(device_name)
+        if "cuda"  in device_name:
+            for i in range(torch.cuda.device_count()):
+                d = PyTorchDevice.from_cuda_device_number(i)
+                if d.device_name in handled_devices:
+                    continue
+                all_devices[d.device_name] = d
+                handled_devices.append(d.device_name)
+                if d.total_memory_utilization > torch_device_reserved_memory_warning_threshold:
+                    devices_above_threshold[d.device_name] = d
     device_names = list(all_devices.keys())
     if len(device_names) > 0:
         device_names.sort()
@@ -227,22 +238,38 @@ def print_stats(attack_params):
     system_physical_memory = system_mem_info.total
     system_available_memory = system_mem_info.available
     system_in_use_memory = system_physical_memory - system_available_memory
+    system_in_use_memory = system_mem_info.used
+    system_swap_total = None
+    system_swap_in_use = None
+    system_swap_free = None
+    system_swap_percent = None
+    try:
+        system_swap_info = psutil.swap_memory()
+        system_swap_total = system_swap_info.total
+        system_swap_in_use = system_swap_info.used
+        system_swap_free = system_swap_info.free
+        system_swap_percent = system_swap_info.percent
     #system_memory_util_percent = system_mem_info.percent
     system_memory_util_percent = float(system_in_use_memory) / float(system_physical_memory)
-    if "cpu"  in attack_params.device:
+    if "cpu"  in attack_params.model_device or "cpu" in attack_params.gradient_device:
         display_string += f"System:\n"
         display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
         display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
         display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
         display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
-            
+        if system_swap_total is not None:
+            display_string += f"System swap memory:\n"
+            display_string += f"\tTotal swap memory: {system_swap_total:n} bytes\n"
+            display_string += f"\tSwap memory in use: {system_swap_in_use:n} bytes\n"
+            display_string += f"\tFree swap memory: {system_swap_free:n} bytes\n"
+            display_string += f"\tSwap utilization: {system_swap_percent:.0%}\n"                    
         display_string += f"This process:\n"
         display_string += f"\tProcess physical memory in use: {process_physical_memory:n} bytes\n"
         display_string += f"\tProcess virtual memory in use: {process_physical_memory:n} bytes\n"
         if process_swap is not None:
             display_string += f"\tProcess swap space in use: {process_swap:n} bytes\n"
 
-    if "cuda"  in attack_params.device:
+    if "cuda"  in attack_params.model_device or "cuda" in attack_params.gradient_device:
         for i in range(torch.cuda.device_count()):
             d = PyTorchDevice.from_cuda_device_number(i)            
             display_string += f"CUDA device {d.device_name} - {d.device_display_name}\n"
@@ -284,7 +311,7 @@ def generate(attack_params, model, tokenizer, input_token_id_data, temperature, 
 
     #result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
     result.input_token_id_data = input_token_id_data
-    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.device)
+    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.model_device)
     input_ids_sliced = input_ids
     if not include_target_content:
         input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
@@ -348,13 +375,14 @@ def main(attack_params):
     attack_state = AttackState()
 
     # Parameter validation, warnings, and errors
-    device_warning = False
-    if len(attack_params.device) > 2 and attack_params.device[0:3] == "cpu":
-        device_warning = True
-    if len(attack_params.device) < 4 or attack_params.device[0:4] != "cuda":
-        device_warning = True
-    if device_warning:
-        print(f"Warning: the specified device ('{attack_params.device}') is not recommended. This tool is heavily optimized for CUDA. It will run very slowly or not at all on other hardware. Expect run times about 100 times slower on CPU hardware, for example.")
+    for device_name in [attack_params.model_device, attack_params.gradient_device]:
+        device_warning = False
+        if len(device_name) > 2 and device_name[0:3] == "cpu":
+            device_warning = True
+        if len(device_name) < 4 or device_name[0:4] != "cuda":
+            device_warning = True
+        if device_warning:
+            print(f"Warning: the specified device ('{device_name}') is not recommended. This tool is heavily optimized for CUDA. It will run very slowly or not at all on other hardware. Expect run times about 100 times slower on CPU hardware, for example.")
 
     user_aborted = False
 
@@ -368,7 +396,11 @@ def main(attack_params):
     # CUDA
     torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
     
-    random_generator_attack_params_device = torch.Generator(device = attack_params.device).manual_seed(attack_params.torch_manual_seed)
+    #random_generator_attack_params_device = torch.Generator(device = attack_params.device).manual_seed(attack_params.torch_manual_seed)
+    random_generator_attack_params_model_device = torch.Generator(device = attack_params.model_device).manual_seed(attack_params.torch_manual_seed)
+    random_generator_attack_params_gradient_device = torch.Generator(device = attack_params.model_device).manual_seed(attack_params.torch_manual_seed)
+    if attack_params.model_device != attack_params.gradient_device:
+        random_generator_attack_params_gradient_device = torch.Generator(device = attack_params.gradient_device).manual_seed(attack_params.torch_manual_seed)
     random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_params.torch_manual_seed)
     random_generator_gradient = None
     
@@ -405,7 +437,7 @@ def main(attack_params):
     main_loop_iteration_number = 0
     # keep two arrays to avoid having to convert every item to JSON every iteration
     overall_result_data = BrokenHillResultData()
-    overall_result_data.start_date_time = start_ts
+    overall_result_data.start_date_time = start_ts    
     #attack_data = []
     # keep another array to track adversarial values
     current_adversarial_content = None
@@ -428,7 +460,7 @@ def main(attack_params):
             model_config_path = os.path.join(attack_params.model_path, "config.json")
             model_config_data = get_file_content(model_config_path, failure_is_critical = False)
             model_config_dict = json.loads(model_config_data)
-        except Exception as e:            
+        except Exception as e:
             print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
         model_weight_storage_string = ""
         if model_config_dict is not None:            
@@ -436,6 +468,7 @@ def main(attack_params):
                 model_torch_dtype = model_config_dict["torch_dtype"]
                 if model_torch_dtype is not None:
                     model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
+                    model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
                     print(model_weight_storage_string)
         try:
             model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
@@ -447,7 +480,7 @@ def main(attack_params):
                 ignore_mismatched_sizes = attack_params.load_options_ignore_mismatched_sizes,
                 enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
                 missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
-                device=attack_params.device)
+                device=attack_params.model_device)
         except Exception as e:
             tokenizer_message = ""
             if attack_params.tokenizer_path is not None and attack_params.tokenizer_path != "":
@@ -468,6 +501,28 @@ def main(attack_params):
                 sys.exit(1)
             #print(f"[main] Debug: PEFT adapter loaded.")
         print_stats(attack_params)
+        
+        overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(model)
+        
+        model_calculated_bytes_in_memory = None
+        model_as_is_calculated_bytes_in_memory = None
+        current_memory_parameter_info_string = ""
+        as_is_storage_memory_parameter_info_string = ""
+        
+        try:
+            model_calculated_bytes_in_memory = int(float(overall_result_data.model_parameter_info_collection.total_parameter_count) * float(torch_dtype_to_bit_count(model.dtype)) / 8.0)
+            current_memory_parameter_info_string = f" Using the current data type '{model.dtype}', the model data should occupy {model_calculated_bytes_in_memory} bytes of device memory."
+        except Exception as e:
+            print(f"Error calculating model memory use with the current data type: {e}")
+        
+        if model_weight_storage_dtype is not None:
+            try:
+                model_as_is_calculated_bytes_in_memory = int(float(overall_result_data.model_parameter_info_collection.total_parameter_count) * float(torch_dtype_to_bit_count(model.dtype)) / 8.0)
+                as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{model_weight_storage_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory."
+            except Exception as e:
+                print(f"Error calculating model memory use with the model's native data type: {e}")
+        
+        print(f"The current model has {overall_result_data.model_parameter_info_collection.total_parameter_count} total parameters in named groups. {overall_result_data.model_parameter_info_collection.trainable_parameter_count} of the parameters are trainable, and {overall_result_data.model_parameter_info_collection.nontrainable_parameter_count} of the parameters are not trainable.{current_memory_parameter_info_string}{as_is_storage_memory_parameter_info_string}")
         
         if isinstance(tokenizer.pad_token_id, type(None)):
             if attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
@@ -498,7 +553,7 @@ def main(attack_params):
         print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with a large number of tokens.")
         token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, 
             attack_params.not_allowed_token_list, 
-            device = attack_params.device, 
+            device = attack_params.model_device, 
             additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive, 
             filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, 
             filter_nonprintable_tokens = attack_params.exclude_nonprintable_tokens, 
@@ -832,7 +887,7 @@ def main(attack_params):
                     decoded_loss_slice_string = get_escaped_string(tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     
                     #print(f"Converting input IDs to device")
-                    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.device)
+                    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.model_device)
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
                     #print_stats(attack_params)
                     
@@ -849,7 +904,7 @@ def main(attack_params):
                             adversarial_content = current_adversarial_content.copy(),
                             trash_fire_tokens = trash_fire_token_treasury)
                         input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
-                        input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_params.device)
+                        input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_params.model_device)
 
                     best_new_adversarial_content = None                    
                     
@@ -924,6 +979,7 @@ def main(attack_params):
                                                        random_generator_gradient,
                                                        random_generator_cpu,
                                                        random_generator_attack_params_device,
+                                                       random_generator_attack_params_gradient,
                                                        not_allowed_tokens = not_allowed_tokens)
                                     except GradientSamplingException as e:
                                         print(f"Error: attempting to generate a new set of candidate adversarial data failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.")
@@ -1418,8 +1474,7 @@ if __name__=='__main__':
     mps_available = torch.backends.mps.is_available()
     
     if not cuda_available:
-        print(f"Warning: this host does not appear to have a PyTorch CUDA back-end available. The default --device option has therefore been changed from '{attack_params.device}' to '{attack_params.device_fallback}'. Using CPU processing will result in significantly longer run times for this tool. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
-        attack_params.device = attack_params.device_fallback
+        print(f"Warning: this host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for this tool. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
     if mps_available:
         print(f"Warning: this host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
     
@@ -1512,9 +1567,12 @@ if __name__=='__main__':
     parser.add_argument("--auto-target", type=str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and the tool will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
-    # TKTK: split this into --model-device and --gradient-device
-    parser.add_argument("--device", default=attack_params.device, type=str, 
-        help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). Using anything other than CUDA is unlikely to produce satisfactory results.")
+    parser.add_argument("--device", default=attack_params.model_device, type=str, 
+        help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). This is a shortcut equivalent to specifying both --model-device and --gradient-device with the same device name.")
+    parser.add_argument("--model-device", type=str, 
+        help="Experimental: The device to use for loading the model and performing PyTorch operations other than those related to the gradient ('cuda', 'cuda:0', etc.).")
+    parser.add_argument("--gradient-device", type=str, 
+        help="Experimental: The device to use for PyTorch gradient operations ('cuda', 'cuda:0', etc.).")
     
     # TKTK: add a --multi-device mode that uses torch.nn.DataParallel
     # model= nn.DataParallel(model)
@@ -1872,11 +1930,31 @@ if __name__=='__main__':
         print(list_string)
         sys.exit(0)
 
-    attack_params.device = args.device
+    #attack_params.device = args.device
+    default_device = attack_params.model_device
+    combined_device_params = False
+    individual_device_params = False
+    if args.device != default_device:
+        attack_params.model_device = args.device
+        attack_params.gradient_device = args.device
+        combined_device_params = True
+    if args.model_device:
+        attack_params.model_device = args.model_device
+        individual_device_params = True
+    if args.gradient_device:
+        attack_params.gradient_device = args.gradient_device
+        individual_device_params = True
+    if individual_device_params and combined_device_params:
+        print(f"--device can only be specified if --model-device and --gradient-device are not specified.")
+        sys.exit(1)
 
     if cuda_available:
-        if len(attack_params.device) < 4 or attack_params.device[0:4] != "cuda":
-            print(f"Warning: this appears to have a PyTorch CUDA back-end available, but the back-end has been set to '{attack_params.device}' instead. This is likely to result in significantly decreased performance versus using the CUDA back-end.")        
+        is_using_cpu_with_cuda_available = False
+        for device_name in [attack_params.model_device, attack_params.gradient_device]:
+            if len(device_name) < 4 or device_name[0:4] != "cuda":
+                is_using_cpu_with_cuda_available = True
+        if is_using_cpu_with_cuda_available:
+            print(f"Warning: this appears to have a PyTorch CUDA back-end available, but a back-end has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. Please ensure this was an intentional decision.")        
 
     check_pytorch_devices(attack_params)
         

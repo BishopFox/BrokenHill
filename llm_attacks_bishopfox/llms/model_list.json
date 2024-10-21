@@ -130,7 +130,8 @@
 			"template": "gptneox",
 			"size": 41293763742,
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Takes just under 9.5 hours to smoke-test this model on the test system in CPU mode."
 		},
 		{
 			"model_name": "pythia-1.4b",

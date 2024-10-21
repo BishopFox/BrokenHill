@@ -526,5 +526,32 @@ def torch_dtype_to_string(dtype):
         return "int64"
     raise Exception("Unrecognized PyTorch data type: '{dtype}'")
 
+def torch_dtype_to_bit_count(dtype):
+    if dtype == torch.float16:
+        return 16
+    if dtype == torch.float32:
+        return 32
+    if dtype == torch.bfloat16:
+        return 16
+    if dtype == torch.float64:
+        return 64
+    if dtype == torch.complex64:
+        return 64
+    if dtype == torch.complex128:
+        return 128
+    if dtype == torch.bool:
+        return 1
+    if dtype == torch.int8:
+        return 8
+    if dtype == torch.uint8:
+        return 8
+    if dtype == torch.int16:
+        return 16
+    if dtype == torch.int32:
+        return 32
+    if dtype == torch.int64:
+        return 64
+    raise Exception("Unrecognized PyTorch data type: '{dtype}'")
+
 
 
