@@ -831,6 +831,11 @@ def main(attack_params):
             if attack_params.json_output_file is not None:
                 safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
             sys.exit(0)
+        
+        # Get the embedding matrix once, rather than every iteration
+        embedding_matrix = get_embedding_matrix(model)
+        
+        print(f"Debug: embedding_matrix properties: {embedding_matrix.to_dict()}")        
 
         print(f"Starting main loop")
 
@@ -922,7 +927,8 @@ def main(attack_params):
                         #print(f"Computing coordinate gradient")
                         try:
                             coordinate_gradient = token_gradients(attack_params,
-                                model, 
+                                model,
+                                embedding_matrix,
                                 tokenizer,
                                 #input_ids,
                                 input_ids_gcg_ops,
@@ -1513,26 +1519,8 @@ if __name__=='__main__':
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("--model-data-as-is", type=str2bool, nargs='?',
-        help="Experimental: Load the model data in whatever format it's stored in.")
-    
-    parser.add_argument("--model-data-float16", type=str2bool, nargs='?',
-        help="Force the model data to load in the 'float16' 16-bit floating point format. This is currently the default option, and specifying it explicitly will have no effect.")
-    
-    parser.add_argument("--model-data-bfloat16", type=str2bool, nargs='?',
-        help="Experimental: Force the model data to load in the 'bfloat16' 16-bit floating point format.")
-    
-    parser.add_argument("--model-data-float32", type=str2bool, nargs='?',
-        help="Experimental: Force the model data to load in the 'float32' 32-bit floating point format.")
-        
-    parser.add_argument("--model-data-float64", type=str2bool, nargs='?',
-        help="Experimental: Force the model data to load in the 'float64' 64-bit floating point format.")
-    
-    parser.add_argument("--model-data-complex64", type=str2bool, nargs='?',
-        help="Experimental: Force the model data to load in the 'complex64' format.")
-    
-    parser.add_argument("--model-data-complex128", type=str2bool, nargs='?',
-        help="Experimental: Force the model data to load in the 'complex128' format.")
+    parser.add_argument("--model-data-type", type=str, default="float16", choices = [ "as-is", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
+        help=f"Experimental: specify the type to load the model's data as. 'as-is' will load the data in its native format.  Default: float16. Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.")    
     
     parser.add_argument("--template", type=str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
@@ -1970,25 +1958,25 @@ if __name__=='__main__':
             print(f"The specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not appear to exist.")
             sys.exit(1)
         
-    if args.model_data_as_is:        
+    if args.model_data_type == "as-is":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.AS_IS
         
-    if args.model_data_float16:        
+    if args.model_data_type == "float16":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
     
-    if args.model_data_bfloat16:        
+    if args.model_data_type == "bfloat16":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_BFLOAT16
 
-    if args.model_data_float32:        
+    if args.model_data_type == "float32":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT32
     
-    if args.model_data_float64:        
+    if args.model_data_type == "float64":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT64
     
-    if args.model_data_complex64:        
+    if args.model_data_type == "complex64":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX64
     
-    if args.model_data_complex128:        
+    if args.model_data_type == "complex128":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX128
     
     if attack_params.model_weight_format_handling != ModelDataFormatHandling.FORCE_FLOAT16:

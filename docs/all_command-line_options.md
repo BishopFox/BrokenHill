@@ -2,9 +2,17 @@
 
 ## --device <string>
 
-The PyTorch device to use for the attack. Defaults to `cuda`.
+The PyTorch device to use for all elements of the attack. Defaults to `cuda`. Equivalent to specifying `--model-device` and `--gradient-device` with the same value.
 
-Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended. For example, using `cpu` option will make the attack run about 100 times slower.
+Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended in most cases. For example, using `cpu` option will make the attack run about 100 times slower.
+
+## --model-device <string>
+
+*Experimental* The PyTorch device to use for the LLM model and most of the other operations, with the exception of the gradient.
+
+## --gradient-device <string>
+
+*Experimental* The PyTorch device to use for the gradient used in the GCG attack. The gradient is one of the largest elements of the GCG attack, and gradient-related operations represent a large fraction of GCG processing. Handling it on a separate device from the other elements *may* allow larger models to be tested on some devices with limited CUDA device memory more efficiently than processing everything on the CPU.
 
 ## --model <string>
 
@@ -17,6 +25,12 @@ An optional parameter used to specify a path to a different directory containing
 ## --peft-adapter <string>
 
 An optional parameter used to specify a path to the base directory for a PEFT pre-trained model/adapter that is based on the model specified with `--model`. [Used to load models such as Guanaco](GCG_attack/model_notes.md).
+
+## --model-data-type [ as-is | float16 | bfloat16 | float32 | float64 | complex64 | complex128 ]
+
+*Experimental* Specify the type to load the model's data as. `as-is` will load the data in its native format.  The default is `float16`, which was the historical behaviour inherited from [the proof-of-concept written by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/).
+
+Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.
 
 ## --json-output-file <string> and --overwrite-output
 

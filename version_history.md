@@ -1,6 +1,6 @@
 # Broken Hill version history
 
-# 0.34 - 2024-10-16
+# 0.34 - 2024-10-xx
 
 * Added support for the following models and families:
   * [Azurro's APT family](https://huggingface.co/Azurro)
@@ -49,9 +49,12 @@
   * `solar+`
   * `vikhr`
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
-* Added some basic automated test scripts to make validating additional models and families easier and avoid regression bugs.
+* Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
-* Added experimental `--ignore-prologue-during-gcg-operations` option.
+* Added the following [experimental options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
+  * `--model-device` and `--gradient-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
+  * `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
+  * `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
 * A few additions to the default jailbreak detection rules.
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
@@ -63,6 +66,7 @@
   * Updated `ollama_wrapper.sh` to correctly handle adversarial content containing shell metacharacters.
   * Minor update to the logic used to generate the "Current input string:" output text so that trailing delimiters between the input and the LLM role indicator are omitted.
   * Minor correction to the custom `stablelm2` chat template.
+  * Many other lesser fixes.
 
 # 0.33 - 2024-10-08
 

@@ -22,7 +22,7 @@ class BrokenHillModelSupportState(IntFlag):
     # Is the Torch configuration class for the model supported?
     # e.g. GemmaConfig, Phi3Config
     TORCH_CONFIGURATION_CLASS_SUPPORTED = auto()
-    # Can the model be run for at least two iterations in Broken Hill without crashing?
+    # Can the model be run for at least two iterations in Broken Hill without crashing and generating valid output?
     PASSES_SMOKE_TEST = auto()
     # Is there a chat template for the model that works reasonably well?
     HAS_KNOWN_CHAT_TEMPLATE = auto()

@@ -72,8 +72,10 @@
 			"peft_path": "",
 			"template": "alpaca",
 			"size": 52063646628,
+			"data_type": "float32",
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Takes just under 6.5 hours to smoke-test this model on the test system in CPU mode."
 		},
 		{
 			"model_name": "huge-roadrunner-pythia-1b-deduped-oasst",
@@ -102,7 +104,8 @@
 			"template": "zero_shot",
 			"size": 24207819307,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This model seems to hang during the second iteration - doesn't finish even at ten hours."
 		},
 		{
 			"model_name": "gpt-neo-1.3B",
@@ -129,9 +132,10 @@
 			"peft_path": "",
 			"template": "gptneox",
 			"size": 41293763742,
+			"data_type": "float16",
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ],
-			"comment": "Takes just under 9.5 hours to smoke-test this model on the test system in CPU mode."
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "unk" ],
+			"comment": "Takes about 9.5 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement."
 		},
 		{
 			"model_name": "pythia-1.4b",
@@ -346,7 +350,8 @@
 			"template": "mistral",
 			"size": 14483563691,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Takes about 2.75 hours to smoke-test this model on the test system in CPU mode."
 		},
 		{
 			"model_name": "GPT-NeoX-20B-Erebus",
@@ -360,7 +365,8 @@
 			"template": "gptneox",
 			"size": 41293881230,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "unk" ],
+			"comment": "Takes about 9.75 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement value."
 		},
 		{
 			"model_name": "OPT-6.7B-Erebus",

@@ -169,7 +169,7 @@ def mellowmax(t: torch.Tensor, alpha = 1.0, dim = -1):
 
 
 #def token_gradients(model, tokenizer, input_ids, input_slice, target_slice, loss_slice):
-def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
+def token_gradients(attack_params, model, embedding_matrix, tokenizer, input_ids, input_id_data):
 
     """
     Computes gradients of the loss with respect to the coordinates.
@@ -196,28 +196,27 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #print_stats("token_gradients")
     #print("[token_gradients] Debug: Getting embedding weight matrix")
     #print(f"[token_gradients] Debug: model.model.embed_tokens = {model.model.embed_tokens}")
-    embed_weights = get_embedding_matrix(model)
-    #print(f"[token_gradients] Debug: embed_weights = {embed_weights}")
-    #print(f"[token_gradients] Debug: embed_weights.shape = {embed_weights.shape}")
+    #print(f"[token_gradients] Debug: embedding_matrix = {embedding_matrix}")
+    #print(f"[token_gradients] Debug: embedding_matrix.shape = {embedding_matrix.shape}")
     #print_stats("token_gradients")
 
-    #print(f"[token_gradients] Debug: embed_weights.dtype={embed_weights.dtype}")
+    #print(f"[token_gradients] Debug: embedding_matrix.dtype={embedding_matrix.dtype}")
 
     quantized_tensors = False
-    if embed_weights is not None:
-        if hasattr(embed_weights, "quantization_scheme"):
-            print(f"[token_gradients] Debug: embed_weights has quantization_scheme property, assuming quantized tensors")
+    if embedding_matrix is not None:
+        if hasattr(embedding_matrix, "quantization_scheme"):
+            print(f"[token_gradients] Debug: embedding_matrix has quantization_scheme property, assuming quantized tensors")
             quantized_tensors = True
-        if embed_weights.data is not None and len(embed_weights.data) > 0:
-            #print(f"[token_gradients] Debug: type(embed_weights.data) = {type(embed_weights.data)}")
-            #print(f"[token_gradients] Debug: embed_weights.data = {embed_weights.data} with attributes: {dir(embed_weights.data)} and variables: {vars(embed_weights.data)}")
-            #if hasattr(embed_weights.data, "qscheme"):
-            #    print(f"[token_gradients] Debug: embed_weights.data.qscheme = {embed_weights.data.qscheme}")
-            if embed_weights.data.is_quantized:
-                print(f"[token_gradients] Debug: embed_weights.data.is_quantized is True, assuming quantized tensors")
+        if embedding_matrix.data is not None and len(embedding_matrix.data) > 0:
+            #print(f"[token_gradients] Debug: type(embedding_matrix.data) = {type(embedding_matrix.data)}")
+            #print(f"[token_gradients] Debug: embedding_matrix.data = {embedding_matrix.data} with attributes: {dir(embedding_matrix.data)} and variables: {vars(embedding_matrix.data)}")
+            #if hasattr(embedding_matrix.data, "qscheme"):
+            #    print(f"[token_gradients] Debug: embedding_matrix.data.qscheme = {embedding_matrix.data.qscheme}")
+            if embedding_matrix.data.is_quantized:
+                print(f"[token_gradients] Debug: embedding_matrix.data.is_quantized is True, assuming quantized tensors")
                 quantized_tensors = True
         else:
-            raise GradientCreationException(f"Can't create a gradient when embed_weights.data is null or empty.")
+            raise GradientCreationException(f"Can't create a gradient when embedding_matrix.data is null or empty.")
     
     #print(f"[token_gradients] Debug: input_id_data.slice_data.control = {input_id_data.slice_data.control}")
     #print(f"[token_gradients] Debug: input_ids = {input_ids}")
@@ -233,21 +232,21 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     scales_value = None
     pczp_value = None
     if quantized_tensors:
-        scales = embed_weights.data.q_per_channel_scales()
-        pczp = embed_weights.data.q_per_channel_zero_points()
+        scales = embedding_matrix.data.q_per_channel_scales()
+        pczp = embedding_matrix.data.q_per_channel_zero_points()
         scales_value = get_first_value_from_tensor(scales)
         pczp_value = int(get_first_value_from_tensor(pczp))
         #print(f"[token_gradients] Debug: scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
-        one_hot = create_new_quantized_tensor(0, (input_ids[input_id_data.slice_data.control].shape[0],embed_weights.shape[0]), model.device, embed_weights.data.dtype, scales_value, pczp_value)
+        one_hot = create_new_quantized_tensor(0, (input_ids[input_id_data.slice_data.control].shape[0],embedding_matrix.shape[0]), attack_params.gradient_device, embedding_matrix.data.dtype, scales_value, pczp_value)
     else:
         try:
             one_hot = torch.zeros(
                 input_ids[input_id_data.slice_data.control].shape[0],
-                embed_weights.shape[0],
-                device=model.device,
-                dtype=embed_weights.dtype)
+                embedding_matrix.shape[0],
+                device = attack_params.gradient_device,
+                dtype = embedding_matrix.dtype)
         except Exception as e:
-            raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_ids[input_id_data.slice_data.control].shape[0], embed_weights.shape[0], device=model.device, dtype=embed_weights.dtype) with input_ids = '{input_ids}', input_ids[input_id_data.slice_data.control] = '{input_ids[input_id_data.slice_data.control]}', input_ids[input_id_data.slice_data.control].shape = '{input_ids[input_id_data.slice_data.control].shape}', embed_weights = '{embed_weights}', embed_weights.shape = '{embed_weights.shape}', dtype = '{dtype}': {e}")        
+            raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_ids[input_id_data.slice_data.control].shape[0], embedding_matrix.shape[0], device = attack_params.gradient_device, dtype=embedding_matrix.dtype) with input_ids = '{input_ids}', input_ids[input_id_data.slice_data.control] = '{input_ids[input_id_data.slice_data.control]}', input_ids[input_id_data.slice_data.control].shape = '{input_ids[input_id_data.slice_data.control].shape}', embedding_matrix = '{embedding_matrix}', embedding_matrix.shape = '{embedding_matrix.shape}', dtype = '{dtype}': {e}")        
     #print_stats("token_gradients")
     #print(f"[token_gradients] Debug: one_hot = {one_hot}")
     #print(f"[token_gradients] Debug: scales_value = {scales_value}")
@@ -259,13 +258,12 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #print("[token_gradients] Debug: Getting one_hot scatter")
     one_hot_ones = None
     if quantized_tensors:
-#        one_hot_ones = torch.randint(1, 2, size=(one_hot.shape[0],1), device=model.device, dtype=embed_weights.dtype)
-        one_hot_ones = create_new_quantized_tensor(1, (one_hot.shape[0],1), model.device, embed_weights.data.dtype, scales_value, pczp_value)
+        one_hot_ones = create_new_quantized_tensor(1, (one_hot.shape[0],1), attack_params.gradient_device, embedding_matrix.data.dtype, scales_value, pczp_value)
     else:
         try:
-            one_hot_ones = torch.ones(one_hot.shape[0], 1, device=model.device, dtype=embed_weights.dtype)
+            one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_params.gradient_device, dtype = embedding_matrix.dtype)
         except Exception as e:
-            raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device=model.device, dtype=embed_weights.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}")
+            raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_params.gradient_device, dtype=embedding_matrix.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}")
 
     #print(f"[token_gradients] Debug: one_hot_ones = {one_hot_ones}")
 
@@ -286,7 +284,7 @@ def token_gradients(attack_params, model, tokenizer, input_ids, input_id_data):
     #print_stats("token_gradients")
 
     #print("[token_gradients] Debug: Getting input_embeds")
-    input_embeds = (one_hot @ embed_weights).unsqueeze(0)
+    input_embeds = (one_hot @ embedding_matrix).unsqueeze(0)
     #print_stats("token_gradients")
     
     #print(f"[token_gradients] Debug: input_embeds = {input_embeds}")
@@ -789,10 +787,8 @@ def get_logits(*, attack_params, model, tokenizer, input_ids, adversarial_conten
 
     max_len = number_of_adversarial_token_ids
     test_ids = []
-    for i in range(0, len(adversarial_candidate_list.adversarial_content)):
-        #tid = torch.tensor(tokenizer(adversarial_candidate_list.adversarial_content[i].token_ids, add_special_tokens=False).input_ids[:max_len], device=model.device)
-        tid = torch.tensor(adversarial_candidate_list.adversarial_content[i].token_ids[:max_len], device=model.device)
-        #tid = torch.tensor(adversarial_candidate_list.adversarial_content[i].token_ids, device=model.device)
+    for i in range(0, len(adversarial_candidate_list.adversarial_content)):        
+        tid = torch.tensor(adversarial_candidate_list.adversarial_content[i].token_ids[:max_len], device = model.device)
         test_ids.append(tid)
 
     pad_tok = 0
@@ -825,7 +821,7 @@ def get_logits(*, attack_params, model, tokenizer, input_ids, adversarial_conten
 
     if return_ids:
         del locs, test_ids ; gc.collect()
-        result1 = forward(attack_params = attack_params, model=model, tokenizer = tokenizer, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size)
+        result1 = forward(attack_params = attack_params, model = model, tokenizer = tokenizer, input_ids = ids, attention_mask = attn_mask, batch_size = batch_size)
         #print(f"[get_logits] Debug: returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
 
         return result1, ids
