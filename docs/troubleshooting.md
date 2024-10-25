@@ -15,7 +15,7 @@ If you are already testing using [models with sizes in-line with the values in t
 
 ## TypeError: Couldn't build proto file into descriptor pool
 
-Sometimes, everything will seem to be working fine, and then the next time you run the tool, you'll get an error like this:
+Sometimes, everything will seem to be working fine, and then the next time you run Broken Hill, you'll get an error like this:
 
 ```
 [load_model_and_tokenizer] Warning: unable to load standard tokenizer from '/mnt/md0/Machine_Learning/LLMs/Microsoft/Phi-3-mini-128k-instruct', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: Couldn't build proto file into descriptor pool: Invalid default '0.9995' for field sentencepiece.TrainerSpec.character_coverage of type 2

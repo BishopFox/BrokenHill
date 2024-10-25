@@ -109,7 +109,7 @@ def get_felladrin_llama_conversation_template():
     
 def get_gemma_conversation_template():
     conv_template = get_default_conversation_template().copy()
-    conv_template.name = "gemma+"
+    conv_template.name = "gemma"
     conv_template.system_message = "<bos>"
     #conv_template.system_message = ""
     #conv_template.roles = ("<start_of_turn>user\n", "<start_of_turn>model\n")
@@ -203,7 +203,7 @@ def get_qwen2_conversation_template():
 
 def get_solar_conversation_template():
     conv_template = fastchat.conversation.get_conv_template("solar").copy()
-    conv_template.name = "solar+"
+    conv_template.name = "solar"
     conv_template.system_template = "### System:\n{system_message}"
     conv_template.stop_str = " </s>"
     return conv_template
@@ -248,92 +248,61 @@ def get_vikhr_conversation_template():
     conv_template.stop_str = None
     return conv_template
 
-def register_missing_conversation_template(attack_params, fschat_added_support, template_name, template):
+def register_custom_conversation_template(attack_params, fschat_has_existing_template, template_name, template):
     register_conv_template = True
     
     if template_name in fastchat.conversation.conv_templates.keys():
-        fschat_added_support.append(template_name)
-        if not attack_params.override_fschat_templates:
-            register_conv_template = False
-    if register_conv_template:
+        fschat_has_existing_template.append(template_name)
+        if attack_params.override_fschat_templates:
+            fastchat.conversation.conv_templates[template_name] = template
+    else:
         fastchat.conversation.register_conv_template(template = template, override = True)
         
-    return fschat_added_support
+    return fschat_has_existing_template
+
+def get_custom_conversation_templates():
+    result = []
+    result.append(get_blenderbot_conversation_template())
+    result.append(get_daredevil_conversation_template())
+    result.append(get_felladrin_llama_conversation_template())
+    result.append(get_gemma_conversation_template())
+    result.append(get_gptneox_conversation_template())
+    result.append(get_guanaco_conversation_template())
+    result.append(get_llama2_conversation_template())
+    result.append(get_mpt_conversation_template())
+    result.append(get_phi2_conversation_template())
+    result.append(get_phi3_conversation_template())
+    result.append(get_qwen_conversation_template())
+    result.append(get_qwen2_conversation_template())
+    result.append(get_smollm_conversation_template())
+    result.append(get_solar_conversation_template())
+    result.append(get_stablelm2_conversation_template())
+    result.append(get_vikhr_conversation_template())
+    return result
+
+def get_custom_conversation_template_names():
+    result = []
+    for ct in get_custom_conversation_templates():
+        result.append(ct.name)
+    result.sort()
+    return result
 
 # override = True is required because otherwise adding a missing template will fail with an assertion
-def register_missing_conversation_templates(attack_params):
-    fschat_added_support = []
+def register_custom_conversation_templates(attack_params):
+    fschat_has_existing_template = []
 
-    register_missing_conversation_template(attack_params, fschat_added_support, "blenderbot", get_blenderbot_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "daredevil", get_daredevil_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "felladrin-llama-chat", get_felladrin_llama_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "gemma", get_gemma_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "gptneox", get_gptneox_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "guanaco", get_guanaco_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "llama2", get_llama2_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "mpt", get_mpt_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "phi2", get_phi2_conversation_template())
-    register_missing_conversation_template(attack_params, fschat_added_support, "phi3", get_phi3_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "qwen", get_qwen_conversation_template())
-    register_missing_conversation_template(attack_params, fschat_added_support, "qwen2", get_qwen2_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "smollm", get_smollm_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "solar+", get_solar_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "stablelm2", get_stablelm2_conversation_template())
-    
-    register_missing_conversation_template(attack_params, fschat_added_support, "vikhr", get_vikhr_conversation_template())
+    custom_templates = get_custom_conversation_templates()
 
-    # if "gemma" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("gemma")
-    # else:
-        # fastchat.conversation.register_conv_template(template = get_gemma_conversation_template(), override = True)
+    for ct in custom_templates:
+        fschat_has_existing_template = register_custom_conversation_template(attack_params, fschat_has_existing_template, ct.name, ct)
 
-    # if "phi2" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("phi2")
-    # else:
-        # fastchat.conversation.register_conv_template(template = get_phi2_conversation_template(), override = True)
-
-    # if "phi3" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("phi3")
-    # else:
-        # fastchat.conversation.register_conv_template(template = get_phi3_conversation_template(), override = True)
-
-    # # For some reason, fschat calls their "qwen" template "qwen-7b-chat" specifically, so this code adds a shortcut
-    # if "qwen" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("qwen")
-    # else:        
-        # fastchat.conversation.register_conv_template(template = get_qwen_conversation_template(), override = True)
-
-    # # Qwen2 *seems* to use the same chat template format at Qwen
-    # if "qwen2" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("qwen2")
-    # else:        
-        # fastchat.conversation.register_conv_template(template = get_qwen2_conversation_template(), override = True)
-        
-    # if "stablelm2" in fastchat.conversation.conv_templates.keys():
-        # fschat_added_support.append("stablelm2")
-    # else:
-        # fastchat.conversation.register_conv_template(template = get_stablelm2_conversation_template(), override = True)
-
-    if len(fschat_added_support) > 0:
-        if attack_params.template_name in fschat_added_support:
-            #added_support_message = f"[register_missing_conversation_templates] Warning: the fschat (fastchat) library appears to have added support for the following model(s) that previously required custom definitions: {fschat_added_support}. "
-            added_support_message = f"Warning: the fschat library appears to have added support for the template '{attack_params.template_name}'. The corresponding model previously required a custom definition included in Broken Hill. "
+    if len(fschat_has_existing_template) > 0:
+        if attack_params.template_name in fschat_has_existing_template:
+            added_support_message = f"Warning: the fschat library in use includes its own version of the template '{attack_params.template_name}'. "
             if attack_params.override_fschat_templates:
-                added_support_message += f"Because the --override-fschat-templates option was specified, the custom Broken Hill definition will be used instead."
+                added_support_message += f"Broken Hill will use the custom version instead of the fschat version. If you wish to use the fschat version, specify the --do-not-override-fschat-templates option."
             else:
-                added_support_message += f"The fschat template will be used. If you receive warnings or errors from the conversation template self-test, try specifying the --override-fschat-templates option to use the custom Broken Hill definition instead."
+                added_support_message += f"Because --do-not-override-fschat-templates was specified, the fschat version of the template will be used. If you receive warnings or errors from the conversation template self-test, try omitting the --do-not-override-fschat-templates option to use the custom Broken Hill definition instead."
             print(added_support_message)
 
 def load_conversation_template(model_path, template_name = None, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
@@ -518,14 +487,13 @@ class PromptAndInputIDCollection(JSONSerializableObject):
 
 # TKTK: expand to prefix/suffix attack, and also interleaving the tokens into the base string.
 class AdversarialContentManager:
-    def __init__(self, *, attack_params, tokenizer, conv_template, adversarial_content, trash_fire_tokens):
+    def __init__(self, *, attack_state, conv_template, adversarial_content, trash_fire_tokens):
 
-        self.attack_params = attack_params
-        self.tokenizer = tokenizer
+        self.attack_state = attack_state
         self.conv_template = conv_template
         self.adversarial_content = adversarial_content
-        if isinstance(self.attack_params.loss_slice_mode, type(None)):
-            raise RequiredValueIsNoneException("self.attack_params.loss_slice_mode cannot be None")
+        if isinstance(self.attack_state.persistable.attack_params.loss_slice_mode, type(None)):
+            raise RequiredValueIsNoneException("self.attack_state.persistable.attack_params.loss_slice_mode cannot be None")
         self.trash_fire_tokens = trash_fire_tokens
 
     # For debugging / creating handlers for new conversation templates
@@ -533,7 +501,7 @@ class AdversarialContentManager:
     # and the list of tokens the slices refer to
     def get_slice_info(self, slice_data, tokens):
         result = {}
-        decoded_tokens = get_decoded_tokens(self.tokenizer, tokens)
+        decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, tokens)
         #print(f"[get_slice_info] Debug: len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
         slice_dictionary = slice_data.get_slice_dictionary()
         for slice_name in slice_dictionary.keys():
@@ -705,7 +673,7 @@ class AdversarialContentManager:
     #
     # In other words, the GCG attack tries to discover a sequence of tokens that cause the LLM to predict that the next thing it should do is to switch contexts from reading your input to responding, then issue (most of) the target string. If it does that, then clearly the most likely thing for it to do is to give you the information you asked for, because by that point, the response *already contains the LLM's indication that it's happy to provide that information*. Go back and re-read the semi-explanation again if it didn't make sense the first time. It probably will now.
     # 
-    # Once you make that connection, a lot of the potential failure modes of this tool start to make more sense. For example, sending the conversations to the LLM in the correct format (including using the correct token *IDs*, not just identical text) is vital, because otherwise you're either not going to escape out of the user-input context, *or* you're going to cause the LLM to generate a pseudo-conversation between a human and an LLM, without responding the way it would when prompted in the format it expects. Adversarial content generated in this way is unlikely to work against other implementations of the same LLM, because those implementations will most likely send conversations to the LLM in the correct format.
+    # Once you make that connection, a lot of the potential failure modes of Broken Hill start to make more sense. For example, sending the conversations to the LLM in the correct format (including using the correct token *IDs*, not just identical text) is vital, because otherwise you're either not going to escape out of the user-input context, *or* you're going to cause the LLM to generate a pseudo-conversation between a human and an LLM, without responding the way it would when prompted in the format it expects. Adversarial content generated in this way is unlikely to work against other implementations of the same LLM, because those implementations will most likely send conversations to the LLM in the correct format.
 
     # In the original demonstration code's Llama-2 code path, the user role, goal, and control slices were incorrectly calculated.
     # This was because some of the code didn't take into account that the tokenizer considered "[INST]" three tokens instead of one.
@@ -732,7 +700,7 @@ class AdversarialContentManager:
     
     #prompt_and_input_id_data should be a PromptAndInputIDCollection
     def get_complete_input_string(self, prompt_and_input_id_data):
-        return self.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
+        return self.attack_state.tokenizer.decode(self.get_complete_input_token_ids(prompt_and_input_id_data))
     
     def conversation_template_appends_colon_to_role_names(self):
         result = False
@@ -754,7 +722,7 @@ class AdversarialContentManager:
         conversation_template = self.conv_template.copy()
 
         separator = ' '
-        if not self.attack_params.base_prompt:
+        if not self.attack_state.persistable.attack_params.base_prompt:
             separator = ''
             
         if conversation_template is None:
@@ -765,17 +733,17 @@ class AdversarialContentManager:
             working_adversarial_content = adversarial_content.copy()
 
         # Get the list of dumpster fire tokens once to make the many references to it run faster
-        #hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self.tokenizer, conversation_template)
+        #hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self.attack_state.tokenizer, conversation_template)
 
-        conversation_template.append_message(conversation_template.roles[0], f"{self.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-        conversation_template.append_message(conversation_template.roles[1], f"{self.attack_params.target_output}")
+        conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+        conversation_template.append_message(conversation_template.roles[1], f"{self.attack_state.persistable.attack_params.target_output}")
         result.prompt = conversation_template.get_prompt()
 
-        encoded_conversation_template_prompt = self.tokenizer(result.prompt)
+        encoded_conversation_template_prompt = self.attack_state.tokenizer(result.prompt)
         current_token_ids = encoded_conversation_template_prompt.input_ids
-        current_decoded_tokens = get_decoded_tokens(self.tokenizer, current_token_ids)
+        current_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
         #original_toks = copy.deepcopy(current_token_ids)
-        #original_decoded_tokens = get_decoded_tokens(self.tokenizer, original_toks)
+        #original_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, original_toks)
        
         # Remove any tokens that occur *after* the end of the target output.
         # For models like oasst-sft-4-pythia-12b-epoch-3.5 that end messages with a hard delimiter and will not generate additional content after that point.
@@ -817,28 +785,28 @@ class AdversarialContentManager:
             # Figure out where the user role *starts* first
             # ...by comparing the prompt with no additional messages to one that has a new empty user message added
             prompt_with_no_additional_messages = conversation_template.get_prompt()
-            prompt_with_no_additional_messages_token_ids = self.tokenizer(prompt_with_no_additional_messages).input_ids            
+            prompt_with_no_additional_messages_token_ids = self.attack_state.tokenizer(prompt_with_no_additional_messages).input_ids            
             #conversation_template.append_message(conversation_template.roles[0], None)
-            conversation_template.append_message(conversation_template.roles[0], f"{self.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+            conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
             current_prompt = conversation_template.get_prompt()
             #print(f"[get_prompt (Python) - find user_role_start_index] Debug: current_prompt = '{current_prompt}'")
-            user_role_prompt_token_ids = self.tokenizer(current_prompt).input_ids
+            user_role_prompt_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
             user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids)
             if user_role_start_index is None:
                 print(f"[get_prompt] Error: did not find a non-matching element when comparing the strings '{prompt_with_no_additional_messages}' and '{current_prompt}', which were tokenized to the following IDs:\n{prompt_with_no_additional_messages_token_ids}\n{user_role_prompt_token_ids}")
 
             # Detour into figuring out the base prompt / goal, adversarial content / control, and target output slices
             # TKTK: update the remainder of this function to handle different placement of the adversarial content
-            #conversation_template.update_last_message(f"{self.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-            conversation_template.append_message(conversation_template.roles[1], self.attack_params.target_output)
+            #conversation_template.update_last_message(f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+            conversation_template.append_message(conversation_template.roles[1], self.attack_state.persistable.attack_params.target_output)
             current_prompt = conversation_template.get_prompt()
             #print(f"[get_prompt (Python) - find goal slice] Debug: current_prompt = '{current_prompt}'")
-            current_token_ids = self.tokenizer(current_prompt).input_ids
-            current_decoded_tokens = get_decoded_tokens(self.tokenizer, current_token_ids)
+            current_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
+            current_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
 
-            result.slice_data.goal = find_last_index_of_token(self.tokenizer, 
+            result.slice_data.goal = find_last_index_of_token(self.attack_state.tokenizer, 
                 self.trash_fire_tokens, 
-                self.attack_params.base_prompt, 
+                self.attack_state.persistable.attack_params.base_prompt, 
                 current_token_ids, 
                 current_decoded_tokens, 
                 conversation_template = conversation_template, 
@@ -858,7 +826,7 @@ class AdversarialContentManager:
             if working_adversarial_content.as_string == "":
                 result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
             else:
-                result.slice_data.control = find_last_index_of_token(self.tokenizer, 
+                result.slice_data.control = find_last_index_of_token(self.attack_state.tokenizer, 
                     self.trash_fire_tokens, 
                     working_adversarial_content.as_string, 
                     current_token_ids, 
@@ -875,9 +843,9 @@ class AdversarialContentManager:
 
             #print(f"[get_prompt (Python) - find target_output slice] Debug: current_prompt = '{current_prompt}'")
 
-            result.slice_data.target_output = find_last_index_of_token(self.tokenizer, 
+            result.slice_data.target_output = find_last_index_of_token(self.attack_state.tokenizer, 
                 self.trash_fire_tokens, 
-                self.attack_params.target_output, 
+                self.attack_state.persistable.attack_params.target_output, 
                 current_token_ids, 
                 current_decoded_tokens, 
                 conversation_template = conversation_template, 
@@ -917,22 +885,22 @@ class AdversarialContentManager:
 
             self.validate_slice_data('get_prompt (Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            #print(f"[get_prompt (Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+            #print(f"[get_prompt (Python) - find loss slice] Debug: self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
 
-            #print(f"[get_prompt] Debug: getting loss slice using mode {self.attack_params.loss_slice_mode}")
-            if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
+            #print(f"[get_prompt] Debug: getting loss slice using mode {self.attack_state.persistable.attack_params.loss_slice_mode}")
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
                 #result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, result.slice_data.target_output.stop)
 
-            if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
                 len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
                 
-            if self.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
                 #result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(current_token_ids)) - 1)
-                result.slice_data.loss = slice(int(result.slice_data.target_output.start) + self.attack_params.loss_slice_index_shift, min(int(result.slice_data.target_output.stop) + self.attack_params.loss_slice_index_shift, len(current_token_ids)))
+                result.slice_data.loss = slice(int(result.slice_data.target_output.start) + self.attack_state.persistable.attack_params.loss_slice_index_shift, min(int(result.slice_data.target_output.stop) + self.attack_state.persistable.attack_params.loss_slice_index_shift, len(current_token_ids)))
 
-            if self.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
                 #result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(current_token_ids)))
                 result.slice_data.loss = slice(result.slice_data.target_output.start, result.slice_data.target_output.stop)
             
@@ -968,7 +936,7 @@ class AdversarialContentManager:
             #print(f"[get_prompt (non-Python)] Debug: result.prompt = {result.prompt}")
             #print(f"[get_prompt (non-Python)] Debug: last_token_index = {last_token_index}")
             #print(f"[get_prompt (non-Python)] Debug: encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
-            decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.tokenizer, encoded_conversation_template_prompt.input_ids)
+            decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state.tokenizer, encoded_conversation_template_prompt.input_ids)
             #print(f"[get_prompt (non-Python)] Debug: decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
             
             user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
@@ -989,10 +957,10 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (non-Python) - system', result.slice_data, current_token_ids, current_decoded_tokens)
 
             # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
-            base_prompt_start_index = result.prompt.rindex(self.attack_params.base_prompt)
-            len_base_prompt = len(self.attack_params.base_prompt)
+            base_prompt_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.base_prompt)
+            len_base_prompt = len(self.attack_state.persistable.attack_params.base_prompt)
             base_prompt_end_index = base_prompt_start_index + len_base_prompt
-            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.tokenizer, self.attack_params.base_prompt)
+            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state.tokenizer, self.attack_state.persistable.attack_params.base_prompt)
             
             #print(f"[get_prompt (non-Python)] Debug: base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
             base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
@@ -1058,15 +1026,15 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (non-Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
             self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
-            #print(f"[get_prompt (non-Python)] Debug: result.prompt = '{result.prompt}', self.attack_params.target_output = '{self.attack_params.target_output}'")
-            prompt_find_self_target = result.prompt.rindex(self.attack_params.target_output)
+            #print(f"[get_prompt (non-Python)] Debug: result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
+            prompt_find_self_target = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
             #print(f"[get_prompt (non-Python)] Debug: prompt_find_self_target = '{prompt_find_self_target}'")
             prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
             if isinstance(prompt_find_self_target_c2t, type(None)):
-                #print(f"[get_prompt (non-Python)] Warning: got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                #print(f"[get_prompt (non-Python)] Warning: got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                 prompt_find_self_target_c2t = result.slice_data.assistant.stop
             prompt_combined_c2t = None
-            add_length = len(self.attack_params.target_output) + 1
+            add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
             while isinstance(prompt_combined_c2t, type(None)):
                 prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
                 add_length -= 1
@@ -1081,21 +1049,21 @@ class AdversarialContentManager:
             )
             self.validate_slice_data('get_prompt (non-Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
             
-            #print(f"[get_prompt (non-Python) - find loss slice] Debug: self.attack_params.loss_slice_mode = {self.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
-            if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+            #print(f"[get_prompt (non-Python) - find loss slice] Debug: self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
 
-            if self.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
                 len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
                 
-            if self.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
                 result.slice_data.loss = slice(
-                    prompt_find_self_target_c2t + self.attack_params.loss_slice_index_shift,
-                    (prompt_combined_c2t + 1) + self.attack_params.loss_slice_index_shift
+                    prompt_find_self_target_c2t + self.attack_state.persistable.attack_params.loss_slice_index_shift,
+                    (prompt_combined_c2t + 1) + self.attack_state.persistable.attack_params.loss_slice_index_shift
                 )
 
-            if self.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE :
+            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE :
                 result.slice_data.loss = slice(
                     prompt_find_self_target_c2t,
                     prompt_combined_c2t + 1
@@ -1123,7 +1091,7 @@ class AdversarialContentManager:
             result.slice_data.user_role = slice(0, user_input_slice.start)
 
         #print(f"[get_prompt (non-Python)] Debug: conversation_template (after modifications) = '{conversation_template}'")
-        final_decoded_toks = get_decoded_tokens(self.tokenizer, current_token_ids)
+        final_decoded_toks = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
         #print(f"[get_prompt (non-Python)] Debug: current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
         
         if remove_tokens_after_target_output:

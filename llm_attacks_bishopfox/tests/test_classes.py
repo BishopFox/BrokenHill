@@ -57,6 +57,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         #self.process_timeout = 7200
         # Five minutes to test only models that will fit in the GPU
         #self.process_timeout = 300
+        self.specific_model_names_to_test = None
+        self.model_name_regexes_to_test = None
+        self.specific_model_names_to_skip = None
+        self.model_name_regexes_to_skip = None
     
     def set_from_model_info(self, model_info):
         self.model_path = model_info.model_path

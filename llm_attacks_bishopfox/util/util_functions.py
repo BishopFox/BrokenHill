@@ -4,6 +4,7 @@ import datetime
 import math
 import os
 import pathlib
+import psutil
 import re
 import shlex
 import shutil
@@ -17,6 +18,65 @@ from enum import StrEnum
 
 class RequiredValueIsNoneException(Exception):
     pass
+
+# for debugging
+class FakeException(Exception):
+    pass
+
+class PyTorchDevice():
+    def __init__(self):
+        self.type_name = None
+        # The device's index within its type of device, e.g. 0 for cuda:0
+        self.device_number = None
+        self.device_name = None
+        self.device_display_name = None
+        self.total_memory = None
+        self.gpu_total_memory = None
+        self.gpu_free_memory = None
+        self.gpu_used_memory = None
+        self.process_reserved_memory = None
+        self.available_memory = None
+        self.process_reserved_allocated_memory = None
+        self.process_reserved_unallocated_memory = None
+        self.total_memory_utilization = None
+        self.process_reserved_utilization = None
+        self.process_reserved_utilization = None
+    
+    @staticmethod
+    def from_cuda_device_number(device_number):
+        result = PyTorchDevice()
+        result.device_number = device_number
+        result.device_name = f"cuda:{device_number}"
+        gpu_wide_memory_info = torch.cuda.mem_get_info(device=device_number)
+        result.gpu_free_memory = gpu_wide_memory_info[0]
+        result.gpu_total_memory = gpu_wide_memory_info[1]
+        result.gpu_used_memory = result.gpu_total_memory - result.gpu_free_memory
+        
+        device_props = torch.cuda.get_device_properties(device_number)
+        result.device_display_name = device_props.name
+        result.total_memory = device_props.total_memory        
+        result.process_reserved_memory = torch.cuda.memory_reserved(device_number)
+        result.process_reserved_allocated_memory = torch.cuda.memory_allocated(device_number)
+        result.process_reserved_unallocated_memory = result.process_reserved_memory - result.process_reserved_allocated_memory
+        #result.available_memory = result.total_memory - result.process_reserved_memory
+        result.available_memory = result.gpu_free_memory
+        result.total_memory_utilization = float(result.gpu_used_memory) / float(result.total_memory)
+        result.process_memory_utilization = float(result.process_reserved_memory) / float(result.total_memory)
+        if result.process_reserved_memory > 0:
+            result.process_reserved_utilization = float(result.process_reserved_allocated_memory) / float(result.process_reserved_memory)
+        else:
+            result.process_reserved_utilization = 0.0        
+        if result.total_memory != result.gpu_total_memory:
+            print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
+        return result
+    
+    @staticmethod
+    def get_all_cuda_devices():
+        result = []
+        for i in range(torch.cuda.device_count()):
+            d = PyTorchDevice.from_cuda_device_number(i)
+            result.append(d)
+        return result
 
 def get_escaped_string(input_string):
     #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
@@ -191,8 +251,13 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
         successful_write = True
     except Exception as e:
         try:
+            transformed_output = None
+            if isinstance(content, bytes):
+                transformed_output = content
+            if transformed_output is None:
+                transformed_output = str.encode(content)
             with open(file_path, f"{file_mode}b") as output_file:
-                output_file.write(str.encode(content))
+                output_file.write(transformed_output)
             successful_write = True
         except Exception as e2:
             err_message = f"Couldn't write to the temporary file '{temporary_path}' in either text mode ('{e}') or binary mode('{e2}')."
@@ -220,6 +285,26 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
         return file_path            
     return None
 
+def verify_output_file_capability(output_file_path, overwrite_existing):
+    if os.path.isfile(output_file_path):
+        if overwrite_existing:
+            print(f"Warning: overwriting output file '{output_file_path}'")
+        else:
+            print(f"Error: the output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
+            sys.exit(1)
+    try:
+        safely_write_text_output_file(output_file_path, "")
+    #except Exception as e:
+    except Exception as e:
+        print(f"Could not validate the ability to write to the file '{output_file_path}': {e}")
+        sys.exit(1)
+    # remove the file for now to avoid annoying errors for empty files if nothing is actually written to it later
+    fpo = pathlib.Path(output_file_path)
+    try:
+        fpo.unlink() 
+    except Exception as e:
+        err_message = f"Couldn't delete the file '{output_file_path}' after creating it to validate Broken Hill's ability to write to the file: {e}."
+        sys.exit(1)
 
 def add_value_to_list_if_not_already_present(existing_list, new_value, ignore_none = False):
     if ignore_none:
@@ -552,6 +637,4 @@ def torch_dtype_to_bit_count(dtype):
     if dtype == torch.int64:
         return 64
     raise Exception("Unrecognized PyTorch data type: '{dtype}'")
-
-
 

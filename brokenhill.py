@@ -101,20 +101,20 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackParams
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfo
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoCollection
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
-from llm_attacks_bishopfox.attack.attack_classes import AttackState
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillMode
+from llm_attacks_bishopfox.attack.attack_classes import BrokenHillRandomNumberGenerators
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillResultData
-from llm_attacks_bishopfox.attack.attack_classes import FakeException
 from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.attack.attack_classes import ModelDataFormatHandling
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
-from llm_attacks_bishopfox.attack.attack_classes import PyTorchDevice
+from llm_attacks_bishopfox.attack.attack_classes import PersistableAttackState
+from llm_attacks_bishopfox.attack.attack_classes import VolatileAttackState
 from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
 from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
-from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_matrix
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
@@ -133,10 +133,12 @@ from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import Jailbr
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
+from llm_attacks_bishopfox.llms.large_language_models import print_model_parameter_info
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import load_conversation_template
-from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_missing_conversation_templates
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientSamplingException
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import MellowmaxException
@@ -150,6 +152,8 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
 from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
+from llm_attacks_bishopfox.util.util_functions import FakeException
+from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
@@ -166,6 +170,7 @@ from llm_attacks_bishopfox.util.util_functions import str2bool
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
 from llm_attacks_bishopfox.util.util_functions import update_elapsed_time_string
+from llm_attacks_bishopfox.util.util_functions import verify_output_file_capability
 from peft import PeftModel
 from torch.quantization import quantize_dynamic
 from torch.quantization.qconfig import float_qparams_weight_only_qconfig
@@ -183,6 +188,7 @@ locale.setlocale(locale.LC_ALL, '')
 # See https://stackoverflow.com/questions/75042153/cant-load-from-autotokenizer-from-pretrained-typeerror-duplicate-file-name
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"]="python"
 
+# Workaround for overly-chatty-by-default PyTorch code
 loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
 for logger in loggers:
     logger.setLevel(logging.WARNING)
@@ -190,20 +196,13 @@ for logger in loggers:
 def check_pytorch_devices(attack_params):
     all_devices = {}
     devices_above_threshold = {}
-    handled_devices = []
-    for device_name in [attack_params.model_device, attack_params.gradient_device]:
-        if device_name in handled_devices:
-            continue
-        handled_devices.append(device_name)
-        if "cuda"  in device_name:
-            for i in range(torch.cuda.device_count()):
-                d = PyTorchDevice.from_cuda_device_number(i)
-                if d.device_name in handled_devices:
-                    continue
-                all_devices[d.device_name] = d
-                handled_devices.append(d.device_name)
-                if d.total_memory_utilization > torch_device_reserved_memory_warning_threshold:
-                    devices_above_threshold[d.device_name] = d
+    if attack_params.using_cuda():
+        cuda_devices = PyTorchDevice.get_all_cuda_devices()
+        for i in range(0, len(cuda_devices)):
+            d = cuda_devices[i]
+            all_devices[d.device_name] = d
+            if d.total_memory_utilization > torch_device_reserved_memory_warning_threshold:
+                devices_above_threshold[d.device_name] = d
     device_names = list(all_devices.keys())
     if len(device_names) > 0:
         device_names.sort()
@@ -222,137 +221,64 @@ def check_pytorch_devices(attack_params):
         for dn in above_threshold_device_names:
             d = devices_above_threshold[dn]
             warning_message += f"\t{d.device_name} ({d.device_display_name}): {d.total_memory_utilization:.0%}\n"
-        warning_message += f"If you encounter out-of-memory errors when using this tool, consider suspending other processes that use GPU resources, to maximize the amount of memory available to PyTorch. For example, on Linux desktops with a GUI enabled, consider switching to a text-only console to suspend the display manager and free up the associated VRAM. On Debian, Ctrl-Alt-F2 switches to the second console, and Ctrl-Alt-F1 switches back to the default console.\n"
+        warning_message += f"If you encounter out-of-memory errors when using Broken Hill, consider suspending other processes that use GPU resources, to maximize the amount of memory available to PyTorch. For example, on Linux desktops with a GUI enabled, consider switching to a text-only console to suspend the display manager and free up the associated VRAM. On Debian, Ctrl-Alt-F2 switches to the second console, and Ctrl-Alt-F1 switches back to the default console.\n"
         print(warning_message)
 
-def print_stats(attack_params):
-    display_string = "---\n"
-    print(f"System resource statistics")
-    process_mem_info = psutil.Process().memory_full_info()
-    process_physical_memory = process_mem_info.rss
-    process_virtual_memory = process_mem_info.vms
-    process_swap = None
-    if hasattr(process_mem_info, "swap"):
-        process_swap = process_mem_info.swap
-    system_mem_info = psutil.virtual_memory()
-    system_physical_memory = system_mem_info.total
-    system_available_memory = system_mem_info.available
-    system_in_use_memory = system_physical_memory - system_available_memory
-    system_in_use_memory = system_mem_info.used
-    system_swap_total = None
-    system_swap_in_use = None
-    system_swap_free = None
-    system_swap_percent = None
-    try:
-        system_swap_info = psutil.swap_memory()
-        system_swap_total = system_swap_info.total
-        system_swap_in_use = system_swap_info.used
-        system_swap_free = system_swap_info.free
-        system_swap_percent = system_swap_info.percent
-    #system_memory_util_percent = system_mem_info.percent
-    system_memory_util_percent = float(system_in_use_memory) / float(system_physical_memory)
-    if "cpu"  in attack_params.model_device or "cpu" in attack_params.gradient_device:
-        display_string += f"System:\n"
-        display_string += f"\tTotal physical memory: {system_physical_memory:n} bytes\n"
-        display_string += f"\tMemory in use: {system_in_use_memory:n} bytes\n"
-        display_string += f"\tAvailable memory: {system_available_memory:n} bytes\n"
-        display_string += f"\tMemory utilization: {system_memory_util_percent:.0%}\n"
-        if system_swap_total is not None:
-            display_string += f"System swap memory:\n"
-            display_string += f"\tTotal swap memory: {system_swap_total:n} bytes\n"
-            display_string += f"\tSwap memory in use: {system_swap_in_use:n} bytes\n"
-            display_string += f"\tFree swap memory: {system_swap_free:n} bytes\n"
-            display_string += f"\tSwap utilization: {system_swap_percent:.0%}\n"                    
-        display_string += f"This process:\n"
-        display_string += f"\tProcess physical memory in use: {process_physical_memory:n} bytes\n"
-        display_string += f"\tProcess virtual memory in use: {process_physical_memory:n} bytes\n"
-        if process_swap is not None:
-            display_string += f"\tProcess swap space in use: {process_swap:n} bytes\n"
-
-    if "cuda"  in attack_params.model_device or "cuda" in attack_params.gradient_device:
-        for i in range(torch.cuda.device_count()):
-            d = PyTorchDevice.from_cuda_device_number(i)            
-            display_string += f"CUDA device {d.device_name} - {d.device_display_name}\n"
-            display_string += f"\tTotal memory: {d.total_memory:n} bytes\n"
-            display_string += f"\tMemory in use across the entire device: {d.gpu_used_memory:n}\n"
-            display_string += f"\tMemory available across the entire device: {d.available_memory:n}\n"
-            display_string += f"\tCurrent memory utilization for the device as a whole: {d.total_memory_utilization:.0%}\n"
-            display_string += f"\tDevice memory reserved by this process: {d.process_reserved_memory:n} bytes\n"
-            display_string += f"\tDevice memory utilization for this process: {d.process_memory_utilization:.0%}\n"
-            display_string += f"\tDevice reserved allocated memory for this process: {d.process_reserved_allocated_memory:n} bytes\n"
-            display_string += f"\tDevice reserved unallocated memory for this process: {d.process_reserved_unallocated_memory:n} bytes\n"
-            display_string += f"\tReserved memory utilization within this process' reserved memory space: {d.process_reserved_utilization:.0%}\n"
-    # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
-    if process_swap is not None:
-        if process_swap > 0:
-            display_string += f"Warning: this process has {process_swap:n} bytes swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM.\n"
-    display_string += "---\n"
-    print(display_string)
-
-#def generate(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
-def generate(attack_params, model, tokenizer, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
+def generate(attack_state, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
     working_gen_config = gen_config
     # Copy the generation config to avoid changing the original
     if gen_config is None:
-        working_gen_config = GenerationConfig.from_dict(config_dict = model.generation_config.to_dict())
+        working_gen_config = GenerationConfig.from_dict(config_dict = attack_state.model.generation_config.to_dict())
     else:
         working_gen_config = GenerationConfig.from_dict(config_dict = gen_config.to_dict())
     
     if temperature != 1.0 and do_sample:
         working_gen_config.do_sample = True
         working_gen_config.temperature = temperature
-    if attack_params.display_full_failed_output or generate_full_output:
-        working_gen_config.max_new_tokens = attack_params.full_decoding_max_new_tokens
+    if attack_state.persistable.attack_params.display_full_failed_output or generate_full_output:
+        working_gen_config.max_new_tokens = attack_state.persistable.attack_params.full_decoding_max_new_tokens
     else:
-        working_gen_config.max_new_tokens = attack_params.generation_max_new_tokens
+        working_gen_config.max_new_tokens = attack_state.persistable.attack_params.generation_max_new_tokens
 
     result = GenerationResults()
     result.max_new_tokens = working_gen_config.max_new_tokens
 
-    #result.input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
     result.input_token_id_data = input_token_id_data
-    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_params.model_device)
+    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_state.model_device)
     input_ids_sliced = input_ids
     if not include_target_content:
         input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
-    input_ids_converted = input_ids_sliced.to(model.device).unsqueeze(0)
-    attn_masks = torch.ones_like(input_ids_converted).to(model.device)
+    input_ids_converted = input_ids_sliced.to(attack_state.model.device).unsqueeze(0)
+    attn_masks = torch.ones_like(input_ids_converted).to(attack_state.model.device)
     
-    if attack_params.use_attention_mask:
-        result.output_token_ids = model.generate(input_ids_converted, 
-                                    attention_mask=attn_masks, 
-                                    generation_config=working_gen_config,
-                                    pad_token_id=tokenizer.pad_token_id)[0]
+    if attack_state.persistable.attack_params.use_attention_mask:
+        result.output_token_ids = attack_state.model.generate(input_ids_converted, 
+                                    attention_mask = attn_masks, 
+                                    generation_config = working_gen_config,
+                                    pad_token_id = attack_state.tokenizer.pad_token_id)[0]
     else:
-        result.output_token_ids = model.generate(input_ids_converted, 
-                                    generation_config=working_gen_config,
-                                    pad_token_id=tokenizer.pad_token_id)[0]
+        result.output_token_ids = attack_state.model.generate(input_ids_converted, 
+                                    generation_config = working_gen_config,
+                                    pad_token_id = attack_state.tokenizer.pad_token_id)[0]
     
     result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
     
-    #result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.goal.start:result.input_token_id_data.slice_data.control.stop]
     result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
     
     #print(f"[generate] Debug: result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
     
     return result
     
-#def check_for_attack_success(attack_params, model, tokenizer, adversarial_content_manager, adversarial_content, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
-def check_for_attack_success(attack_params, model, tokenizer, input_token_id_data, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
-    generation_results = generate(attack_params,
-                                        model, 
-                                        tokenizer, 
-                                        #adversarial_content_manager, 
-                                        #adversarial_content, 
-                                        input_token_id_data, 
-                                        temperature,
-                                        gen_config = gen_config,
-                                        do_sample = do_sample,
-                                        include_target_content = include_target_content)
+def check_for_attack_success(attack_state, input_token_id_data, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
+    generation_results = generate(attack_state, 
+                                    input_token_id_data, 
+                                    temperature,
+                                    gen_config = gen_config,
+                                    do_sample = do_sample,
+                                    include_target_content = include_target_content)
                                             
     result_ar_info_data = AttackResultInfoData()
-    #result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
-    result_ar_info_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+    result_ar_info_data.set_values(attack_state.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
     
     #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
     #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
@@ -372,308 +298,254 @@ def check_for_attack_success(attack_params, model, tokenizer, input_token_id_dat
 
 def main(attack_params):
 
-    attack_state = AttackState()
+    attack_state = VolatileAttackState()
+    attack_state.persistable.attack_params = attack_params
+    attack_state.model_device = torch.device(attack_state.persistable.attack_params.model_device)
+    attack_state.gradient_device = torch.device(attack_state.persistable.attack_params.gradient_device)
+    attack_state.random_number_generators = BrokenHillRandomNumberGenerators(attack_state)
+
+    start_dt = get_now()
+    start_ts = get_time_string(start_dt)
+    print(f"Starting at {start_ts}")
 
     # Parameter validation, warnings, and errors
-    for device_name in [attack_params.model_device, attack_params.gradient_device]:
-        device_warning = False
-        if len(device_name) > 2 and device_name[0:3] == "cpu":
-            device_warning = True
-        if len(device_name) < 4 or device_name[0:4] != "cuda":
-            device_warning = True
-        if device_warning:
-            print(f"Warning: the specified device ('{device_name}') is not recommended. This tool is heavily optimized for CUDA. It will run very slowly or not at all on other hardware. Expect run times about 100 times slower on CPU hardware, for example.")
+    non_cuda_devices = attack_state.persistable.attack_params.get_non_cuda_devices()
+    if len(non_cuda_devices) > 0:
+        print(f"Warning: using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
 
     user_aborted = False
-
 
     # Initial setup based on configuration
     # Set random seeds
     # NumPy
-    numpy.random.seed(attack_params.numpy_random_seed)
+    numpy.random.seed(attack_state.persistable.attack_params.numpy_random_seed)
     # PyTorch
-    torch.manual_seed(attack_params.torch_manual_seed)
+    torch.manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
     # CUDA
-    torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
-    
-    #random_generator_attack_params_device = torch.Generator(device = attack_params.device).manual_seed(attack_params.torch_manual_seed)
-    random_generator_attack_params_model_device = torch.Generator(device = attack_params.model_device).manual_seed(attack_params.torch_manual_seed)
-    random_generator_attack_params_gradient_device = torch.Generator(device = attack_params.model_device).manual_seed(attack_params.torch_manual_seed)
-    if attack_params.model_device != attack_params.gradient_device:
-        random_generator_attack_params_gradient_device = torch.Generator(device = attack_params.gradient_device).manual_seed(attack_params.torch_manual_seed)
-    random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_params.torch_manual_seed)
-    random_generator_gradient = None
-    
-    numpy_random_generator = numpy.random.default_rng(seed = attack_params.numpy_random_seed)
-    
-    #successful_attacks = []
-    successful_attack_count = 0
-    model = None
-    tokenizer = None
-    adversarial_content_manager = None
+    torch.cuda.manual_seed_all(attack_state.persistable.attack_params.torch_cuda_manual_seed_all)    
+
     jailbreak_detector = LLMJailbreakDetector()
-    jailbreak_detector.rule_set = attack_params.jailbreak_detection_rule_set
+    jailbreak_detector.rule_set = attack_state.persistable.attack_params.jailbreak_detection_rule_set
     
-    random_seed_values = get_random_seed_list_for_comparisons()
-    language_manager = None
     ietf_tag_names = None
     ietf_tag_data = None
     try:
-        language_manager = HumanLanguageManager.from_bundled_json_file()
-        ietf_tag_names, ietf_tag_data = language_manager.get_ietf_tags()
+        attack_state.language_manager = HumanLanguageManager.from_bundled_json_file()
+        ietf_tag_names, ietf_tag_data = attack_state.language_manager.get_ietf_tags()
     except Exception as e:
         print(f"Could not load the human language data bundled with Broken Hill: {e}")
         sys.exit(1)
     
-    if attack_params.operating_mode == BrokenHillMode.LIST_IETF_TAGS:
+    if attack_state.persistable.attack_params.operating_mode == BrokenHillMode.LIST_IETF_TAGS:
         print("Supported IETF language tags in this version:")
         for i in range(0, len(ietf_tag_names)):
             print(f"{ietf_tag_names[i]}\t{ietf_tag_data[ietf_tag_names[i]]}")
         sys.exit(0)
 
-    start_dt = get_now()
-    start_ts = get_time_string(start_dt)
-    print(f"Starting at {start_ts}")
-    main_loop_iteration_number = 0
-    # keep two arrays to avoid having to convert every item to JSON every iteration
-    overall_result_data = BrokenHillResultData()
-    overall_result_data.start_date_time = start_ts    
-    #attack_data = []
-    # keep another array to track adversarial values
-    current_adversarial_content = None
-    tested_adversarial_content = AdversarialContentList()
-
-    print_stats(attack_params)
+    attack_state.persistable.overall_result_data.start_date_time = start_ts    
+    attack_state.persistable.performance_data.collect_torch_stats(attack_state, is_key_snapshot_event = True, location_description = "before loading model and tokenizer")
     
     try:
-        model_load_message = f"Loading model and tokenizer from '{attack_params.model_path}'."
-        if attack_params.tokenizer_path is not None:
-            model_load_message = f"Loading model from '{attack_params.model_path}' and tokenizer from {attack_params.tokenizer_path}."
+        model_load_message = f"Loading model and tokenizer from '{attack_state.persistable.attack_params.model_path}'."
+        if attack_state.persistable.attack_params.tokenizer_path is not None:
+            model_load_message = f"Loading model from '{attack_state.persistable.attack_params.model_path}' and tokenizer from {attack_state.persistable.attack_params.tokenizer_path}."
         print(model_load_message)
-        model_weight_type = attack_params.get_model_data_type()
-        #print(f"Debug: model_weight_type = {model_weight_type}")
-        model = None
-        tokenizer = None
+        attack_state.model_weight_type = attack_state.persistable.attack_params.get_model_data_type()
+        #print(f"Debug: model_weight_type = {attack_state.model_weight_type}")
         model_config_path = None
         model_config_dict = None
         try:
-            model_config_path = os.path.join(attack_params.model_path, "config.json")
+            model_config_path = os.path.join(attack_state.persistable.attack_params.model_path, "config.json")
             model_config_data = get_file_content(model_config_path, failure_is_critical = False)
             model_config_dict = json.loads(model_config_data)
         except Exception as e:
             print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
-        model_weight_storage_string = ""
+        attack_state.model_weight_storage_string = ""
         if model_config_dict is not None:            
             if "torch_dtype" in model_config_dict.keys():
                 model_torch_dtype = model_config_dict["torch_dtype"]
                 if model_torch_dtype is not None:
-                    model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
-                    model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
-                    print(model_weight_storage_string)
+                    attack_state.model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
+                    attack_state.model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
+                    print(attack_state.model_weight_storage_string)
         try:
-            model, tokenizer = load_model_and_tokenizer(attack_params.model_path, 
-                tokenizer_path = attack_params.tokenizer_path,
-                low_cpu_mem_usage = attack_params.low_cpu_mem_usage, 
-                use_cache = attack_params.use_cache,
-                dtype = model_weight_type,
-                trust_remote_code = attack_params.load_options_trust_remote_code,
-                ignore_mismatched_sizes = attack_params.load_options_ignore_mismatched_sizes,
-                enable_hardcoded_tokenizer_workarounds = attack_params.enable_hardcoded_tokenizer_workarounds,
-                missing_pad_token_replacement = attack_params.missing_pad_token_replacement,
-                device=attack_params.model_device)
+            attack_state.model, attack_state.tokenizer = load_model_and_tokenizer(attack_state)
         except Exception as e:
             tokenizer_message = ""
-            if attack_params.tokenizer_path is not None and attack_params.tokenizer_path != "":
-                tokenizer_message = ", with tokenizer path '{attack_params.tokenizer_path}'"
-            print(f"Error: exception thrown while loading model from '{attack_params.model_path}'{tokenizer_message}: {e}.")
+            if attack_state.persistable.attack_params.tokenizer_path is not None and attack_state.persistable.attack_params.tokenizer_path != "":
+                tokenizer_message = ", with tokenizer path '{attack_state.persistable.attack_params.tokenizer_path}'"
+            print(f"Error: exception thrown while loading model from '{attack_state.persistable.attack_params.model_path}'{tokenizer_message}: {e}.")
             sys.exit(1)
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, is_key_snapshot_event = True, location_description = "after loading model and tokenizer")
         #print(f"[main] Debug: model loaded.")
-        model_data_type_message = f"Model weight data was loaded as {model.dtype}"
-        if model_weight_storage_string != "":            
-            model_data_type_message = f"{model_weight_storage_string}, and was loaded as {model.dtype}"
+        model_data_type_message = f"Model weight data was loaded as {attack_state.model.dtype}"
+        if attack_state.model_weight_storage_string != "":            
+            model_data_type_message = f"{attack_state.model_weight_storage_string}, and was loaded as {attack_state.model.dtype}"
         print(f"Model and tokenizer loaded. {model_data_type_message}")
-        if attack_params.peft_adapter_path is not None:
-            f"Loading PEFT model from '{attack_params.peft_adapter_path}'."
+        if attack_state.persistable.attack_params.peft_adapter_path is not None:
+            f"Loading PEFT model from '{attack_state.persistable.attack_params.peft_adapter_path}'."
             try:
-                model = PeftModel.from_pretrained(model, attack_params.peft_adapter_path)
+                attack_state.model = PeftModel.from_pretrained(attack_state.model, attack_state.persistable.attack_params.peft_adapter_path)
             except Exception as e:
-                print(f"Error: exception thrown while loading PEFT model from '{attack_params.peft_adapter_path}': {e}.")
+                print(f"Error: exception thrown while loading PEFT model from '{attack_state.persistable.attack_params.peft_adapter_path}': {e}.")
                 sys.exit(1)
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after loading PEFT adapter")
             #print(f"[main] Debug: PEFT adapter loaded.")
-        print_stats(attack_params)
         
-        overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(model)
+        attack_state.persistable.overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(attack_state.model)
         
-        model_calculated_bytes_in_memory = None
-        model_as_is_calculated_bytes_in_memory = None
-        current_memory_parameter_info_string = ""
-        as_is_storage_memory_parameter_info_string = ""
+        print_model_parameter_info(attack_state)
         
-        try:
-            model_calculated_bytes_in_memory = int(float(overall_result_data.model_parameter_info_collection.total_parameter_count) * float(torch_dtype_to_bit_count(model.dtype)) / 8.0)
-            current_memory_parameter_info_string = f" Using the current data type '{model.dtype}', the model data should occupy {model_calculated_bytes_in_memory} bytes of device memory."
-        except Exception as e:
-            print(f"Error calculating model memory use with the current data type: {e}")
-        
-        if model_weight_storage_dtype is not None:
-            try:
-                model_as_is_calculated_bytes_in_memory = int(float(overall_result_data.model_parameter_info_collection.total_parameter_count) * float(torch_dtype_to_bit_count(model.dtype)) / 8.0)
-                as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{model_weight_storage_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory."
-            except Exception as e:
-                print(f"Error calculating model memory use with the model's native data type: {e}")
-        
-        print(f"The current model has {overall_result_data.model_parameter_info_collection.total_parameter_count} total parameters in named groups. {overall_result_data.model_parameter_info_collection.trainable_parameter_count} of the parameters are trainable, and {overall_result_data.model_parameter_info_collection.nontrainable_parameter_count} of the parameters are not trainable.{current_memory_parameter_info_string}{as_is_storage_memory_parameter_info_string}")
-        
-        if isinstance(tokenizer.pad_token_id, type(None)):
-            if attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+        if isinstance(attack_state.tokenizer.pad_token_id, type(None)):
+            if attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                 print("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
                 sys.exit(1)
         
         #print(f"[main] Debug: getting max effective token value for model and tokenizer.")
         
-        attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", model, tokenizer, attack_params.generation_max_new_tokens)
-        attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", model, tokenizer, attack_params.full_decoding_max_new_tokens)
+        attack_state.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", attack_state.model, attack_state.tokenizer, attack_state.persistable.attack_params.generation_max_new_tokens)
+        attack_state.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", attack_state.model, attack_state.tokenizer, attack_state.persistable.attack_params.full_decoding_max_new_tokens)
 
-        if attack_params.exclude_language_names_except is not None:            
-            language_name_list = language_manager.get_language_names(ietf_tag_to_exclude = attack_params.exclude_language_names_except)
-            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, language_name_list)
+        if attack_state.persistable.attack_params.exclude_language_names_except is not None:            
+            language_name_list = attack_state.language_manager.get_language_names(ietf_tag_to_exclude = attack_state.persistable.attack_params.exclude_language_names_except)
+            attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, language_name_list)
         
-        #additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive
         # TKTK: add a localization option for these
-        if attack_params.exclude_slur_tokens:
+        if attack_state.persistable.attack_params.exclude_slur_tokens:
             #print(f"[main] Debug: adding slurs to the list that will be used to build the token denylist.")
-            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_slurs())
-        if attack_params.exclude_profanity_tokens:
+            attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, get_slurs())
+        if attack_state.persistable.attack_params.exclude_profanity_tokens:
             #print(f"[main] Debug: adding profanity to the list that will be used to build the token denylist.")
-            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_profanity())
-        if attack_params.exclude_other_offensive_tokens:
+            attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, get_profanity())
+        if attack_state.persistable.attack_params.exclude_other_offensive_tokens:
             #print(f"[main] Debug: adding other highly-problematic content to the list that will be used to build the token denylist.")
-            attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
+            attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
-        print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with a large number of tokens.")
-        token_allow_and_deny_lists = get_token_allow_and_deny_lists(tokenizer, 
-            attack_params.not_allowed_token_list, 
-            device = attack_params.model_device, 
-            additional_token_strings_case_insensitive = attack_params.not_allowed_token_list_case_insensitive, 
-            filter_nonascii_tokens = attack_params.exclude_nonascii_tokens, 
-            filter_nonprintable_tokens = attack_params.exclude_nonprintable_tokens, 
-            filter_special_tokens = attack_params.exclude_special_tokens, 
-            filter_additional_special_tokens = attack_params.exclude_additional_special_tokens, 
-            filter_whitespace_tokens = attack_params.exclude_whitespace_tokens, 
-            token_regex = attack_params.get_token_filter_regex()
-            )        
+        print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
+        attack_state.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
+            attack_state.persistable.attack_params.not_allowed_token_list, 
+            device = attack_state.model_device, 
+            additional_token_strings_case_insensitive = attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, 
+            filter_nonascii_tokens = attack_state.persistable.attack_params.exclude_nonascii_tokens, 
+            filter_nonprintable_tokens = attack_state.persistable.attack_params.exclude_nonprintable_tokens, 
+            filter_special_tokens = attack_state.persistable.attack_params.exclude_special_tokens, 
+            filter_additional_special_tokens = attack_state.persistable.attack_params.exclude_additional_special_tokens, 
+            filter_whitespace_tokens = attack_state.persistable.attack_params.exclude_whitespace_tokens, 
+            token_regex = attack_state.persistable.attack_params.get_token_filter_regex()
+            )
         
-        #print(f"Debug: token_allow_and_deny_lists.denylist = '{token_allow_and_deny_lists.denylist}', token_allow_and_deny_lists.allowlist = '{token_allow_and_deny_lists.allowlist}'")
+        #print(f"Debug: attack_state.token_allow_and_deny_lists.denylist = '{attack_state.token_allow_and_deny_lists.denylist}', attack_state.token_allow_and_deny_lists.allowlist = '{attack_state.token_allow_and_deny_lists.allowlist}'")
         not_allowed_tokens = None
-        if len(token_allow_and_deny_lists.denylist) > 0:
+        if len(attack_state.token_allow_and_deny_lists.denylist) > 0:
             #print(f"[main] Debug: getting not_allowed_tokens from token allowlist and denylist.")
-            not_allowed_tokens = get_token_list_as_tensor(token_allow_and_deny_lists.denylist, device='cpu')
+            not_allowed_tokens = get_token_list_as_tensor(attack_state.token_allow_and_deny_lists.denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
         original_model_size = 0
 
-        if attack_params.display_model_size:
+        if attack_state.persistable.attack_params.display_model_size:
             #print(f"[main] Debug: Determining model size.")
-            original_model_size = get_model_size(model)
+            original_model_size = get_model_size(attack_state.model)
             print(f"Model size: {original_model_size}")
 
-        if attack_params.quantization_dtype:
-            if attack_params.enable_static_quantization:
+        if attack_state.persistable.attack_params.quantization_dtype:
+            if attack_state.persistable.attack_params.enable_static_quantization:
                 print("This script only supports quantizing using static or dynamic approaches, not both at once")
                 sys.exit(1)
-            print(f"Quantizing model to '{attack_params.quantization_dtype}'")    
-            #model = quantize_dynamic(model=model, qconfig_spec={nn.LSTM, nn.Linear}, dtype=quantization_dtype, inplace=False)
-            model = quantize_dynamic(model=model, qconfig_spec={nn.LSTM, nn.Linear}, dtype=attack_params.quantization_dtype, inplace=True)
-            #print_stats(attack_params)
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before quantizing model")
+            print(f"Quantizing model to '{attack_state.persistable.attack_params.quantization_dtype}'")    
+            #attack_state.model = quantize_dynamic(model = attack_state.model, qconfig_spec = {nn.LSTM, nn.Linear}, dtype = quantization_dtype, inplace = False)
+            attack_state.model = quantize_dynamic(model = attack_state.model, qconfig_spec = {nn.LSTM, nn.Linear}, dtype = attack_state.persistable.attack_params.quantization_dtype, inplace = True)
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after quantizing model")
 
-        if attack_params.enable_static_quantization:
+        if attack_state.persistable.attack_params.enable_static_quantization:
             backend = "qnnpack"
             print(f"Quantizing model using static backend {backend}") 
             torch.backends.quantized.engine = backend
-            model.qconfig = tq.get_default_qconfig(backend)
+            attack_state.model.qconfig = tq.get_default_qconfig(backend)
             #model.qconfig = float_qparams_weight_only_qconfig
             # disable quantization of embeddings because quantization isn't really supported for them
             model_embeds = get_embedding_layer(model)
             model_embeds.qconfig = float_qparams_weight_only_qconfig
-            model = tq.prepare(model, inplace=True)
-            model = tq.convert(model, inplace=True)
+            attack_state.model = tq.prepare(attack_state.model, inplace=True)
+            attack_state.model = tq.convert(attack_state.model, inplace=True)
 
-        if attack_params.conversion_dtype:
-            #print(f"[main] Debug: converting model dtype to {attack_params.conversion_dtype}.")
-            model = model.to(attack_params.conversion_dtype)
+        if attack_state.persistable.attack_params.conversion_dtype:
+            #print(f"[main] Debug: converting model dtype to {attack_state.persistable.attack_params.conversion_dtype}.")
+            attack_state.model = attack_state.model.to(attack_state.persistable.attack_params.conversion_dtype)
 
-        if attack_params.quantization_dtype or attack_params.enable_static_quantization or attack_params.conversion_dtype:
-            print("Warning: you've enabled quantization and/or type conversion, which are unlikely to work for the foreseeable future due to PyTorch limitations. Please see my comments in the source code for this tool.")
-            if attack_params.display_model_size:
-                quantized_model_size = get_model_size(model)
+        if attack_state.persistable.attack_params.quantization_dtype or attack_state.persistable.attack_params.enable_static_quantization or attack_state.persistable.attack_params.conversion_dtype:
+            print("Warning: you've enabled quantization and/or type conversion, which are unlikely to work for the foreseeable future due to PyTorch limitations. Please see my comments in the source code for Broken Hill.")
+            if attack_state.persistable.attack_params.display_model_size:
+                quantized_model_size = get_model_size(attack_state.model)
                 size_factor = float(quantized_model_size) / float(original_model_size) * 100.0
                 size_factor_formatted = f"{size_factor:.2f}%"
                 print(f"Model size after reduction: {quantized_model_size} ({size_factor_formatted} of original size)")
         
         #print(f"[main] Debug: registering missing conversation templates.")
-        register_missing_conversation_templates(attack_params)
-        #print(f"[main] Debug: loading conversation template '{attack_params.template_name}'.")
-        #conv_template = load_conversation_template(attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
-        conv_template = load_conversation_template(attack_params.model_path, template_name = attack_params.template_name, generic_role_indicator_template = attack_params.generic_role_indicator_template, system_prompt=attack_params.custom_system_prompt, clear_existing_template_conversation=attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
-        if attack_params.template_name is not None:
-            if conv_template.name != attack_params.template_name:
-                print(f"Warning: the template '{attack_params.template_name}' was specified, but fschat returned the template '{conv_template.name}' in response to that value.")
-        if conv_template is None:
-            print(f"Error: got a null conversation template when trying to load '{attack_params.template_name}'. This should never happen.")
+        register_custom_conversation_templates(attack_state.persistable.attack_params)
+        #print(f"[main] Debug: loading conversation template '{attack_state.persistable.attack_params.template_name}'.")
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before loading conversation template")
+        attack_state.conversation_template = load_conversation_template(attack_state.persistable.attack_params.model_path, template_name = attack_state.persistable.attack_params.template_name, generic_role_indicator_template = attack_state.persistable.attack_params.generic_role_indicator_template, system_prompt = attack_state.persistable.attack_params.custom_system_prompt, clear_existing_template_conversation = attack_state.persistable.attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
+        if attack_state.persistable.attack_params.template_name is not None:
+            if attack_state.conversation_template.name != attack_state.persistable.attack_params.template_name:
+                print(f"Warning: the template '{attack_state.persistable.attack_params.template_name}' was specified, but fschat returned the template '{attack_state.conversation_template.name}' in response to that value.")
+        if attack_state.conversation_template is None:
+            print(f"Error: got a null conversation template when trying to load '{attack_state.persistable.attack_params.template_name}'. This should never happen.")
             sys.exit(1)
-        #print(f"Conversation template: '{conv_template.name}'")
-        #print(f"Conversation template sep: '{conv_template.sep}'")
-        #print(f"Conversation template sep2: '{conv_template.sep2}'")
-        #print(f"Conversation template roles: '{conv_template.roles}'")
-        #print(f"Conversation template system message: '{conv_template.system_message}'")
-        #messages = json.dumps(conv_template.messages, indent=4)
+        #print(f"Conversation template: '{attack_state.conversation_template.name}'")
+        #print(f"Conversation template sep: '{attack_state.conversation_template.sep}'")
+        #print(f"Conversation template sep2: '{attack_state.conversation_template.sep2}'")
+        #print(f"Conversation template roles: '{attack_state.conversation_template.roles}'")
+        #print(f"Conversation template system message: '{attack_state.conversation_template.system_message}'")
+        #messages = json.dumps(attack_state.conversation_template.messages, indent=4)
         #print(f"Conversation template messages: '{messages}'")
-        #print_stats(attack_params)
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after loading conversation template")
 
-        print(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with a large number of tokens.")
-        trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(tokenizer, conv_template)
+        print(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with large numbers of tokens.")
+        trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(attack_state.tokenizer, attack_state.conversation_template)
 
         #print(f"[main] Debug: setting initial adversarial content.")
         
         initial_adversarial_content = None
-        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
-            initial_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_string)
+        if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
+            initial_adversarial_content = AdversarialContent.from_string(attack_state.tokenizer, trash_fire_token_treasury, attack_state.persistable.attack_params.initial_adversarial_string)
         
-        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
+        if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
             single_token_id = None
             try:
-                single_token_id = get_encoded_token(tokenizer, attack_params.initial_adversarial_token_string)
+                single_token_id = get_encoded_token(attack_state.tokenizer, attack_state.persistable.attack_params.initial_adversarial_token_string)
             except Exception as e:
-                print(f"Error: encoding string '{attack_params.initial_adversarial_token_string}' to token: {e}.")
+                print(f"Error: encoding string '{attack_state.persistable.attack_params.initial_adversarial_token_string}' to token: {e}.")
                 sys.exit(1)
             if isinstance(single_token_id, type(None)):
-                    print(f"Error: the selected tokenizer encoded the string '{attack_params.initial_adversarial_token_string}' to a null value.")
+                    print(f"Error: the selected tokenizer encoded the string '{attack_state.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
                     sys.exit(1)
             if isinstance(single_token_id, list):
-                decoded_tokens = get_decoded_tokens(tokenizer, single_token_id)
+                decoded_tokens = get_decoded_tokens(attack_state.tokenizer, single_token_id)
                 single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_token_treasury, single_token_id, decoded_tokens)
                 if len(single_token_id) > 1:
-                    print(f"Error: the selected tokenizer encoded the string '{attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
+                    print(f"Error: the selected tokenizer encoded the string '{attack_state.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
                     sys.exit(1)
                 else:
                     single_token_id = single_token_id[0]
-            attack_params.initial_adversarial_token_ids = []
-            for i in range(0, attack_params.initial_adversarial_token_count):
-                attack_params.initial_adversarial_token_ids.append(single_token_id)
+            attack_state.persistable.attack_params.initial_adversarial_token_ids = []
+            for i in range(0, attack_state.persistable.attack_params.initial_adversarial_token_count):
+                attack_state.persistable.attack_params.initial_adversarial_token_ids.append(single_token_id)
             
-            initial_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_token_ids)
+            initial_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, attack_state.persistable.attack_params.initial_adversarial_token_ids)
 
-        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
-            initial_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_token_ids)
+        if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
+            initial_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, attack_state.persistable.attack_params.initial_adversarial_token_ids)
         
-        if attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
-            token_ids = get_random_token_ids(numpy_random_generator, token_allow_and_deny_lists, attack_params.initial_adversarial_token_count)
-            initial_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, token_ids)
+        if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
+            token_ids = get_random_token_ids(numpy_random_generator, attack_state.token_allow_and_deny_lists, attack_state.persistable.attack_params.initial_adversarial_token_count)
+            initial_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, token_ids)
         
         post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
         
-        if attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
-            initial_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, attack_params.initial_adversarial_string)
+        if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
+            initial_adversarial_content = AdversarialContent.from_string(attack_state.tokenizer, trash_fire_token_treasury, attack_state.persistable.attack_params.initial_adversarial_string)
         
         # This should never actually happen, but just in case
         if initial_adversarial_content is None:
@@ -685,18 +557,18 @@ def main(attack_params):
         tokens_not_in_tokenizer = []
         for i in range(0, len(initial_adversarial_content.token_ids)):
             token_id = initial_adversarial_content.token_ids[i]
-            if token_id in token_allow_and_deny_lists.denylist:
+            if token_id in attack_state.token_allow_and_deny_lists.denylist:
                 if token_id not in tokens_in_denylist:
                     tokens_in_denylist.append(token_id)
             else:
-                if token_id not in token_allow_and_deny_lists.allowlist:
+                if token_id not in attack_state.token_allow_and_deny_lists.allowlist:
                     if token_id not in tokens_not_in_tokenizer:
                         tokens_not_in_tokenizer.append(token_id)
         
         if len(tokens_in_denylist) > 0:
             token_list_string = ""
             for i in range(0, len(tokens_in_denylist)):
-                decoded_token = get_escaped_string(get_decoded_token(tokenizer, tokens_in_denylist[i]))
+                decoded_token = get_escaped_string(get_decoded_token(attack_state.tokenizer, tokens_in_denylist[i]))
                 formatted_token = f"'{decoded_token}' (ID {tokens_in_denylist[i]})"
                 if token_list_string == "":
                     token_list_string = formatted_token
@@ -704,117 +576,100 @@ def main(attack_params):
                     token_list_string += ", {formatted_token}"
             print(f"Warning: the following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
             new_denylist = []
-            for existing_denylist_index in range(0, len(token_allow_and_deny_lists.denylist)):
-                if token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
-                    token_allow_and_deny_lists.allowlist.append(token_allow_and_deny_lists.denylist[existing_denylist_index])
+            for existing_denylist_index in range(0, len(attack_state.token_allow_and_deny_lists.denylist)):
+                if attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
+                    attack_state.token_allow_and_deny_lists.allowlist.append(attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index])
                 else:
-                    new_denylist.append(token_allow_and_deny_lists.denylist[existing_denylist_index])
-            token_allow_and_deny_lists.denylist = new_denylist
+                    new_denylist.append(attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index])
+            attack_state.token_allow_and_deny_lists.denylist = new_denylist
         if len(tokens_not_in_tokenizer) > 0:
             print(f"Warning: the following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
         
         print(f"Initial adversarial content: {initial_adversarial_content.get_full_description()}")
 
-        current_adversarial_content = initial_adversarial_content.copy()
+        attack_state.persistable.current_adversarial_content = initial_adversarial_content.copy()
 
-        #print(f"[main] Debug: creating adversarial content manager.")
-        adversarial_content_manager = AdversarialContentManager(attack_params = attack_params,
-            tokenizer = tokenizer, 
-            conv_template = conv_template, 
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating adversarial content manager")
+        #print(f"[main] Debug: creating adversarial content manager.")        
+        attack_state.adversarial_content_manager = AdversarialContentManager(attack_state = attack_state, 
+            conv_template = attack_state.conversation_template, 
             adversarial_content = initial_adversarial_content.copy(),
             trash_fire_tokens = trash_fire_token_treasury)
             
-        #print_stats(attack_params)
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after creating adversarial content manager")
          
         #import pdb; pdb.Pdb(nosigint=True).set_trace()
 
-        # TKTK: move this stuff and similar values into an AttackState class to support true suspend/resume
-        # There is only one "last known good" adversarial value tracked to avoid the following scenario:
-        # User has multiple types of rollback enabled
-        # Rollback type 1 is triggered, and the script rolls back to the last-known-good adversarial value associated with rollback type 1
-        # The rollback type 2 last-known-good adversarial value is updated to the value that caused the rollback
-        # In the next iteration, rollback type 2 is triggered, and the script "rolls sideways" to the data that caused the first rollback, making the script branch into bad values
-        last_known_good_adversarial_content = AdversarialContent()
-        last_known_good_adversarial_content.token_ids = None
-        last_known_good_adversarial_content.tokens = None
-        last_known_good_adversarial_content.as_string = None
-        best_loss_value = None
-        best_jailbreak_count = None
-        original_new_adversarial_value_candidate_count = attack_params.new_adversarial_value_candidate_count
-        original_topk = attack_params.topk
-        is_first_iteration = True
+        attack_state.persistable.original_new_adversarial_value_candidate_count = attack_state.persistable.attack_params.new_adversarial_value_candidate_count
+        attack_state.persistable.original_topk = attack_state.persistable.attack_params.topk
 
         # Keep this out until things like denied tokens are file paths instead of inline, to keep from infecting result files with bad words
-        #overall_result_data.attack_params = attack_params
+        #attack_state.persistable.overall_result_data.attack_params = attack_state.persistable.attack_params
 
         #print(f"Debug: testing conversation template")
-        print(f"Testing conversation template '{conv_template.name}'")
-        conversation_template_tester = ConversationTemplateTester(adversarial_content_manager, model)
-        conversation_template_test_results = conversation_template_tester.test_templates(verbose = attack_params.verbose_self_test_output)
+        print(f"Testing conversation template '{attack_state.conversation_template.name}'")
+        conversation_template_tester = ConversationTemplateTester(attack_state.adversarial_content_manager, attack_state.model)
+        conversation_template_test_results = conversation_template_tester.test_templates(verbose = attack_state.persistable.attack_params.verbose_self_test_output)
         if len(conversation_template_test_results.result_messages) > 0:
             for i in range(0, len(conversation_template_test_results.result_messages)):
                 print(conversation_template_test_results.result_messages[i])
         else:
             print(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
 
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after testing conversation template")
+
         empty_output_during_jailbreak_self_tests = False
         #print(f"Debug: testing for jailbreak with no adversarial content")
-        empty_adversarial_content = AdversarialContent.from_string(tokenizer, trash_fire_token_treasury, "")
-        jailbreak_check_input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
-        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-            model, 
-            tokenizer,
-            #adversarial_content_manager, 
-            #empty_adversarial_content,
+        empty_adversarial_content = AdversarialContent.from_string(attack_state.tokenizer, trash_fire_token_treasury, "")
+        jailbreak_check_input_token_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(attack_state,
             jailbreak_check_input_token_id_data,
             1.0,
             jailbreak_detector,
             do_sample = False)
         
-        overall_result_data.self_test_results["GCG-no_adversarial_content"] = nac_jailbreak_check_data
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after generating no-adversarial-content jailbreak test data")
         
-        #nac_jailbreak_decoded_generated_prompt_string = tokenizer.decode(jailbreak_check_input_token_id_data.full_prompt_token_ids)
-        nac_jailbreak_decoded_generated_prompt_string_stipped = nac_jailbreak_check_data.decoded_llm_generation_string.strip()
+        attack_state.persistable.overall_result_data.self_test_results["GCG-no_adversarial_content"] = nac_jailbreak_check_data
+        
+        nac_jailbreak_decoded_generated_prompt_string_stripped = nac_jailbreak_check_data.decoded_llm_generation_string.strip()
         
         nac_jailbreak_check_llm_output_stripped = nac_jailbreak_check_data.decoded_llm_output_string.strip()        
         if nac_jailbreak_check_llm_output_stripped == "":
             empty_output_during_jailbreak_self_tests = True
-            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stipped}'")
+            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
         else:
             if nac_jailbreak_result:
-                #print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. This may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_check_data.decoded_generated_prompt_string.strip()}'")
-                print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stipped}'")
+                print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{attack_state.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
             else:
-                print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+                print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{attack_state.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
         #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
-        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-            model, 
-            tokenizer,
-            #adversarial_content_manager, 
-            #empty_adversarial_content,
+        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(attack_state,
             jailbreak_check_input_token_id_data,
             1.0,
             jailbreak_detector,
             do_sample = False,
             include_target_content = True)
         
-        overall_result_data.self_test_results["GCG-simulated_ideal_adversarial_content"] = target_jailbreak_check_data
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after generating ideal jailbreak test data")
         
-        target_jailbreak_decoded_generated_prompt_string_stipped = target_jailbreak_check_data.decoded_llm_generation_string.strip()
+        attack_state.persistable.overall_result_data.self_test_results["GCG-simulated_ideal_adversarial_content"] = target_jailbreak_check_data
+        
+        target_jailbreak_decoded_generated_prompt_string_stripped = target_jailbreak_check_data.decoded_llm_generation_string.strip()
         target_jailbreak_check_llm_output_stripped = target_jailbreak_check_data.decoded_llm_output_string.strip() 
         if target_jailbreak_check_llm_output_stripped == "":
             empty_output_during_jailbreak_self_tests = True
-            print(f"Error: When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{target_jailbreak_check_llm_output_stripped}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stipped}'")
+            print(f"Error: When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{target_jailbreak_check_llm_output_stripped}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
         else:
             if target_jailbreak_result:
-                print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+                print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_state.persistable.attack_params.base_prompt}' when given the prefix '{attack_state.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
             else:            
-                print(f"Error: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_params.base_prompt}' when given the prefix '{attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stipped}'")
+                print(f"Error: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{attack_state.persistable.attack_params.base_prompt}' when given the prefix '{attack_state.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
 
-        if attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
+        if attack_state.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
             if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
-                if not attack_params.ignore_jailbreak_self_tests:
+                if not attack_state.persistable.attack_params.ignore_jailbreak_self_tests:
                     print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
                     sys.exit(1)
 
@@ -822,134 +677,126 @@ def main(attack_params):
         
         # TKTK: self-test to count the number of tokens in a role-switching operation for the model.
         
-        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using this tool's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch.
+        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using Broken Hill's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch.
         
-        if attack_params.operating_mode == BrokenHillMode.GCG_ATTACK_SELF_TEST:
+        if attack_state.persistable.attack_params.operating_mode == BrokenHillMode.GCG_ATTACK_SELF_TEST:
             print(f"Broken Hill has completed all self-test operations and will now exit.")
             end_ts = get_time_string(get_now())            
-            overall_result_data.end_date_time = end_ts
-            if attack_params.json_output_file is not None:
-                safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
+            attack_state.persistable.overall_result_data.end_date_time = end_ts
+            if attack_state.persistable.attack_params.json_output_file is not None:
+                safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
             sys.exit(0)
         
-        # Get the embedding matrix once, rather than every iteration
-        embedding_matrix = get_embedding_matrix(model)
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating embedding_matrix")
         
-        print(f"Debug: embedding_matrix properties: {embedding_matrix.to_dict()}")        
-
         print(f"Starting main loop")
 
-        while main_loop_iteration_number < attack_params.max_iterations:
+        while attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
+            display_iteration_number = attack_state.persistable.main_loop_iteration_number + 1
+            attack_state.persistable.random_number_generator_states = attack_state.random_number_generators.get_current_states()
             is_success = False
             if user_aborted:
                 break
             else:
                 try:
                     attack_results_current_iteration = AttackResultInfoCollection()
-                    attack_results_current_iteration.iteration_number = main_loop_iteration_number + 1
+                    attack_results_current_iteration.iteration_number = attack_state.persistable.main_loop_iteration_number + 1
                     print(f"---------")
                     iteration_start_dt = get_now()
                     current_ts = get_time_string(iteration_start_dt)
                     current_elapsed_string = get_elapsed_time_string(start_dt, iteration_start_dt)
-                    print(f"{current_ts} - Main loop iteration {main_loop_iteration_number + 1} of {attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {successful_attack_count}")
-                    overall_result_data.end_date_time = current_ts
-                    overall_result_data.elapsed_time_string = current_elapsed_string
+                    print(f"{current_ts} - Main loop iteration {display_iteration_number} of {attack_state.persistable.attack_params.max_iterations} - elapsed time {current_elapsed_string} - successful attack count: {attack_state.persistable.successful_attack_count}")
+                    attack_state.persistable.overall_result_data.end_date_time = current_ts
+                    attack_state.persistable.overall_result_data.elapsed_time_string = current_elapsed_string
     
-                    print_stats(attack_params)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, is_key_snapshot_event = True, location_description = f"beginning of main loop iteration {display_iteration_number}")
                     print(f"---------")
                     
                     attack_data_previous_iteration = None
-                    if main_loop_iteration_number > 0:
+                    if attack_state.persistable.main_loop_iteration_number > 0:
                         #attack_data_previous_iteration = attack_data[len(attack_data) - 1]
-                        attack_data_previous_iteration = overall_result_data.attack_results[len(overall_result_data.attack_results) - 1]
+                        attack_data_previous_iteration = attack_state.persistable.overall_result_data.attack_results[len(attack_state.persistable.overall_result_data.attack_results) - 1]
                     
-                    tested_adversarial_content.append_if_new(current_adversarial_content)
+                    attack_state.persistable.tested_adversarial_content.append_if_new(attack_state.persistable.current_adversarial_content)
                     
                     # TKTK: split the actual attack step out into a separate subclass of an attack class.
                     # Maybe TokenPermutationAttack => GreedyCoordinateGradientAttack?
                     
                     # if this is not the first iteration, and the user has enabled emulation of the original attack, encode the current string, then use those IDs for this round instead of persisting everything in token ID format
-                    if main_loop_iteration_number > 0:
-                        if attack_params.reencode_adversarial_content_every_iteration:
-                            reencoded_token_ids = tokenizer.encode(current_adversarial_content.as_string)
-                            current_adversarial_content = AdversarialContent.from_token_ids(tokenizer, trash_fire_token_treasury, reencoded_token_ids)
+                    if attack_state.persistable.main_loop_iteration_number > 0:
+                        if attack_state.persistable.attack_params.reencode_adversarial_content_every_iteration:
+                            reencoded_token_ids = attack_state.tokenizer.encode(attack_state.persistable.current_adversarial_content.as_string)
+                            attack_state.persistable.current_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, reencoded_token_ids)
                     
-                    adversarial_content_manager.adversarial_content = current_adversarial_content
+                    attack_state.adversarial_content_manager.adversarial_content = attack_state.persistable.current_adversarial_content
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
-                    #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with current_adversarial_content = '{current_adversarial_content.get_short_description()}'")
-                    input_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
-                    #print_stats(attack_params)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_id_data")
+                    #print(f"[main - encoding user prompt + adversarial data] Debug: calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
+                    input_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_id_data")
                     
                     # Comment/uncomment the next six lines as a single block
-                    #decoded_input_tokens = get_decoded_tokens(tokenizer, input_id_data.input_token_ids)
-                    #decoded_full_prompt_token_ids = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids)
-                    #decoded_control_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
-                    #decoded_target_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
-                    #decoded_loss_slice = get_decoded_tokens(tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
+                    #decoded_input_tokens = get_decoded_tokens(attack_state.tokenizer, input_id_data.input_token_ids)
+                    #decoded_full_prompt_token_ids = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids)
+                    #decoded_control_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
+                    #decoded_target_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
+                    #decoded_loss_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
                     #print(f"[main loop - input ID generation for token_gradients] Debug: decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
-                    decoded_loss_slice_string = get_escaped_string(tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
+                    decoded_loss_slice_string = get_escaped_string(attack_state.tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_ids")
                     #print(f"Converting input IDs to device")
-                    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_params.model_device)
+                    input_ids = input_id_data.get_input_ids_as_tensor().to(attack_state.model_device)
                     #print(f"Debug: input_ids after conversion = '{input_ids}'")
-                    #print_stats(attack_params)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_ids")
                     
                     input_id_data_gcg_ops = input_id_data
                     input_ids_gcg_ops = input_ids
                     
-                    if attack_params.ignore_prologue_during_gcg_operations:
-                        conv_template_gcg_ops = conv_template.copy()
+                    if attack_state.persistable.attack_params.ignore_prologue_during_gcg_operations:
+                        conv_template_gcg_ops = attack_state.conversation_template.copy()
                         conv_template_gcg_ops.system_message=""
                         conv_template_gcg_ops.messages = []
-                        adversarial_content_manager_gcg_ops = AdversarialContentManager(attack_params = attack_params,
-                            tokenizer = tokenizer, 
+                        adversarial_content_manager_gcg_ops = AdversarialContentManager(attack_state = attack_state, 
                             conv_template = conv_template_gcg_ops, 
-                            adversarial_content = current_adversarial_content.copy(),
+                            adversarial_content = attack_state.persistable.current_adversarial_content.copy(),
                             trash_fire_tokens = trash_fire_token_treasury)
-                        input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
-                        input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_params.model_device)
+                        input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+                        input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_state.model_device)
 
                     best_new_adversarial_content = None                    
                     
                     # preserve the RNG states because the code in this section is likely to reset them a bunch of times
-                    torch_rng_state = torch.get_rng_state()
-                    numpy_rng_state = numpy_random_generator.bit_generator.state
+                    rng_states = attack_state.random_number_generators.get_current_states()
                     
                     # declare these here so they can be cleaned up later
                     coordinate_gradient = None
                     # during the first iteration, do not generate variations - test the value that was given                    
-                    if main_loop_iteration_number == 0:
-                        print(f"Testing initial adversarial value '{current_adversarial_content.get_short_description()}'")
+                    if attack_state.persistable.main_loop_iteration_number == 0:
+                        print(f"Testing initial adversarial value '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
                     else:
                         # Step 2. Compute Coordinate Gradient
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating coordinate gradient")
                         #print(f"Computing coordinate gradient")
                         try:
-                            coordinate_gradient = token_gradients(attack_params,
-                                model,
-                                embedding_matrix,
-                                tokenizer,
-                                #input_ids,
+                            coordinate_gradient = token_gradients(attack_state,
                                 input_ids_gcg_ops,
-                                #input_id_data)
                                 input_id_data_gcg_ops)
                         except GradientCreationException as e:
                             print(f"Error: attempting to generate a coordinate gradient failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.")
                             sys.exit(1)
                         #print(f"[main loop] Debug: coordinate_gradient.shape[0] = {coordinate_gradient.shape[0]}")
-                        #print_stats(attack_params)
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating coordinate gradient")
 
-                        if isinstance(random_generator_gradient, type(None)):
-                            random_generator_gradient = torch.Generator(device = coordinate_gradient.device).manual_seed(attack_params.torch_manual_seed)
+                        # if isinstance(random_generator_gradient, type(None)):
+                            # random_generator_gradient = torch.Generator(device = coordinate_gradient.device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
 
                         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
                         # Notice that we only need the one that minimizes the loss.
 
-                        with torch.no_grad():
-                            
-                            #print_stats(attack_params)
-                            
+                        with torch.no_grad():                            
                             got_candidate_list = False
                             new_adversarial_candidate_list = None
                             new_adversarial_candidate_list_filtered = None
@@ -978,14 +825,8 @@ def main(attack_params):
                                     new_adversarial_candidate_list = None
                                     
                                     try:
-                                        new_adversarial_candidate_list = get_adversarial_content_candidates(attack_params,
-                                                       adversarial_content_manager,
-                                                       current_adversarial_content, 
-                                                       coordinate_gradient, 
-                                                       random_generator_gradient,
-                                                       random_generator_cpu,
-                                                       random_generator_attack_params_device,
-                                                       random_generator_attack_params_gradient,
+                                        new_adversarial_candidate_list = get_adversarial_content_candidates(attack_state, 
+                                                       coordinate_gradient,
                                                        not_allowed_tokens = not_allowed_tokens)
                                     except GradientSamplingException as e:
                                         print(f"Error: attempting to generate a new set of candidate adversarial data failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.")
@@ -994,7 +835,7 @@ def main(attack_params):
                                         print(f"Error: attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.")
                                         sys.exit(1)
      
-                                    #print_stats(attack_params)
+                                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before getting filtered candidates")
                                     #print(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
                                     
                                     # Note: I'm leaving this explanation here for historical reference
@@ -1003,11 +844,8 @@ def main(attack_params):
                                     # so Encode(Decode(tokens)) may produce a different tokenization.
                                     # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
                                     #print(f"Getting filtered candidates")
-                                    new_adversarial_candidate_list_filtered = get_filtered_cands(attack_params, adversarial_content_manager, 
-                                                                        new_adversarial_candidate_list, 
-                                                                        tested_adversarial_content,
-                                                                        filter_cand=True, 
-                                                                        current_adversarial_content = current_adversarial_content)
+                                    new_adversarial_candidate_list_filtered = get_filtered_cands(attack_state, new_adversarial_candidate_list, filter_cand = True)
+                                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting filtered candidates")
                                     if len(new_adversarial_candidate_list_filtered.adversarial_content) > 0:
                                         got_candidate_list = True
                                     else:
@@ -1016,136 +854,139 @@ def main(attack_params):
                                         standard_explanation_intro = "The attack has failed to generate any adversarial values at this iteration that meet the specified filtering criteria and have not already been tested."
                                         standard_explanation_outro = "You can try specifying larger values for --max-batch-size-new-adversarial-tokens and/or --max-topk to avoid this error, or enabling --add-token-when-no-candidates-returned and/or --delete-token-when-no-candidates-returned if they are not already enabled."
                                         
-                                        if attack_params.add_token_when_no_candidates_returned:
+                                        if attack_state.persistable.attack_params.add_token_when_no_candidates_returned:
                                             token_count_limited = True
-                                            if isinstance(attack_params.candidate_filter_tokens_max, type(None)):
+                                            if isinstance(attack_state.persistable.attack_params.candidate_filter_tokens_max, type(None)):
                                                 token_count_limited = False
                                             if token_count_limited:
-                                                if len(current_adversarial_content.token_ids) < attack_params.candidate_filter_tokens_max:
+                                                if len(attack_state.persistable.current_adversarial_content.token_ids) < attack_state.persistable.attack_params.candidate_filter_tokens_max:
                                                     token_count_limited = False
-                                            current_short_description = current_adversarial_content.get_short_description()
+                                            current_short_description = attack_state.persistable.current_adversarial_content.get_short_description()
                                             if token_count_limited:
-                                                print(f"{standard_explanation_intro} The option to add an additional token is enabled, but the current adversarial content {current_short_description} is already at the limit of {attack_params.candidate_filter_tokens_max} tokens.")
+                                                print(f"{standard_explanation_intro} The option to add an additional token is enabled, but the current adversarial content {current_short_description} is already at the limit of {attack_state.persistable.attack_params.candidate_filter_tokens_max} tokens.")
                                             else:
-                                                current_adversarial_content.duplicate_random_token(numpy_random_generator, tokenizer)
-                                                new_short_description = current_adversarial_content.get_short_description()
+                                                attack_state.persistable.current_adversarial_content.duplicate_random_token(numpy_random_generator, attack_state.tokenizer)
+                                                new_short_description = attack_state.persistable.current_adversarial_content.get_short_description()
                                                 something_has_changed = True
                                                 print(f"{standard_explanation_intro} Because the option to add an additional token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                         #else:
                                         #    print(f"[main loop] Debug: the option to add an additional token is disabled.")
                                         
                                         if not something_has_changed:
-                                            if attack_params.delete_token_when_no_candidates_returned:
+                                            if attack_state.persistable.attack_params.delete_token_when_no_candidates_returned:
                                                 token_count_limited = True
                                                 minimum_token_count = 1
-                                                if isinstance(attack_params.candidate_filter_tokens_min, type(None)):
+                                                if isinstance(attack_state.persistable.attack_params.candidate_filter_tokens_min, type(None)):
                                                     token_count_limited = False
                                                 else:
-                                                    if attack_params.candidate_filter_tokens_min > 1:
-                                                        minimum_token_count = attack_params.candidate_filter_tokens_min
-                                                    if len(current_adversarial_content.token_ids) > attack_params.candidate_filter_tokens_min:
+                                                    if attack_state.persistable.attack_params.candidate_filter_tokens_min > 1:
+                                                        minimum_token_count = attack_state.persistable.attack_params.candidate_filter_tokens_min
+                                                    if len(attack_state.persistable.current_adversarial_content.token_ids) > attack_state.persistable.attack_params.candidate_filter_tokens_min:
                                                         token_count_limited = False
                                                 if not token_count_limited:
-                                                    if len(current_adversarial_content.token_ids) < 2:
+                                                    if len(attack_state.persistable.current_adversarial_content.token_ids) < 2:
                                                         token_count_limited = True
-                                                current_short_description = current_adversarial_content.get_short_description()
+                                                current_short_description = attack_state.persistable.current_adversarial_content.get_short_description()
                                                 if token_count_limited:
                                                     print(f"{standard_explanation_intro} The option to delete a random token is enabled, but the current adversarial content {current_short_description} is already at the minimum of {minimum_token_count} token(s).")
                                                 else:
-                                                    current_adversarial_content.delete_random_token(numpy_random_generator, tokenizer)
-                                                    new_short_description = current_adversarial_content.get_short_description()
+                                                    attack_state.persistable.current_adversarial_content.delete_random_token(numpy_random_generator, attack_state.tokenizer)
+                                                    new_short_description = attack_state.persistable.current_adversarial_content.get_short_description()
                                                     something_has_changed = True
                                                     print(f"{standard_explanation_intro} Because the option to delete a random token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                             #else:
                                             #    print(f"[main loop] Debug: the option to delete a random token is disabled.")
                                         
                                         if not something_has_changed:
-                                            new_new_adversarial_value_candidate_count = attack_params.new_adversarial_value_candidate_count + original_new_adversarial_value_candidate_count
+                                            new_new_adversarial_value_candidate_count = attack_state.persistable.attack_params.new_adversarial_value_candidate_count + attack_state.persistable.original_new_adversarial_value_candidate_count
                                             increase_new_adversarial_value_candidate_count = True
-                                            if not isinstance(attack_params.max_new_adversarial_value_candidate_count, type(None)):
-                                                if new_new_adversarial_value_candidate_count > attack_params.max_new_adversarial_value_candidate_count:
-                                                    new_new_adversarial_value_candidate_count = attack_params.max_new_adversarial_value_candidate_count
-                                                    if new_new_adversarial_value_candidate_count <= attack_params.new_adversarial_value_candidate_count:
+                                            if not isinstance(attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count, type(None)):
+                                                if new_new_adversarial_value_candidate_count > attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count:
+                                                    new_new_adversarial_value_candidate_count = attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count
+                                                    if new_new_adversarial_value_candidate_count <= attack_state.persistable.attack_params.new_adversarial_value_candidate_count:
                                                         increase_new_adversarial_value_candidate_count = False
                                                     #else:
-                                                    #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count > attack_params.new_adversarial_value_candidate_count.")
+                                                    #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count > attack_state.persistable.attack_params.new_adversarial_value_candidate_count.")
                                                 #else:
-                                                #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count <= attack_params.max_new_adversarial_value_candidate_count.")
+                                                #    print(f"[main loop] Debug: new_new_adversarial_value_candidate_count <= attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count.")
                                             #else:
-                                            #    print(f"[main loop] Debug: attack_params.max_new_adversarial_value_candidate_count is None.")
+                                            #    print(f"[main loop] Debug: attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count is None.")
                                             if increase_new_adversarial_value_candidate_count:
-                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_params.new_adversarial_value_candidate_count} to {new_new_adversarial_value_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
-                                                attack_params.new_adversarial_value_candidate_count = new_new_adversarial_value_candidate_count
+                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_state.persistable.attack_params.new_adversarial_value_candidate_count} to {new_new_adversarial_value_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
+                                                attack_state.persistable.attack_params.new_adversarial_value_candidate_count = new_new_adversarial_value_candidate_count
                                                 something_has_changed = True
                                             #else:
                                             #    print(f"[main loop] Debug: not increasing the --batch-size-new-adversarial-tokens value.")
                                         
                                         if not something_has_changed:
-                                            new_topk = attack_params.topk + original_topk
+                                            new_topk = attack_state.persistable.attack_params.topk + attack_state.persistable.original_topk
                                             increase_topk = True
-                                            if not isinstance(attack_params.max_topk, type(None)):
-                                                if new_topk > attack_params.max_topk:
-                                                    new_topk = attack_params.max_topk
-                                                    if new_topk <= attack_params.topk:
+                                            if not isinstance(attack_state.persistable.attack_params.max_topk, type(None)):
+                                                if new_topk > attack_state.persistable.attack_params.max_topk:
+                                                    new_topk = attack_state.persistable.attack_params.max_topk
+                                                    if new_topk <= attack_state.persistable.attack_params.topk:
                                                         increase_topk = False
                                                     #else:
-                                                    #    print(f"[main loop] Debug: new_topk > attack_params.topk.")
+                                                    #    print(f"[main loop] Debug: new_topk > attack_state.persistable.attack_params.topk.")
                                                 #else:
-                                                #    print(f"[main loop] Debug: new_topk <= attack_params.max_topk.")
+                                                #    print(f"[main loop] Debug: new_topk <= attack_state.persistable.attack_params.max_topk.")
                                             #else:
-                                            #    print(f"[main loop] Debug: attack_params.max_topk is None.")
+                                            #    print(f"[main loop] Debug: attack_state.persistable.attack_params.max_topk is None.")
                                             if increase_topk:
-                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --topk value is being increased from {attack_params.topk} to {new_topk} to increase the number of candidate values. {standard_explanation_outro}")
-                                                attack_params.topk = new_topk
+                                                print(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --topk value is being increased from {attack_state.persistable.attack_params.topk} to {new_topk} to increase the number of candidate values. {standard_explanation_outro}")
+                                                attack_state.persistable.attack_params.topk = new_topk
                                                 something_has_changed = True
                                             #else:
                                             #    print(f"[main loop] Debug: not increasing the --topk value.")
                                         
                                         if not something_has_changed:
-                                            print(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, the tool will now exit. {standard_explanation_outro}")
+                                            print(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_state.persistable.attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, Broken Hill will now exit. {standard_explanation_outro}")
                                             sys.exit(1)
                                         
 
                                         
                                                 
-                                #print_stats(attack_params)
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting finalized filtered candidates")
                                 #print(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
                                 
                                 # Step 3.4 Compute loss on these candidates and take the argmin.
                                 #print(f"Getting logits")
-                                logits, ids = get_logits(attack_params = attack_params,
-                                    model = model, 
-                                    tokenizer = tokenizer,
-                                    #input_ids = input_ids,
+                                logits, ids = get_logits(attack_state,
                                     input_ids = input_ids_gcg_ops,
-                                    adversarial_content = current_adversarial_content, 
+                                    adversarial_content = attack_state.persistable.current_adversarial_content, 
                                     adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                    return_ids = True,
-                                    batch_size = attack_params.batch_size_get_logits) # decrease this number if you run into OOM.
-                                #print_stats(attack_params)
+                                    return_ids = True)
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting logits")
 
                                 #print(f"Calculating target loss")
-                                #losses = target_loss(attack_params, logits, ids, input_id_data, tokenizer)
-                                losses = target_loss(attack_params, logits, ids, input_id_data_gcg_ops, tokenizer)
-                                #print_stats(attack_params)
+                                losses = target_loss(attack_state, logits, ids, input_id_data_gcg_ops)
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting loss values")
+                                # get rid of logits and ids immediately to save device memory, as it's no longer needed after the previous operation
+                                # This frees about 1 GiB of device memory for a 500M model on CPU or CUDA
+                                del logits
+                                del ids
+                                gc.collect()
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting logits and ids and running gc.collect")
                                 #print(f"[main loop] Debug: losses = {losses}")
 
                                 #print(f"Getting losses argmin")
                                 best_new_adversarial_content_id = losses.argmin()
-                                #print_stats(attack_params)
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting best new adversarial content ID")
                                 #print(f"[main loop] Debug: best_new_adversarial_content_id = {best_new_adversarial_content_id}")
 
                                 #print(f"Setting best new adversarial content")
                                 best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
-                                #print_stats(attack_params)
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting best new adversarial content")
 
                                 #print(f"Getting current loss")
                                 current_loss = losses[best_new_adversarial_content_id]
-                                #print_stats(attack_params)
+                                del losses
+                                gc.collect()
+                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting losses and running gc.collect")
                                 current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
                                 best_new_adversarial_content.original_loss = current_loss_as_float
                                 
-                                if isinstance(attack_params.required_loss_threshold, type(None)) or main_loop_iteration_number == 0:
+                                if isinstance(attack_state.persistable.attack_params.required_loss_threshold, type(None)) or attack_state.persistable.main_loop_iteration_number == 0:
                                     candidate_list_meets_loss_threshold = True
                                 else:
                                     if attack_data_previous_iteration is None:
@@ -1154,21 +995,21 @@ def main(attack_params):
                                         if isinstance(attack_data_previous_iteration.loss, type(None)):
                                             candidate_list_meets_loss_threshold = True
                                         if not candidate_list_meets_loss_threshold:
-                                            if best_new_adversarial_content.original_loss <= (attack_data_previous_iteration.loss + attack_params.required_loss_threshold):
+                                            if best_new_adversarial_content.original_loss <= (attack_data_previous_iteration.loss + attack_state.persistable.attack_params.required_loss_threshold):
                                                 candidate_list_meets_loss_threshold = True
                                 if not candidate_list_meets_loss_threshold:
                                     num_iterations_without_acceptable_loss += 1
                                     best_failed_attempts.append_if_new(best_new_adversarial_content)
-                                    loss_attempt_stats_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) to generate a list of random candidates that has at least one candidate with a loss lower than {(attack_data_previous_iteration.loss + attack_params.required_loss_threshold)}"
-                                    if not isinstance(attack_params.required_loss_threshold, type(None)):
-                                        if attack_params.required_loss_threshold != 0.0:
-                                            loss_attempt_stats_message += f" (previous loss of {attack_data_previous_iteration.loss} plus the specified threshold value {attack_params.required_loss_threshold})" 
+                                    loss_attempt_stats_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) to generate a list of random candidates that has at least one candidate with a loss lower than {(attack_data_previous_iteration.loss + attack_state.persistable.attack_params.required_loss_threshold)}"
+                                    if not isinstance(attack_state.persistable.attack_params.required_loss_threshold, type(None)):
+                                        if attack_state.persistable.attack_params.required_loss_threshold != 0.0:
+                                            loss_attempt_stats_message += f" (previous loss of {attack_data_previous_iteration.loss} plus the specified threshold value {attack_state.persistable.attack_params.required_loss_threshold})" 
                                     loss_attempt_stats_message += f". Best value during this attempt was {current_loss_as_float}."
                                     print(loss_attempt_stats_message)
-                                    if not isinstance(attack_params.loss_threshold_max_attempts, type(None)):
-                                        if num_iterations_without_acceptable_loss >= attack_params.loss_threshold_max_attempts:
-                                            loss_attempt_result_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) has reached the limit of {attack_params.loss_threshold_max_attempts} attempts."
-                                            if attack_params.exit_on_loss_threshold_failure:
+                                    if not isinstance(attack_state.persistable.attack_params.loss_threshold_max_attempts, type(None)):
+                                        if num_iterations_without_acceptable_loss >= attack_state.persistable.attack_params.loss_threshold_max_attempts:
+                                            loss_attempt_result_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) has reached the limit of {attack_state.persistable.attack_params.loss_threshold_max_attempts} attempts."
+                                            if attack_state.persistable.attack_params.exit_on_loss_threshold_failure:
                                                 loss_attempt_result_message += " Broken Hill has been configured to exit when this condition occurs."
                                                 print(loss_attempt_result_message)
                                                 sys.exit(1)
@@ -1176,9 +1017,9 @@ def main(attack_params):
                                                 best_new_adversarial_content = best_failed_attempts.get_content_with_lowest_loss()
                                                 candidate_list_meets_loss_threshold = True
                                                 loss_attempt_result_message += f" Broken Hill has been configured to use the adversarial content with the lowest loss discovered during this iteration when this condition occurs. Out of {len(best_failed_attempts.adversarial_content)} unique set(s) of tokens discovered during this iteration, the lowest loss value was {best_new_adversarial_content.original_loss} versus the previous loss of {attack_data_previous_iteration.loss}"
-                                                if not isinstance(attack_params.required_loss_threshold, type(None)):
-                                                    if attack_params.required_loss_threshold != 0.0:
-                                                        loss_attempt_result_message += f" and threshold {attack_params.required_loss_threshold}"
+                                                if not isinstance(attack_state.persistable.attack_params.required_loss_threshold, type(None)):
+                                                    if attack_state.persistable.attack_params.required_loss_threshold != 0.0:
+                                                        loss_attempt_result_message += f" and threshold {attack_state.persistable.attack_params.required_loss_threshold}"
                                                 loss_attempt_result_message += ". The adversarial content with that loss value will be used."
                                                 print(loss_attempt_result_message)
                                                 
@@ -1186,66 +1027,66 @@ def main(attack_params):
                             
                             # END: wrap in loss threshold check 
 
-                            # Update the running current_adversarial_content with the best candidate
-                            #print(f"Updating adversarial content - was '{current_adversarial_content.get_short_description()}', now '{best_new_adversarial_content.get_short_description()}'")
-                            #print_stats(attack_params)
+                            # Update the running attack_state.persistable.current_adversarial_content with the best candidate
+                            #print(f"Updating adversarial content - was '{attack_state.persistable.current_adversarial_content.get_short_description()}', now '{best_new_adversarial_content.get_short_description()}'")
+                            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before updating adversarial value")
                             
-                            print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {current_adversarial_content.get_short_description()} ({len(current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
-                            current_adversarial_content = best_new_adversarial_content
-                            print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {current_adversarial_content.original_loss}")
+                            print(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {attack_state.persistable.current_adversarial_content.get_short_description()} ({len(attack_state.persistable.current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
+                            attack_state.persistable.current_adversarial_content = best_new_adversarial_content
+                            print(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {attack_state.persistable.current_adversarial_content.original_loss}")
                             #print(f"Debug: decoded_loss_slice = '{decoded_loss_slice}'")
                             #print(f"Debug: input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
                             #print(f"Debug: input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
                         
                             #attack_results_current_iteration.loss = current_loss_as_float
-                            attack_results_current_iteration.loss = current_adversarial_content.original_loss
+                            attack_results_current_iteration.loss = attack_state.persistable.current_adversarial_content.original_loss
 
-                    #TKTK: generate the prompt once here using get_prompt and then reuse it instead of regenerating it identically for each LLM
-                    best_new_adversarial_content_input_token_id_data = adversarial_content_manager.get_prompt(adversarial_content = current_adversarial_content, force_python_tokenizer = attack_params.force_python_tokenizer)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating best_new_adversarial_content_input_token_id_data")
+                    best_new_adversarial_content_input_token_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating best_new_adversarial_content_input_token_id_data")
 
                     # preserve the RNG states because the code in this section is likely to reset them a bunch of times
                     # they're preserved twice because this is inside a block that may not occur
                     # but if they're altered, it will be in the next section
-                    torch_rng_state = torch.get_rng_state()
-                    numpy_rng_state = numpy_random_generator.bit_generator.state
+                    rng_states = attack_state.random_number_generators.get_current_states()
 
-                    attack_results_current_iteration.adversarial_content = current_adversarial_content.copy()
+                    attack_results_current_iteration.adversarial_content = attack_state.persistable.current_adversarial_content.copy()
                     
                     # BEGIN: do for every random seed
                     prng_seed_index = -1
-                    for randomized_test_number in range(0, attack_params.random_seed_comparisons + 1):
+                    for randomized_test_number in range(0, attack_state.persistable.attack_params.random_seed_comparisons + 1):
                         prng_seed_index += 1
                         attack_data_current_iteration = AttackResultInfo()                        
-                        attack_data_current_iteration.numpy_random_seed = attack_params.numpy_random_seed
-                        attack_data_current_iteration.torch_manual_seed = attack_params.torch_manual_seed
-                        attack_data_current_iteration.torch_cuda_manual_seed_all = attack_params.torch_cuda_manual_seed_all
-                        current_temperature = attack_params.model_temperature_range_begin
+                        attack_data_current_iteration.numpy_random_seed = attack_state.persistable.attack_params.numpy_random_seed
+                        attack_data_current_iteration.torch_manual_seed = attack_state.persistable.attack_params.torch_manual_seed
+                        attack_data_current_iteration.torch_cuda_manual_seed_all = attack_state.persistable.attack_params.torch_cuda_manual_seed_all
+                        current_temperature = attack_state.persistable.attack_params.model_temperature_range_begin
                         # For the first run, leave the model in its default do_sample configuration
                         do_sample = False
                         if randomized_test_number == 0:
                             attack_data_current_iteration.is_canonical_result = True
-                            attack_results_current_iteration.set_values(tokenizer, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
+                            attack_results_current_iteration.set_values(attack_state.tokenizer, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
                         else:
-                            if randomized_test_number == attack_params.random_seed_comparisons or attack_params.model_temperature_range_begin == attack_params.model_temperature_range_end:
-                                current_temperature = attack_params.model_temperature_range_end
+                            if randomized_test_number == attack_state.persistable.attack_params.random_seed_comparisons or attack_state.persistable.attack_params.model_temperature_range_begin == attack_state.persistable.attack_params.model_temperature_range_end:
+                                current_temperature = attack_state.persistable.attack_params.model_temperature_range_end
                             else:
-                                current_temperature = attack_params.model_temperature_range_begin + (((attack_params.model_temperature_range_end - attack_params.model_temperature_range_begin) / float(attack_params.random_seed_comparisons) * randomized_test_number))
+                                current_temperature = attack_state.persistable.attack_params.model_temperature_range_begin + (((attack_state.persistable.attack_params.model_temperature_range_end - attack_state.persistable.attack_params.model_temperature_range_begin) / float(attack_state.persistable.attack_params.random_seed_comparisons) * randomized_test_number))
                             # For all other runs, enable do_sample to randomize results
                             do_sample = True
                             # Pick the next random seed that's not equivalent to any of the initial values
                             got_random_seed = False                            
                             while not got_random_seed:
-                                random_seed = random_seed_values[prng_seed_index]
+                                random_seed = attack_state.random_seed_values[prng_seed_index]
                                 seed_already_used = False
-                                if random_seed == attack_params.numpy_random_seed:
+                                if random_seed == attack_state.persistable.attack_params.numpy_random_seed:
                                     seed_already_used = True
-                                if random_seed == attack_params.torch_manual_seed:
+                                if random_seed == attack_state.persistable.attack_params.torch_manual_seed:
                                     seed_already_used = True
-                                if random_seed == attack_params.torch_cuda_manual_seed_all:
+                                if random_seed == attack_state.persistable.attack_params.torch_cuda_manual_seed_all:
                                     seed_already_used = True
                                 if seed_already_used:
                                     prng_seed_index += 1
-                                    len_random_seed_values = len(random_seed_values)
+                                    len_random_seed_values = len(attack_state.random_seed_values)
                                     if prng_seed_index > len_random_seed_values:
                                         print(f"Error: exceeded the number of random seeds available({len_random_seed_values})")
                                         sys.exit(1)
@@ -1260,33 +1101,30 @@ def main(attack_params):
                             attack_data_current_iteration.torch_cuda_manual_seed_all = random_seed
                         attack_data_current_iteration.temperature = current_temperature
                     
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before checking for jailbreak success")
                         #print(f"Checking for success")
-                        is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_params, 
-                                                model, 
-                                                tokenizer,
-                                                #adversarial_content_manager, 
-                                                #current_adversarial_content,
+                        is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_state,
                                                 best_new_adversarial_content_input_token_id_data,
                                                 current_temperature,
                                                 jailbreak_detector,
                                                 do_sample = do_sample)            
-                        #print_stats(attack_params)
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after checking for jailbreak success")
                         if is_success:
                             attack_data_current_iteration.jailbreak_detected = True
                             attack_results_current_iteration.jailbreak_detection_count += 1
 
-                        #print(f"Passed:{is_success}\nCurrent best new adversarial content: '{current_adversarial_content.get_short_description()}'")
+                        #print(f"Passed:{is_success}\nCurrent best new adversarial content: '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
                         
                         full_output_dataset_name = "full_output"
                         
                         jailbreak_check_dataset_name = "jailbreak_check"
-                        if attack_params.display_full_failed_output:
+                        if attack_state.persistable.attack_params.display_full_failed_output:
                             jailbreak_check_dataset_name = full_output_dataset_name
                         
                         attack_data_current_iteration.result_data_sets[jailbreak_check_dataset_name] = jailbreak_check_data
                         
                         # only generate full output if it hasn't already just been generated
-                        if not attack_params.display_full_failed_output and is_success:
+                        if not attack_state.persistable.attack_params.display_full_failed_output and is_success:
                             full_output_data = AttackResultInfoData()
                             # Note: set random seeds for randomized variations where do_sample is True so that full output begins with identical output to shorter version
                             if do_sample:
@@ -1294,11 +1132,8 @@ def main(attack_params):
                                 numpy.random.seed(random_seed)
                                 torch.manual_seed(random_seed)
                                 torch.cuda.manual_seed_all(random_seed)
-                            #generation_results = generate(attack_params, model, tokenizer, adversarial_content_manager, current_adversarial_content, current_temperature, do_sample = do_sample, generate_full_output = True)
-                            generation_results = generate(attack_params, model, tokenizer, best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
-                          
-                            #full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.input_token_id_data.full_prompt_token_ids, generation_results.output_token_ids, generation_results.generation_input_token_ids, generation_results.output_token_ids_output_only)
-                            full_output_data.set_values(tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+                            generation_results = generate(attack_state, best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
+                            full_output_data.set_values(attack_state.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
                         
@@ -1307,24 +1142,11 @@ def main(attack_params):
                         
                         # END: do for every random seed
                     
-                    # reset back to specified random seeds if using extra tests
-                    # only do this if using extra tests to avoid resetting the PRNG unnecessarily
-                    if attack_params.random_seed_comparisons > 0:
-                        #print(f"[main loop] Resetting random seeds back to {attack_params.numpy_random_seed}, {attack_params.torch_manual_seed}, and {attack_params.torch_cuda_manual_seed_all}.")
-                        # NumPy
-                        numpy.random.seed(attack_params.numpy_random_seed)
-                        # PyTorch
-                        torch.manual_seed(attack_params.torch_manual_seed)
-                        # CUDA
-                        torch.cuda.manual_seed_all(attack_params.torch_cuda_manual_seed_all)
-                    
                     # restore the RNG states
-                    torch.set_rng_state(torch_rng_state)
-                    numpy_random_generator.bit_generator.state = numpy_rng_state
+                    attack_state.random_number_generators.set_states(rng_states)
                     
                     attack_results_current_iteration.update_unique_output_values()
                     iteration_status_message = f"-----------------\n"
-                    #iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.results[0].get_first_result_data_set().decoded_user_input_string}\n---\n"
                     iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.decoded_user_input_string}\n---\n"
                     iteration_status_message += f"Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}, with {attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
                     for uov_string in attack_results_current_iteration.unique_results.keys():
@@ -1333,99 +1155,98 @@ def main(attack_params):
                         iteration_status_message += uov_string
                         iteration_status_message += "\n"
                     iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial content: {current_adversarial_content.get_short_description()}\n"
+                    iteration_status_message += f"Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}\n"
                     iteration_status_message += f"-----------------\n"                    
                     print(iteration_status_message)
                     
                     # TKTK: maybe make this a threshold
                     if attack_results_current_iteration.jailbreak_detection_count > 0:
-                        successful_attack_count += 1
+                        attack_state.persistable.successful_attack_count += 1
                     
                     iteration_end_dt = get_now()
                     iteration_elapsed = iteration_end_dt - iteration_start_dt
                     attack_results_current_iteration.total_processing_time_seconds = iteration_elapsed.total_seconds()
                     
-                    #attack_data.append(attack_data_current_iteration)
-                    #attack_data.append(attack_results_current_iteration)
-                    overall_result_data.attack_results.append(attack_results_current_iteration)
-                    if attack_params.json_output_file is not None:
-                        #overall_result_data.attack_results.append(attack_results_current_iteration.to_dict())
-                        safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
+                    attack_state.persistable.overall_result_data.attack_results.append(attack_results_current_iteration)
+                    if attack_state.persistable.attack_params.json_output_file is not None:
+                        safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
                     
                     rollback_triggered = False
                     
-                    if main_loop_iteration_number > 0:
+                    if attack_state.persistable.main_loop_iteration_number > 0:
                         rollback_message = ""
-                        if attack_params.rollback_on_loss_increase:
-                            if (attack_results_current_iteration.loss - attack_params.rollback_on_loss_threshold) > best_loss_value:
-                                if attack_params.rollback_on_loss_threshold == 0.0:
-                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the best value achieved during this run ({best_loss_value}). "
+                        if attack_state.persistable.attack_params.rollback_on_loss_increase:
+                            if (attack_results_current_iteration.loss - attack_state.persistable.attack_params.rollback_on_loss_threshold) > attack_state.persistable.best_loss_value:
+                                if attack_state.persistable.attack_params.rollback_on_loss_threshold == 0.0:
+                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the best value achieved during this run ({attack_state.persistable.best_loss_value}). "
                                 else:
-                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the allowed delta of {attack_params.rollback_on_loss_threshold} from the best value achieved during this run ({best_loss_value}). "
+                                    rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the allowed delta of {attack_state.persistable.attack_params.rollback_on_loss_threshold} from the best value achieved during this run ({attack_state.persistable.best_loss_value}). "
                                 rollback_triggered = True
                             #else:
-                            #    print(f"[main loop] Debug: rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {best_loss_value} and threshold {attack_params.rollback_on_loss_threshold}.")
-                        if attack_params.rollback_on_jailbreak_count_decrease:
-                            if (attack_results_current_iteration.jailbreak_detection_count + attack_params.rollback_on_jailbreak_count_threshold) < best_jailbreak_count:
-                                if attack_params.rollback_on_jailbreak_count_threshold == 0:
-                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than for the best count achieved during this run ({best_jailbreak_count}). "
+                            #    print(f"[main loop] Debug: rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {attack_state.persistable.best_loss_value} and threshold {attack_state.persistable.attack_params.rollback_on_loss_threshold}.")
+                        if attack_state.persistable.attack_params.rollback_on_jailbreak_count_decrease:
+                            if (attack_results_current_iteration.jailbreak_detection_count + attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold) < attack_state.persistable.best_jailbreak_count:
+                                if attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold == 0:
+                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than for the best count achieved during this run ({attack_state.persistable.best_jailbreak_count}). "
                                 else:
-                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than the allowed delta of {attack_params.rollback_on_jailbreak_count_threshold} from the best count achieved during this run ({best_jailbreak_count}). "
+                                    rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than the allowed delta of {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold} from the best count achieved during this run ({attack_state.persistable.best_jailbreak_count}). "
                                 rollback_triggered = True
                             #else:
-                            #    print(f"[main loop] Debug: rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {best_jailbreak_count} and threshold {attack_params.rollback_on_jailbreak_count_threshold}.")
+                            #    print(f"[main loop] Debug: rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {attack_state.persistable.best_jailbreak_count} and threshold {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold}.")
                         # TKTK: if use of a threshold has allowed a score to drop below the last best value for x iterations, roll all the way back to the adversarial value that resulted in the current best value
                         # maybe use a tree model, with each branch from a node allowed to decrease 50% the amount of the previous branch, and too many failures to reach the value of the previous branch triggers a rollback to that branch
                         # That would allow some random exploration of various branches, at least allowing for the possibility of discovering a strong value within them, but never getting stuck for too long
                         if rollback_triggered:
-                            #rollback_message += f"Rolling back to the last-known-good adversarial data {last_known_good_adversarial_content.get_short_description()} for the next iteration instead of using this iteration's result {current_adversarial_content.get_short_description()}."
-                            rollback_message += f"Rolling back to the last-known-good adversarial data for the next iteration instead of using this iteration's result.\nThis iteration:  '{current_adversarial_content.get_short_description()}'\nLast-known-good: {last_known_good_adversarial_content.get_short_description()}."
+                            #rollback_message += f"Rolling back to the last-known-good adversarial data {attack_state.persistable.last_known_good_adversarial_content.get_short_description()} for the next iteration instead of using this iteration's result {attack_state.persistable.current_adversarial_content.get_short_description()}."
+                            rollback_message += f"Rolling back to the last-known-good adversarial data for the next iteration instead of using this iteration's result.\nThis iteration:  '{attack_state.persistable.current_adversarial_content.get_short_description()}'\nLast-known-good: {attack_state.persistable.last_known_good_adversarial_content.get_short_description()}."
                             print(rollback_message)
                             # add the rejected result to the list of tested results to avoid getting stuck in a loop
-                            tested_adversarial_content.append_if_new(current_adversarial_content)
+                            attack_state.persistable.tested_adversarial_content.append_if_new(attack_state.persistable.current_adversarial_content)
                             # roll back
-                            #adversarial_content = last_known_good_adversarial_content.copy()
-                            #current_adversarial_content = adversarial_content
-                            current_adversarial_content = last_known_good_adversarial_content.copy()
+                            #adversarial_content = attack_state.persistable.last_known_good_adversarial_content.copy()
+                            #attack_state.persistable.current_adversarial_content = adversarial_content
+                            attack_state.persistable.current_adversarial_content = attack_state.persistable.last_known_good_adversarial_content.copy()
                             
 
                     # only update the "last-known-good" results if no rollback was triggered (for any reason)
                     # otherwise, if someone has multiple rollback options enabled, and only one of them is tripped, the other path will end up containing bad data
                     if not rollback_triggered:
-                        rollback_notification_message = f"Updating last-known-good adversarial value from {last_known_good_adversarial_content.get_short_description()} to {current_adversarial_content.get_short_description()}."
-                        last_known_good_adversarial_content = current_adversarial_content.copy()
+                        rollback_notification_message = f"Updating last-known-good adversarial value from {attack_state.persistable.last_known_good_adversarial_content.get_short_description()} to {attack_state.persistable.current_adversarial_content.get_short_description()}."
+                        attack_state.persistable.last_known_good_adversarial_content = attack_state.persistable.current_adversarial_content.copy()
                         # only update these if they're improvements - they should work as a high water mark to avoid gradually decreasing quality over time when the rollback thresholds are enabled
                         update_loss = False
                         
-                        if isinstance(best_loss_value, type(None)):
+                        if isinstance(attack_state.persistable.best_loss_value, type(None)):
                             if not isinstance(attack_results_current_iteration.loss, type(None)):
                                 update_loss = True
                         else:
                             if not isinstance(attack_results_current_iteration.loss, type(None)):
-                                if attack_results_current_iteration.loss < best_loss_value:
+                                if attack_results_current_iteration.loss < attack_state.persistable.best_loss_value:
                                     update_loss = True
                         if update_loss:
-                            rollback_notification_message += f" Updating best loss value from {best_loss_value} to {attack_results_current_iteration.loss}."
-                            best_loss_value = attack_results_current_iteration.loss
+                            rollback_notification_message += f" Updating best loss value from {attack_state.persistable.best_loss_value} to {attack_results_current_iteration.loss}."
+                            attack_state.persistable.best_loss_value = attack_results_current_iteration.loss
                         
                         update_jailbreak_count = False
-                        if isinstance(best_jailbreak_count, type(None)):
+                        if isinstance(attack_state.persistable.best_jailbreak_count, type(None)):
                             if not isinstance(attack_results_current_iteration.jailbreak_detection_count, type(None)):
                                 update_jailbreak_count = True
                         else:
                             if not isinstance(attack_results_current_iteration.jailbreak_detection_count, type(None)):
-                                if attack_results_current_iteration.jailbreak_detection_count > best_jailbreak_count:
+                                if attack_results_current_iteration.jailbreak_detection_count > attack_state.persistable.best_jailbreak_count:
                                     update_jailbreak_count = True
                         if update_jailbreak_count:
-                            rollback_notification_message += f" Updating best jailbreak count from {best_jailbreak_count} to {attack_results_current_iteration.jailbreak_detection_count}."
-                            best_jailbreak_count = attack_results_current_iteration.jailbreak_detection_count
+                            rollback_notification_message += f" Updating best jailbreak count from {attack_state.persistable.best_jailbreak_count} to {attack_results_current_iteration.jailbreak_detection_count}."
+                            attack_state.persistable.best_jailbreak_count = attack_results_current_iteration.jailbreak_detection_count
                         
                     # (Optional) Clean up the cache.
                     #print(f"Cleaning up the cache")
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before deleting coordinate gradient")
                     if coordinate_gradient is not None:
                         del coordinate_gradient
                     gc.collect()
-                    #if "cuda" in attack_params.device:
+                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting coordinate gradient and running gc.collect")
+                    #if "cuda" in attack_state.persistable.attack_params.device:
                     #    torch.cuda.empty_cache()
                                     
                 # Neither of the except KeyboardInterrupt blocks currently do anything because some inner code in another module is catching it first
@@ -1434,10 +1255,10 @@ def main(attack_params):
                     print(f"Exiting main loop early by request")
                     user_aborted = True
                 
-            if is_success and attack_params.break_on_success:
+            if is_success and attack_state.persistable.attack_params.break_on_success:
                 break
-            main_loop_iteration_number += 1
-            overall_result_data.completed_iterations = main_loop_iteration_number
+            attack_state.persistable.main_loop_iteration_number += 1
+            attack_state.persistable.overall_result_data.completed_iterations = attack_state.persistable.main_loop_iteration_number
 
     except KeyboardInterrupt:
         #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -1450,24 +1271,16 @@ def main(attack_params):
 
     if not user_aborted:
         print(f"Main loop complete")
-    print_stats(attack_params)
+    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after main loop completion")
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
-    print(f"Finished after {main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {successful_attack_count}")
-    overall_result_data.end_date_time = end_ts
-    overall_result_data.elapsed_time_string = total_elapsed_string
-    if attack_params.json_output_file is not None:
-        safely_write_text_output_file(attack_params.json_output_file, overall_result_data.to_json())
-
-def exit_if_unauthorized_overwrite(output_file_path, attack_params):
-    if os.path.isfile(output_file_path):
-        if attack_params.overwrite_output:
-            print(f"Warning: overwriting output file '{output_file_path}'")
-        else:
-            print(f"Error: the output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
-            sys.exit(1)
+    print(f"Finished after {attack_state.persistable.main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {attack_state.persistable.successful_attack_count}")
+    attack_state.persistable.overall_result_data.end_date_time = end_ts
+    attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
+    if attack_state.persistable.attack_params.json_output_file is not None:
+        safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
 
 if __name__=='__main__':
     print(get_logo())
@@ -1480,7 +1293,7 @@ if __name__=='__main__':
     mps_available = torch.backends.mps.is_available()
     
     if not cuda_available:
-        print(f"Warning: this host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for this tool. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
+        print(f"Warning: this host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
     if mps_available:
         print(f"Warning: this host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
     
@@ -1508,73 +1321,73 @@ if __name__=='__main__':
     #TKTK: load attack state from JSON
     #TKTK: save/load custom conversation template
     
-    parser.add_argument("--model", type=str, 
+    parser.add_argument("--model", type = str, 
         help="Path to the base directory for the large language model you want to attack, e.g. /home/blincoln/LLMs/StabilityAI/stablelm-2-1_6b-chat")
         
-    parser.add_argument("--tokenizer", type=str, 
+    parser.add_argument("--tokenizer", type = str, 
         help="(optional) Path to the base directory for the LLM tokenizer you want to use with the model instead of any tokenizer that may be included with the model itself. Intended for use with models such as Mamba that do not include their own tokenizer.")
         
-    parser.add_argument("--peft-adapter", type=str, 
+    parser.add_argument("--peft-adapter", type = str, 
         help="(optional) Path to the base directory for a PEFT pre-trained model/adapter that is based on the model specified with --model. Used to load models such as Guanaco.")
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("--model-data-type", type=str, default="float16", choices = [ "as-is", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
+    parser.add_argument("--model-data-type", type = str, default="float16", choices = [ "as-is", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
         help=f"Experimental: specify the type to load the model's data as. 'as-is' will load the data in its native format.  Default: float16. Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.")    
     
-    parser.add_argument("--template", type=str, 
+    parser.add_argument("--template", type = str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
 
-    parser.add_argument("--list-templates", type=str2bool, nargs='?',
+    parser.add_argument("--list-templates", type = str2bool, nargs='?',
         const=True,
         help="Output a list of all template names for the version of the fastchat library you have installed (to use with --template), then exit.")
         
-    parser.add_argument("--override-fschat-templates", type=str2bool, nargs='?',
+    parser.add_argument("--do-not-override-fschat-templates", type = str2bool, nargs='?',
         const=True,
-        help="If .")
+        help="If the fschat library already includes a template with a name that matches one of Broken Hill's custom conversation templates, use the fschat version instead.")
         
-    parser.add_argument("--system-prompt", type=str, 
+    parser.add_argument("--system-prompt", type = str, 
         help=f"Specify a custom value to use instead of the default system prompt for the conversation template.")
 
-    parser.add_argument("--system-prompt-from-file", type=str, 
+    parser.add_argument("--system-prompt-from-file", type = str, 
         help=f"Specify a custom value to use instead of the default system prompt for the conversation template by reading it from a file. The entire file will be used as a single string system prompt.")
 
-    parser.add_argument("--clear-existing-conversation", type=str2bool, nargs='?',
+    parser.add_argument("--clear-existing-conversation", type = str2bool, nargs='?',
         const=True, default=attack_params.clear_existing_template_conversation,
         help="Removes any existing non-system messages from the conversation template.")
         
-    parser.add_argument("--template-messages-from-file", type=str, 
+    parser.add_argument("--template-messages-from-file", type = str, 
         help=f"Load custom messages into the conversation template by reading them from a JSON file. If --clear-existing-conversation is not specified, the messages will be appended to any existing messages in the list for the template. The format of the file should be '[[<role ID or name>, <message>],[<role ID or name>, <message>][...][<role ID or name>, <message>]]', e.g. [[0, \"Do you have any albums by Cindergarden or Mari Kattman?\"], [1, \"We have albums by both artists in stock!\"]] or [[\"Human\", \"Do you have any albums by The Birthday Massacre or Night Club?\"], [\"Assistant\", \"We have albums by both artists in stock!\"]]")
 
-    parser.add_argument("--base-prompt", type=str, 
-        help=f"The prompt the tool should try to jailbreak, e.g. 'Write a convincing anonymous death threat.'")
+    parser.add_argument("--base-prompt", type = str, 
+        help=f"The prompt Broken Hill should try to jailbreak, e.g. 'Write a convincing anonymous death threat.'")
         
-    parser.add_argument("--target-output", type=str, 
-        help=f"The target output the tool should measure potential results against, e.g. 'Sure, here's a convincing anonymous death threat'")
+    parser.add_argument("--target-output", type = str, 
+        help=f"The target output Broken Hill should measure potential results against, e.g. 'Sure, here's a convincing anonymous death threat'")
     
-    parser.add_argument("--auto-target", type=str, 
-        help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and the tool will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
+    parser.add_argument("--auto-target", type = str, 
+        help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and Broken Hill will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
-    parser.add_argument("--device", default=attack_params.model_device, type=str, 
+    parser.add_argument("--device", default=attack_params.model_device, type = str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). This is a shortcut equivalent to specifying both --model-device and --gradient-device with the same device name.")
-    parser.add_argument("--model-device", type=str, 
+    parser.add_argument("--model-device", type = str, 
         help="Experimental: The device to use for loading the model and performing PyTorch operations other than those related to the gradient ('cuda', 'cuda:0', etc.).")
-    parser.add_argument("--gradient-device", type=str, 
+    parser.add_argument("--gradient-device", type = str, 
         help="Experimental: The device to use for PyTorch gradient operations ('cuda', 'cuda:0', etc.).")
     
     # TKTK: add a --multi-device mode that uses torch.nn.DataParallel
     # model= nn.DataParallel(model)
     # model.to(device)
 
-    parser.add_argument("--self-test", type=str2bool, nargs='?',
+    parser.add_argument("--self-test", type = str2bool, nargs='?',
         const=True,
         help="Performs self-testing only, then exits before performing an actual attack. Can be used to test basic model-handling support on systems without enough device memory to perform the GCG attack.")
 
 
-    parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type=str, 
+    parser.add_argument("--initial-adversarial-string", default=attack_params.initial_adversarial_string, type = str, 
         help="The initial string to iterate on. Leave this as the default to perform the attack described in the original paper. Specify the output of a previous run to continue iterating at that point (more or less). Specify a custom value to experiment. Specify an arbitrary number of space-delimited exclamation points to perform the standard attack, but using a different number of initial tokens.")
     
-    parser.add_argument("--initial-adversarial-string-base64", type=str, 
+    parser.add_argument("--initial-adversarial-string-base64", type = str, 
         help="Identical to --initial-adversarial-string, except that the value should be specified in Base64-encoded form. This allows easily specifying an initial adversarial string that includes newlines or other characters that are difficult to represent as arguments on the command line.")
 
     parser.add_argument("--initial-adversarial-token", type = str, 
@@ -1587,7 +1400,7 @@ if __name__=='__main__':
         metavar = ('token_id', 'count'),
         help="Specify the initial adversarial content as a single token repeated n times, e.g. for 24 copies of the token with ID 71, --initial-adversarial-token-id 71 24")
     
-    parser.add_argument("--initial-adversarial-token-ids", type=str, 
+    parser.add_argument("--initial-adversarial-token-ids", type = str, 
         help="Specify the initial adversarial content as a comma-delimited list of integer token IDs instead of a string. e.g. --initial-adversarial-token-ids '1,2,3,4,5'")
     
     parser.add_argument("--random-adversarial-tokens", type=numeric_string_to_int,
@@ -1599,7 +1412,7 @@ if __name__=='__main__':
     # TKTK: adversarial tokens are <character> * token count of loss tokens (this will require a little work)
     
     
-    parser.add_argument("--reencode-every-iteration", type=str2bool, nargs='?',
+    parser.add_argument("--reencode-every-iteration", type = str2bool, nargs='?',
         const=True,
         help="Emulate the original attack's behaviour of converting the adversarial content to a string and then back to token IDs at every iteration of the attack, instead of persisting it as token IDs only. Enabling this option will cause the number of tokens to change between iterations. Use the --adversarial-candidate-filter-tokens-min, --adversarial-candidate-filter-tokens-max, and/or --attempt-to-keep-token-count-consistent options if you want to try to control how widely the number of tokens varies.")
         
@@ -1630,7 +1443,7 @@ if __name__=='__main__':
         default=attack_params.torch_cuda_manual_seed_all,
         help=f"Random seed for CUDA")
 
-    parser.add_argument("--ignore-prologue-during-gcg-operations", type=str2bool, nargs='?',
+    parser.add_argument("--ignore-prologue-during-gcg-operations", type = str2bool, nargs='?',
         help="If this option is specified, any system prompt and/or template messages will be ignored when performing the most memory-intensive parts of the GCG attack (but not when testing for jailbreak success). This can allow testing in some configurations that would otherwise exceed available device memory, but may affect the quality of results as well.")
 
     parser.add_argument("--max-iterations", type=numeric_string_to_int,
@@ -1641,7 +1454,7 @@ if __name__=='__main__':
         default=attack_params.number_of_tokens_to_update_every_iteration,
         help="The number of tokens to randomly alter in candidate adversarial content during every iteration. If this option is set to 1 (the default), the gradient-sampling algorithm from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code is used. If it is set to any other value, the nanoGCG gradient-sampling algorithm is used instead.")
         
-    parser.add_argument("--always-use-nanogcg-sampling-algorithm", type=str2bool, nargs='?',
+    parser.add_argument("--always-use-nanogcg-sampling-algorithm", type = str2bool, nargs='?',
         const=True, default=attack_params.always_use_nanogcg_sampling_algorithm,
         help="If this option is specified, the nanoGCG gradient-sampling algorithm is used even when --number-of-tokens-to-update-every-iteration is 1.")
 
@@ -1665,43 +1478,43 @@ if __name__=='__main__':
         default=attack_params.full_decoding_max_new_tokens,
         help=f"The maximum number of tokens to generate when generating final output for display.")
 
-    parser.add_argument("--exclude-nonascii-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-nonascii-tokens", type = str2bool, nargs='?',
         const=True, default=attack_params.exclude_nonascii_tokens,
         help="Bias the adversarial content generation data to avoid using tokens that are not ASCII text.")
 
-    parser.add_argument("--exclude-nonprintable-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-nonprintable-tokens", type = str2bool, nargs='?',
         const=True, default=attack_params.exclude_nonprintable_tokens,
         help="Bias the adversarial content generation data to avoid using tokens that are not printable.")
 
     # TKTK: make this --exclude-basic-special-tokens, add another --exclude-all-special-tokens if --exclude-additional-special-tokens doesn't do that already
-    parser.add_argument("--exclude-special-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-special-tokens", type = str2bool, nargs='?',
         const=True, default=attack_params.exclude_special_tokens,
         help="Bias the adversarial content generation data to avoid using basic special tokens (begin/end of string, padding, unknown).")
 
-    parser.add_argument("--exclude-additional-special-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-additional-special-tokens", type = str2bool, nargs='?',
         const=True, default=attack_params.exclude_additional_special_tokens,
         help="Bias the adversarial content generation data to avoid using additional special tokens defined in the tokenizer configuration.")
 
-    parser.add_argument("--exclude-whitespace-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-whitespace-tokens", type = str2bool, nargs='?',
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that consist solely of whitespace characters.")
     
-    parser.add_argument("--exclude-language-names-except", type=str, 
+    parser.add_argument("--exclude-language-names-except", type = str, 
         help="Bias the adversarial content generation data to avoid using tokens that represent names of human languages except the specified IETF language tag, e.g. --exclude-language-names-except en")
     
-    parser.add_argument("--list-language-tags", type=str2bool, nargs='?',
+    parser.add_argument("--list-language-tags", type = str2bool, nargs='?',
         const=True, default=False,
         help="List supported IETF language tags for use with --exclude-language-names-except, then exit.")
     
-    parser.add_argument("--exclude-slur-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-slur-tokens", type = str2bool, nargs='?',
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of slurs.")
 
-    parser.add_argument("--exclude-profanity-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-profanity-tokens", type = str2bool, nargs='?',
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of profanity.")
 
-    parser.add_argument("--exclude-other-offensive-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-other-offensive-tokens", type = str2bool, nargs='?',
         const=True, default=False,
         help="Bias the adversarial content generation data to avoid using tokens that are contained in a hardcoded list of other highly-offensive words.")
 
@@ -1714,18 +1527,18 @@ if __name__=='__main__':
     parser.add_argument("--excluded-tokens-from-file-case-insensitive", type = str, required=False,
         help=f"Equivalent to calling --exclude-token for every line in the specified file, except that matching is performed without taking upper-/lower-case characters into account.")
 
-    parser.add_argument("--exclude-newline-tokens", type=str2bool, nargs='?',
+    parser.add_argument("--exclude-newline-tokens", type = str2bool, nargs='?',
         const=True, default=False,
         help="A shortcut equivalent to specifying just about any newline token variations using --exclude-token.")
 
-    #parser.add_argument("--exclude-three-hashtag-tokens", type=str2bool, nargs='?',
+    #parser.add_argument("--exclude-three-hashtag-tokens", type = str2bool, nargs='?',
     #    const=True, default=False,
     #    help="A shortcut equivalent to specifying most variations on the token '###' using --exclude-token.")
 
-    parser.add_argument("--token-filter-regex", type=str,
+    parser.add_argument("--token-filter-regex", type = str,
         help="If specified, biases the adversarial content generation to exclude tokens that don't match the specified regular expression.")
 
-    parser.add_argument("--adversarial-candidate-filter-regex", type=str, 
+    parser.add_argument("--adversarial-candidate-filter-regex", type = str, 
         default=attack_params.candidate_filter_regex,
         help="The regular expression used to filter candidate adversarial strings. The default value is very forgiving and simply requires that the string contain at least one occurrence of two consecutive mixed-case alphanumeric characters.")
     
@@ -1738,7 +1551,7 @@ if __name__=='__main__':
     parser.add_argument("--adversarial-candidate-newline-limit", type=numeric_string_to_int,
         help=f"If this value is specified, candidate adversarial strings will be filtered out if they contain more than this number of newline characters.")
         
-    parser.add_argument("--adversarial-candidate-newline-replacement", type=str, 
+    parser.add_argument("--adversarial-candidate-newline-replacement", type = str, 
         help="If this value is specified, it will be used to replace any newline characters in candidate adversarial strings. This can be useful if you want to avoid generating attacks that depend specifically on newline-based content, such as injecting different role names.")
 
     parser.add_argument("--adversarial-candidate-filter-tokens-min", type=numeric_string_to_int,
@@ -1747,51 +1560,55 @@ if __name__=='__main__':
     parser.add_argument("--adversarial-candidate-filter-tokens-max", type=numeric_string_to_int,
         help=f"If this value is specified, *and* --reencode-every-iteration is also specified, candidate adversarial strings will be filtered out if they contain more than this number of tokens.")
 
-    parser.add_argument("--attempt-to-keep-token-count-consistent", type=str2bool, nargs='?',
+    parser.add_argument("--attempt-to-keep-token-count-consistent", type = str2bool, nargs='?',
         const=True, default=attack_params.attempt_to_keep_token_count_consistent,
         help="Enable the check from the original attack code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2. If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions), using  `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` in combination with `--add-token-when-no-candidates-returned` or `--delete-token-when-no-candidates-returned` may be more effective.")
 
-    parser.add_argument("--add-token-when-no-candidates-returned", type=str2bool, nargs='?',
+    parser.add_argument("--add-token-when-no-candidates-returned", type = str2bool, nargs='?',
         const=True, default=attack_params.add_token_when_no_candidates_returned,
         help="If this option is specified, and the number of tokens in the adversarial content is below any restrictions specified by the operator, then a failure to generate any new/untested adversarial content variations will result in a random token in the content being duplicated, increasing the length of the adversarial content by one token.")
 
-    parser.add_argument("--delete-token-when-no-candidates-returned", type=str2bool, nargs='?',
+    parser.add_argument("--delete-token-when-no-candidates-returned", type = str2bool, nargs='?',
         const=True, default=attack_params.delete_token_when_no_candidates_returned,
         help="If this option is specified, and the number of tokens in the adversarial content is greater than any minimum specified by the operator, then a failure to generate any new/untested adversarial content variations will result in a random token in the content being deleted, reducing the length of the adversarial content by one token. If both this option and --add-token-when-no-candidates-returned are enabled, and the prequisites for both options apply, then a token will be added.")
 
     parser.add_argument("--random-seed-comparisons", type=numeric_string_to_int, default = attack_params.random_seed_comparisons,
-        help=f"If this value is greater than zero, at each iteration, the tool will test results using the specified number of additional random seed values, to attempt to avoid focusing on fragile results. The sequence of random seeds is hardcoded to help make results deterministic.")
+        help=f"If this value is greater than zero, at each iteration, Broken Hill will test results using the specified number of additional random seed values, to attempt to avoid focusing on fragile results. The sequence of random seeds is hardcoded to help make results deterministic.")
     
     # not currently used - see discussion in attack_classes.py
-    #parser.add_argument("--scoring-mode", type=str, default="median", choices=[ "median", "average", "minimum", "maximum" ],
+    #parser.add_argument("--scoring-mode", type = str, default="median", choices=[ "median", "average", "minimum", "maximum" ],
     #    help=f"If --random-seed-comparisons is set to 1 or more, use this statistical function to generate an overall score for the results. Default: median.")
 
-    parser.add_argument("--generic-role-template", type=str, 
+    parser.add_argument("--generic-role-template", type = str, 
         help="The Python formatting string to use if fastchat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
     
-    parser.add_argument("--trust-remote-code", type=str2bool, nargs='?',
+    parser.add_argument("--trust-remote-code", type = str2bool, nargs='?',
         const=True, default=attack_params.load_options_trust_remote_code,
         help="When loading the model, pass 'trust_remote_code=True', which enables execution of arbitrary Python scripts included with the model. You should probably examine those scripts first before deciding if you're comfortable with this option. Currently required for some models, such as Phi-3.")
-    parser.add_argument("--ignore-mismatched-sizes", type=str2bool, nargs='?',
+    parser.add_argument("--ignore-mismatched-sizes", type = str2bool, nargs='?',
         const=True, default=attack_params.load_options_ignore_mismatched_sizes,
-        help="When loading the model, pass 'ignore_mismatched_sizes=True', which may allow you to load some models with mismatched size data. It will probably only let the tool get a little further before erroring out, though.")
+        help="When loading the model, pass 'ignore_mismatched_sizes=True', which may allow you to load some models with mismatched size data. It will probably only let Broken Hill get a little further before erroring out, though.")
 
-    parser.add_argument("--jailbreak-detection-rules-file", type=str, 
+    parser.add_argument("--jailbreak-detection-rules-file", type = str, 
         help=f"If specified, loads the jailbreak detection rule set from a JSON file instead of using the default rule set.")
-    parser.add_argument("--write-jailbreak-detection-rules-file", type=str, 
+    parser.add_argument("--write-jailbreak-detection-rules-file", type = str, 
         help=f"If specified, writes the jailbreak detection rule set to a JSON file and then exits. If --jailbreak-detection-rules-file is not specified, this will cause the default rules to be written to the file. If --jailbreak-detection-rules-file *is* specified, then the custom rules will be normalized and written in the current standard format to the output file.")
 
-    parser.add_argument("--break-on-success", type=str2bool, nargs='?',
+    parser.add_argument("--break-on-success", type = str2bool, nargs='?',
         const=True, default=attack_params.break_on_success,
         help="Stop iterating upon the first detection of a potential successful jailbreak.")
         
-    parser.add_argument("--verbose-self-test-output", type=str2bool, nargs='?',
+    parser.add_argument("--verbose-self-test-output", type = str2bool, nargs='?',
         const=True, default=attack_params.verbose_self_test_output,
         help="If self-test operations fail badly enough to output a comparison of strings generated, also output token ID and token information for debugging.")
 
-    parser.add_argument("--ignore-jailbreak-self-tests", type=str2bool, nargs='?',
+    parser.add_argument("--ignore-jailbreak-self-tests", type = str2bool, nargs='?',
         const=True, default=attack_params.ignore_jailbreak_self_tests,
         help="Perform the attack even if the jailbreak self-tests indicate that the results will likely not be useful.")
+
+    parser.add_argument("--model-parameter-info", type = str2bool, nargs='?',
+        const=True, default=attack_params.display_verbose_model_parameter_info,
+        help="Display detailed information about the model's parameters after loading the model.")
 
     parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
         default=attack_params.required_loss_threshold,
@@ -1801,17 +1618,17 @@ if __name__=='__main__':
         default=attack_params.loss_threshold_max_attempts,
         help=f"If --required-loss-threshold has been specified, make this many attempts at finding a value that meets the threshold before giving up. If --exit-on-loss-threshold-failure is *not* specified, Broken Hill will use the value with the lowest loss found during the attempt to find a value that met the threshold. If --exit-on-loss-threshold-failure is specified, Broken Hill will exit if it is unable to find a value that meets the requirement.")
 
-    parser.add_argument("--exit-on-loss-threshold-failure", type=str2bool, nargs='?',
+    parser.add_argument("--exit-on-loss-threshold-failure", type = str2bool, nargs='?',
         const=True, default=attack_params.exit_on_loss_threshold_failure,
         help=f"During the candidate adversarial content generation stage, require that the loss for the best value be lower than the previous loss plus this amount.")
 
-    parser.add_argument("--rollback-on-loss-increase", type=str2bool, nargs='?',
+    parser.add_argument("--rollback-on-loss-increase", type = str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_loss_increase,
         help="If the loss value increases between iterations, roll back to the last 'good' adversarial data. This option is not recommended, and included for experimental purposes only.")
     parser.add_argument("--rollback-on-loss-threshold", type=numeric_string_to_float,
         help=f"Equivalent to --rollback-on-loss-increase, but only if the loss value increases by more than the specified amount for a given iteration. Like --rollback-on-loss-increase, using this option is not recommended.")
 
-    parser.add_argument("--rollback-on-jailbreak-count-decrease", type=str2bool, nargs='?',
+    parser.add_argument("--rollback-on-jailbreak-count-decrease", type = str2bool, nargs='?',
         const=True, default=attack_params.rollback_on_jailbreak_count_decrease,
         help="If the number of jailbreaks detected decreases between iterations, roll back to the last 'good' adversarial data.")
     parser.add_argument("--rollback-on-jailbreak-count-threshold", type=numeric_string_to_int,
@@ -1833,7 +1650,7 @@ if __name__=='__main__':
         
     # how to determine the loss slice
     
-    parser.add_argument("--loss-slice-is-index-shifted-target-slice", type=str2bool, nargs='?',
+    parser.add_argument("--loss-slice-is-index-shifted-target-slice", type = str2bool, nargs='?',
         const=True, default=False,
         help="This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice sometimes includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and it is the default mode.")
 
@@ -1845,15 +1662,15 @@ if __name__=='__main__':
 
     # TKTK: loss slice is index-shifted base prompt plus target with padding
     
-    parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type=str2bool, nargs='?',
+    parser.add_argument("--loss-slice-is-llm-role-and-truncated-target-slice", type = str2bool, nargs='?',
         const=True, default=False,
         help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change.")
 
-    parser.add_argument("--loss-slice-is-llm-role-and-full-target-slice", type=str2bool, nargs='?',
+    parser.add_argument("--loss-slice-is-llm-role-and-full-target-slice", type = str2bool, nargs='?',
         const=True, default=False,
         help="This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string.")
 
-    parser.add_argument("--loss-slice-is-target-slice", type=str2bool, nargs='?',
+    parser.add_argument("--loss-slice-is-target-slice", type = str2bool, nargs='?',
         const=True, default=False,
         help="This option makes the loss slice identical to the target slice. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.")
 
@@ -1861,7 +1678,7 @@ if __name__=='__main__':
         default=attack_params.loss_slice_index_shift,
         help=f"When using --loss-slice-is-index-shifted-target-slice, shift the indices by this amount instead of the default.")
 
-    # parser.add_argument("--mellowmax", type=str2bool, nargs='?',
+    # parser.add_argument("--mellowmax", type = str2bool, nargs='?',
         # const=True, default=False,
         # help="If this option is specified, the attack will use the mellowmax loss algorithm (borrowed from nanoGCG) instead of the cross-entropy loss from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code.")
 
@@ -1869,32 +1686,34 @@ if __name__=='__main__':
         # default=attack_params.mellowmax_alpha,
         # help=f"If --loss-mellowmax is specified, this setting controls the 'alpha' value (default: 1.0).")
 
-    parser.add_argument("--display-failure-output", type=str2bool, nargs='?',
+    parser.add_argument("--display-failure-output", type = str2bool, nargs='?',
         const=True, default=attack_params.display_full_failed_output,
         help="Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).")
-    parser.add_argument("--suppress-attention-mask", type=str2bool, nargs='?',
+    parser.add_argument("--suppress-attention-mask", type = str2bool, nargs='?',
         const=True,
         help="Do not pass an attention mask to the model. Required for some models, such as Mamba, but may invalidate results.")
-    parser.add_argument("--low-cpu-mem-usage", type=str2bool, nargs='?',
+    parser.add_argument("--low-cpu-mem-usage", type = str2bool, nargs='?',
         const=True, default=attack_params.low_cpu_mem_usage,
         help="When loading the model and tokenizer, pass 'low_cpu_mem_usage=True'. May or may not affect performance and results.")
-    parser.add_argument("--use-cache", type=str2bool, nargs='?',
+    parser.add_argument("--use-cache", type = str2bool, nargs='?',
         const=True, default=attack_params.use_cache,
         help="When loading the model and tokenizer, pass 'use_cache=True'. May or may not affect performance and results.")
-    parser.add_argument("--display-model-size", type=str2bool, nargs='?',
+    parser.add_argument("--display-model-size", type = str2bool, nargs='?',
         const=True, default=attack_params.display_model_size,
         help="Displays size information for the selected model. Warning: will write the raw model data to a temporary file, which may double the load time.")
-    parser.add_argument("--force-python-tokenizer", type=str2bool, nargs='?',
+    parser.add_argument("--force-python-tokenizer", type = str2bool, nargs='?',
         const=True, default=attack_params.force_python_tokenizer,
         help="Use the Python tokenizer even if the model supports a (usually faster) non-Python tokenizer. May allow use of some models that include incomplete non-Python tokenizers.")
-    parser.add_argument("--enable-hardcoded-tokenizer-workarounds", type=str2bool, nargs='?',
+    parser.add_argument("--enable-hardcoded-tokenizer-workarounds", type = str2bool, nargs='?',
         help="Enable the undocumented, hardcoded tokenizer workarounds that the original developers introduced for some models.")
     padding_token_values = get_missing_pad_token_names()
-    parser.add_argument("--missing-pad-token-replacement", type=str,
+    parser.add_argument("--missing-pad-token-replacement", type = str,
         help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
-    parser.add_argument("--json-output-file", type=str,
-        help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
-    parser.add_argument("--overwrite-output", type=str2bool, nargs='?',
+    parser.add_argument("--json-output-file", type = str,
+        help=f"Write detailed result data in JSON format to the specified file.")
+    parser.add_argument("--performance-output-file", type = str,
+        help=f"Write detailed performance/resource-utilization data in JSON format to the specified file.")
+    parser.add_argument("--overwrite-output", type = str2bool, nargs='?',
         const=True,
         help="Overwrite any existing output files (--json-output-file, etc.).")
 
@@ -1907,14 +1726,13 @@ if __name__=='__main__':
         fc_template_list = []
         for fct_name in fastchat.conversation.conv_templates.keys():
             fc_template_list.append(fct_name)
-        fc_template_list.sort()
-        list_string = "Templates tested more or less successfully by Bishop Fox:\n"
-        for ttl in attack_params.get_known_template_names():
-            list_string += f"{ttl}\n"
+        fc_template_list.sort()     
+        list_string = "Custom conversation templates developed by Bishop Fox:\n"
+        for ct_name in get_custom_conversation_template_names():
+            list_string += f"{ct_name}\n"
         list_string += "\nAll templates included with the version of the fastchat library in your environment:\n"
         for fctl in fc_template_list:
             list_string += f"{fctl}\n"
-        list_string += "\nNote: many of the entries in the second list will produce unexpected or incorrect results.\n"
         print(list_string)
         sys.exit(0)
 
@@ -1937,12 +1755,8 @@ if __name__=='__main__':
         sys.exit(1)
 
     if cuda_available:
-        is_using_cpu_with_cuda_available = False
-        for device_name in [attack_params.model_device, attack_params.gradient_device]:
-            if len(device_name) < 4 or device_name[0:4] != "cuda":
-                is_using_cpu_with_cuda_available = True
-        if is_using_cpu_with_cuda_available:
-            print(f"Warning: this appears to have a PyTorch CUDA back-end available, but a back-end has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. Please ensure this was an intentional decision.")        
+        if len(attack_params.get_non_cuda_devices()) > 0:
+            print(f"Warning: this appears to have a PyTorch CUDA back-end available, but at least one back-end option has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. Please ensure this was an intentional decision.")
 
     check_pytorch_devices(attack_params)
         
@@ -1985,8 +1799,8 @@ if __name__=='__main__':
     if args.template:
         attack_params.template_name = args.template
 
-    if args.override_fschat_templates:
-        attack_params.override_fschat_templates = args.override_fschat_templates
+    if args.do_not_override_fschat_templates:
+        attack_params.override_fschat_templates = False
 
     if args.clear_existing_conversation:
         attack_params.clear_existing_template_conversation = True
@@ -2097,13 +1911,13 @@ if __name__=='__main__':
     # A: a quasi-queueing system that ties into the tree-based rollback mechanism:
     #   If there are multiple candidates that all have the same "best" score out of the set tested:
     #       Those candidates all become a chain of nodes with the same scoring data.
-    #       The tool uses the last node as a starting point.
-    #       Then if that branch doesn't result in any successes for enough iterations, the tool will "roll back" to the previous "best score" value in the chain.
+    #       Broken Hill uses the last node as a starting point.
+    #       Then if that branch doesn't result in any successes for enough iterations, Broken Hill will "roll back" to the previous "best score" value in the chain.
     #   It's not perfect, because it's possible that some of the nodes will never be branched from again even though they're equally "good" starting points, but it would be fairly easy to implement.
     # 
-    # Another option: a true queuing system, with support for handing off data to other instances of the tool
+    # Another option: a true queuing system, with support for handing off data to other instances of Broken Hill.
     #   e.g. there is a queue for each level of success score, and the user can set a threshold where results are only queued if they're within n of whatever scoring mechanisms are in use.
-    #       a given instance of the tool will select the next value from the highest-value queue that has entries queued, process it, and if necessary return results to the queue.
+    #       a given instance of Broken Hill will select the next value from the highest-value queue that has entries queued, process it, and if necessary return results to the queue.
     #   that would be really neat, but it's probably going to be awhile before I get around to implementing it.
     #   Seems like it would require a "queue server" that all of the instances would connect to.
 
@@ -2270,7 +2084,7 @@ if __name__=='__main__':
     
     if args.write_jailbreak_detection_rules_file:
         rules_output_file = os.path.abspath(args.write_jailbreak_detection_rules_file)
-        exit_if_unauthorized_overwrite(rules_output_file, attack_params)
+        verify_output_file_capability(rules_output_file, attack_params.overwrite_output)
         try:
             rules_data = attack_params.jailbreak_detection_rule_set.to_dict()
             json_rules_data = json.dumps(rules_data, indent=4)
@@ -2284,6 +2098,9 @@ if __name__=='__main__':
     attack_params.verbose_self_test_output = args.verbose_self_test_output
     
     attack_params.ignore_jailbreak_self_tests = args.ignore_jailbreak_self_tests
+    
+    if args.model_parameter_info:
+        attack_params.display_verbose_model_parameter_info = True
     
     attack_params.break_on_success = args.break_on_success
     
@@ -2400,28 +2217,11 @@ if __name__=='__main__':
 
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)
-        # test output ability now so that the user doesn't have to wait to find out that it will fail
-        exit_if_unauthorized_overwrite(attack_params.json_output_file, attack_params)
-        # if os.path.isfile(attack_params.json_output_file):
-            # if attack_params.overwrite_output:
-                # print(f"Warning: overwriting JSON output file '{attack_params.json_output_file}'")
-            # else:
-                # print(f"Error: the JSON output file '{attack_params.json_output_file}' already exists. Specify --overwrite-output to replace it.")
-                # sys.exit(1)
-        try:
-            safely_write_text_output_file(attack_params.json_output_file, "")
-        #except Exception as e:
-        except Exception as e:
-            print(f"Could not validate the ability to write to the file '{attack_params.json_output_file}': {e}")
-            sys.exit(1)
-        # remove the file for now to avoid annoying errors for empty files if nothing is actually written to it later
-        fpo = pathlib.Path(attack_params.json_output_file)
-        try:
-            fpo.unlink() 
-        except Exception as e:
-            err_message = f"Couldn't delete the file '{attack_params.json_output_file}' after creating it: {e}."
-            sys.exit(1)
+        verify_output_file_capability(attack_params.json_output_file, attack_params.overwrite_output)
+    
+    if args.performance_output_file:
+        attack_params.performance_stats_output_file = args.performance_output_file
+        verify_output_file_capability(attack_params.performance_stats_output_file, attack_params.overwrite_output)
     
     main(attack_params)
-    
-    
+

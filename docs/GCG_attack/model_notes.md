@@ -72,14 +72,14 @@ This document describes high-level results of testing the GCG attack using vario
 
 #### First-party models
 
-* Conversation template name: `gemma+`
+* Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
   * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
   * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
-Broken Hill includes a custom `gemma+` chat template because `fschat` seems to go back and forth between including one and not including one, and the current version the last time I checked added a spurious extra `\n<end_of_turn>` to the end of the conversation.
+Broken Hill includes a custom `gemma` chat template because `fschat` seems to go back and forth between including one and not including one, and the current version the last time I checked added a spurious extra `\n<end_of_turn>` to the end of the conversation.
 
 ####$ Special considerations
 
@@ -92,7 +92,7 @@ Gemma is strongly conditioned to avoid discussing certain topics. We'll be addin
 
 #### Other third-party variations
 
-* Conversation template name: `gemma+`
+* Conversation template name: `gemma`
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: Depends on variation
 * Will generally follow system prompt instructions that restrict information given to the user: Depends on variation
 
@@ -102,14 +102,14 @@ Gemma is strongly conditioned to avoid discussing certain topics. We'll be addin
 
 ### Gemma 2
 
-* Conversation template name: `gemma+`
+* Conversation template name: `gemma`
 * [Google's Gemma model family documentation](https://ai.google.dev/gemma/docs)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
   * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: **Yes**
   * Tool can generate adversarial content that defeats those restrictions: **Yes**
 
-Broken Hill includes a custom `gemma+` chat template because `fschat` seems to go back and forth between including one and not including one, and the current version the last time I checked added a spurious extra `\n<end_of_turn>` to the end of the conversation.
+Broken Hill includes a custom `gemma` chat template because `fschat` seems to go back and forth between including one and not including one, and the current version the last time I checked added a spurious extra `\n<end_of_turn>` to the end of the conversation.
 
 #### Special considerations
 
@@ -401,7 +401,7 @@ Broken Hill includes a custom `phi2` chat template because `fschat` does not cur
 
 Broken Hill includes a custom `phi3` chat template because `fschat` does not currently include one.
 
-Phi-3 is one of the most frequent test candidates when developing this tool. Everything should work as expected. 
+Phi-3 is one of the most frequent test candidates when developing Broken Hill. Everything should work as expected. 
 
 #### Specific models tested using Broken Hill:
 
@@ -511,14 +511,14 @@ Broken Hill includes a custom `smollm` chat template because `fschat` does not c
 
 ### SOLAR
 
-* Conversation template name: `solar+`
+* Conversation template name: `solar`
 * [Hugging Face blog post introducing SmolLM](https://huggingface.co/blog/smollm)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 
-`fschat` includes a `solar` template, but its output is missing the `### System:` header for the system prompt, so Broken Hill includes a customize `solar+` chat template with that issue corrected.
+`fschat` includes a `solar` template, but its output is missing the `### System:` header for the system prompt, so Broken Hill includes a custom `solar` chat template with that issue corrected.
 
 #### Specific models tested using Broken Hill:
 
@@ -532,7 +532,7 @@ Broken Hill includes a custom `smollm` chat template because `fschat` does not c
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
-As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. It is supported by this tool in order to test models built on top of StabilityAI's foundation.
+As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics.
 
 #### Specific models tested using Broken Hill:
 
@@ -547,7 +547,7 @@ As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface
 * Will generally follow system prompt instructions that restrict information given to the user: **No**
 
 Broken Hill includes a custom `stablelm2` chat template because `fschat` does not currently include one.
-As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. It is supported by this tool in order to test models built on top of StabilityAI's foundation. 
+As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. 
 
 #### Specific models tested using Broken Hill:
 
@@ -608,7 +608,7 @@ StableVicuna was originally released by CarperAI as a set of weight differences 
 
 ## Other model families that can be used with Broken Hill
 
-These model families can be used in the tool, but publicly-available versions are not trained to handle chat-type interactions. The tool can handle them in case someone runs across a derived model that's been trained for chat-like interaction. If you encounter a derived model, you'll likely need to add a custom chat template to the code to generate useful results.
+These model families can be used in the tool, but publicly-available versions are not trained to handle chat-type interactions. Broken Hill can handle them in case someone runs across a derived model that's been trained for chat-like interaction. If you encounter a derived model, you'll likely need to add a custom chat template to the code to generate useful results.
 
 ### Arctic-embed
 

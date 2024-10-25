@@ -2,6 +2,7 @@
 
 # 0.34 - 2024-10-xx
 
+* Significant refactoring in support of more comprehensive suspend/resume
 * Added support for the following models and families:
   * [Azurro's APT family](https://huggingface.co/Azurro)
     * APT
@@ -44,17 +45,20 @@
 * Added the following custom chat templates:
   * `daredevil`
   * `felladrin-llama-chat`
-  * `gemma+`
+  * `gemma`
   * `gptneox`
-  * `solar+`
+  * `solar`
   * `vikhr`
+* Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
-* Added the following [experimental options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
-  * `--model-device` and `--gradient-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
-  * `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
-  * `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
+* Added the following [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
+  * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.
+  * `--model-parameter-info`, which displays more detailed information about the model's parameters.
+  * *Experimental* `--model-device` and `--gradient-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
+  * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
+  * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
 * A few additions to the default jailbreak detection rules.
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
@@ -67,6 +71,7 @@
   * Minor update to the logic used to generate the "Current input string:" output text so that trailing delimiters between the input and the LLM role indicator are omitted.
   * Minor correction to the custom `stablelm2` chat template.
   * Many other lesser fixes.
+* Removed a bunch of leftover code that was no longer used to make it slightly easier to understand what was going on.
 
 # 0.33 - 2024-10-08
 

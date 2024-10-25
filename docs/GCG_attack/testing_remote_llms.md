@@ -1,6 +1,6 @@
 # Thoughts on testing remote LLMs
 
-This document will eventually discuss possible approaches for using this tool to develop attack payloads for LLMs that are hosted remotely, i.e. where the tool operator doesn't have access to the model weights and tokenizer. It is currently only a sketch.
+This document will eventually discuss possible approaches for using Broken Hill to develop attack payloads for LLMs that are hosted remotely, i.e. where the Broken Hill operator doesn't have access to the model weights and tokenizer. It is currently only a sketch.
 
 ## Table of contents
 

@@ -605,7 +605,7 @@ class TrashFireTokenCollection:
             if is_really_trash:
                 result.input_strings = add_value_to_list_if_not_already_present(result.input_strings, pt)
         
-        allow_and_denylists = get_token_allow_and_deny_lists(tokenizer, result.input_strings, device='cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
+        allow_and_denylists = get_token_allow_and_deny_lists(tokenizer, result.input_strings, device = 'cpu', filter_special_tokens = True, filter_additional_special_tokens = True, filter_whitespace_tokens = True, additional_token_ids = additional_flaming_dumpster_ids)
         result.token_ids = allow_and_denylists.denylist
         
         result.decoded_tokens = get_decoded_tokens(tokenizer, result.token_ids)
@@ -710,6 +710,7 @@ def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, tokenizer_vo
                         # token_allow_and_denylist.denylist.append(j)
     return token_allow_and_denylist
 
+# TKTK: Maybe refactor the trash fire function that calls this so the method signature can be simplified
 def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_nonprintable_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
     #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
     result = TokenAllowAndDenyList()

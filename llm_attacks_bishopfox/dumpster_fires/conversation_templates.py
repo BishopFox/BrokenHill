@@ -300,7 +300,7 @@ class ConversationTemplateTester:
                     # llama_template_warning += f"If additional warnings regarding mismatches between the conversation template at the tokenizer's apply_chat_template output appear below, consider using the custom 'llama2' conversation template included with Broken Hill as a workaround until the underlying issue in fschat is resolved."
                 # result.result_messages.append(llama_template_warning)
             try:
-                tokenizer_prompt_no_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = False)
+                tokenizer_prompt_no_system_string = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = False)
                 got_tokenizer_chat_template_with_no_system_as_string = True
             except Exception as e:
                 result.got_tokenizer_chat_template = False
@@ -308,8 +308,8 @@ class ConversationTemplateTester:
                 result.result_messages.append(f"Warning: the tokenizer does not appear to support an apply_chat_template method. Broken Hill will be unable to compare the current conversation template against the template provided by the developers of the model/tokenizer. If you observe unexpected or incorrect results during this test, verify that the chat template you've selected formats data correctly for the model. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that did not include an initial system message was '{tokenizer_prompt_no_system_string}'")
             if got_tokenizer_chat_template_with_no_system_as_string:
                 try:
-                    tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
-                    tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_no_system_token_ids)
+                    tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
+                    tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, tokenizer_prompt_no_system_token_ids)
                     result.tokenizer_supports_apply_chat_template_method = True
                     result.got_tokenizer_chat_template = True
                 except Exception as e:
@@ -319,15 +319,15 @@ class ConversationTemplateTester:
 
             if result.tokenizer_supports_apply_chat_template_method:
                 try:
-                    tokenizer_prompt_with_system_string = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = False)
+                    tokenizer_prompt_with_system_string = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = False)
                     got_tokenizer_chat_template_with_system_as_string = True
                 except Exception as e:
                     result.tokenizer_chat_template_supports_messages_with_system_role = False
                     result.result_messages.append(f"Warning: the tokenizer's apply_chat_template method does not appear to support messages with the 'system' role. This may imply that the associated model does not support system messages. If your testing depends on setting a specific system message, you should validate that the model appears to incorporate your message. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that included an initial system message was '{tokenizer_prompt_with_system_string}'")
                 if got_tokenizer_chat_template_with_system_as_string:
                     try:
-                        tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
-                        tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, tokenizer_prompt_with_system_token_ids)
+                        tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
+                        tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, tokenizer_prompt_with_system_token_ids)
                         result.tokenizer_chat_template_supports_messages_with_system_role = True
                         result.tokenizer_supports_apply_chat_template_method = True
                         result.got_tokenizer_chat_template = True
@@ -351,7 +351,7 @@ class ConversationTemplateTester:
             conversation_template.append_message(self.adversarial_content_manager.conv_template.roles[0], user_message_2)
             conversation_template.append_message(self.adversarial_content_manager.conv_template.roles[1], assistant_message_2)
         
-        #encoded_conversation_template_prompt = self.adversarial_content_manager.tokenizer(conversation_template_prompt)
+        #encoded_conversation_template_prompt = self.adversarial_content_manager.attack_state.tokenizer(conversation_template_prompt)
         #conversation_template_prompt_tokens = encoded_conversation_template_prompt.input_ids
         
         ef_template_prompt_with_system_message_string = existing_fschat_template_working_copy_system_message.get_prompt()
@@ -366,13 +366,13 @@ class ConversationTemplateTester:
         if not isinstance(existing_fschat_template_working_copy_no_system.stop_str, type(None)):
             ef_template_prompt_with_no_system_string += existing_fschat_template_working_copy_no_system.stop_str
         
-        ef_template_prompt_with_system_message_token_ids = self.adversarial_content_manager.tokenizer.encode( ef_template_prompt_with_system_message_string)
-        ef_template_prompt_with_system_role_token_ids = self.adversarial_content_manager.tokenizer.encode(ef_template_prompt_with_system_role_string)
-        ef_template_prompt_with_no_system_token_ids = self.adversarial_content_manager.tokenizer.encode(ef_template_prompt_with_no_system_string)
+        ef_template_prompt_with_system_message_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode( ef_template_prompt_with_system_message_string)
+        ef_template_prompt_with_system_role_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_with_system_role_string)
+        ef_template_prompt_with_no_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_with_no_system_string)
 
-        ef_template_prompt_with_system_message_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_with_system_message_token_ids)
-        ef_template_prompt_with_system_role_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_with_system_role_token_ids)
-        ef_template_prompt_with_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_with_no_system_token_ids)        
+        ef_template_prompt_with_system_message_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_system_message_token_ids)
+        ef_template_prompt_with_system_role_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_system_role_token_ids)
+        ef_template_prompt_with_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_no_system_token_ids)        
 
         # do the templates *actually* support system messages, or are they ignored?
         if result.tokenizer_supports_apply_chat_template_method:
@@ -475,8 +475,8 @@ class ConversationTemplateTester:
                         if truncated_ef_template_prompt_string == tokenizer_prompt_string:                            
                             result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
                             ef_template_prompt_string = truncated_ef_template_prompt_string
-                            ef_template_prompt_token_ids = self.adversarial_content_manager.tokenizer.encode(ef_template_prompt_string)
-                            ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.tokenizer, ef_template_prompt_token_ids)
+                            ef_template_prompt_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_string)
+                            ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_token_ids)
                             result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(ef_template_prompt_string, 
                                 ef_template_prompt_token_ids, 
                                 ef_template_prompt_decoded_tokens, 

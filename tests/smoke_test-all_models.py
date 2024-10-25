@@ -4,6 +4,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import selectors
 import subprocess
 import sys
@@ -41,11 +42,12 @@ def main(test_params):
     for model_info_num in range(0, len_model_info_list_entries):        
         model_start_time = get_now()
         model_info = model_info_list.entries[model_info_num]
+        skip_model = False
         model_test_params = test_params.copy()
         model_test_params.set_from_model_info(model_info)
         model_start_time_string = get_time_string(dt = model_start_time)
         model_config_dict = None
-        model_config_path = None
+        model_config_path = None        
         try:
             model_config_path = os.path.join(model_test_params.get_model_path(), "config.json")
             model_config_data = get_file_content(model_config_path, failure_is_critical = False)
@@ -67,21 +69,59 @@ def main(test_params):
         # if model_parameter_count is not None:
             # model_parameter_count_string = f" [{model_parameter_count} parameters]"
         #print(f"[{model_start_time_string}] Testing model {model_info.model_name}{model_parameter_count_string} ({model_info_num + 1} / {len_model_info_list_entries})")
+        
+        skip_message = ""
+        
+        if test_params.specific_model_names_to_skip is not None:
+            if model_info.model_name in test_params.specific_model_names_to_skip:
+                skip_message = "skipping this test because it is in the list of models that should be skipped."
+                skip_model = True
+        
+        if not skip_model:
+            if test_params.specific_model_names_to_test is not None:
+                if model_info.model_name not in test_params.specific_model_names_to_test:
+                    skip_message = "skipping this test because it is not in the list of models that should be tested."
+                    skip_model = True
+
+        if not skip_model:
+            if test_params.model_name_regexes_to_skip is not None:
+                found_match = False
+                for r in test_params.model_name_regexes_to_skip:                    
+                    if not found_match:
+                        if re.search(r, model_info.model_name):
+                            found_match = True                
+                if found_match:
+                    skip_message = "skipping this test because its name matched a pattern for models that should be tested."
+                    skip_model = True
+ 
+        if not skip_model:
+            if test_params.model_name_regexes_to_test is not None:
+                found_match = False
+                for r in test_params.model_name_regexes_to_test:                    
+                    if not found_match:
+                        if re.search(r, model_info.model_name):
+                            found_match = True                
+                if not found_match:
+                    skip_message = "skipping this test because its name did not match any of the patterns for models that should be tested."
+                    skip_model = True
+        
+        if not skip_model:
+            if model_info.size > CUDA_CPU_SIZE_THRESHOLD:
+                if not test_params.perform_cpu_tests:
+                    skip_message = "skipping this test because it would require CPU processing by PyTorch."
+                    skip_model = True
+                model_test_params.device = "cpu"
+            else:
+                if not test_params.perform_cuda_tests:
+                    skip_message = "skipping this test because it would be processed on a CUDA device."
+                    skip_model = True
+        
+        if skip_model:
+            skipped_tests.append(model_info.model_name)
+            print(f"[{model_start_time_string}] Model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries}) - {skip_message}\n\n")
+            continue
+        
         print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
-        
-        
-        
-        if model_info.size > CUDA_CPU_SIZE_THRESHOLD:
-            if not test_params.perform_cpu_tests:
-                print(f"Skipping this test because it would require CPU processing by PyTorch.\n\n")
-                skipped_tests.append(model_info.model_name)
-                continue
-            model_test_params.device = "cpu"
-        else:
-            if not test_params.perform_cuda_tests:
-                print(f"Skipping this test because it would be processed on a CUDA device.\n\n")
-                skipped_tests.append(model_info.model_name)
-                continue
         
         model_test_params.set_output_file_base_name()
         
@@ -154,14 +194,14 @@ def main(test_params):
             print(f"JSON result data writen to '{model_test_params.get_json_output_path()}'")
             if process_standard_output is not None:
                 #standard_output = process_standard_output.read()
-                if process_standard_output.strip() != "":
+                if process_standard_output.decode("utf-8").strip() != "":
                     #safely_write_text_output_file(standard_output_log_file, standard_output)
                     #safely_write_text_output_file(standard_output_log_file, process_standard_output, file_mode = "wb")
                     safely_write_text_output_file(standard_output_log_file, process_standard_output)
                     print(f"Standard output written to '{standard_output_log_file}'")
             if process_error_output is not None:
                 #error_output = process_error_output.read()
-                if process_error_output.strip() != "":
+                if process_error_output.decode("utf-8").strip() != "":
                     #safely_write_text_output_file(error_output_log_file, error_output)
                     #safely_write_text_output_file(error_output_log_file, process_error_output, file_mode = "wb")
                     safely_write_text_output_file(error_output_log_file, process_error_output)
@@ -233,6 +273,9 @@ if __name__=='__main__':
     parser.add_argument("--skip-cuda-tests", type=str2bool, nargs='?',
         const=True, default=False,
         help="Skip testing models that will fit within CUDA device memory.")
+    parser.add_argument("--include-model", action='append', nargs='*', required=False,
+        help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
+    
     
     args = parser.parse_args()
     
@@ -250,6 +293,15 @@ if __name__=='__main__':
         smoke_test_params.perform_cuda_tests = False
     
     smoke_test_params.ignore_jailbreak_test_results = True
+    
+    if args.include_model:
+        for elem in args.include_model:
+            for et in elem:
+                if et.strip() != "":
+                    if smoke_test_params.specific_model_names_to_test is None:
+                        smoke_test_params.specific_model_names_to_test = [ et ]
+                    else:
+                        smoke_test_params.specific_model_names_to_test = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_test, et)
     
     main(smoke_test_params)
 

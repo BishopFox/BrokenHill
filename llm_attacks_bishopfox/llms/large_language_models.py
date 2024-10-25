@@ -12,6 +12,7 @@ from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_a
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
+from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
 
 BUNDLED_LLM_LIST_FILE_NAME = "model_list.json"
 
@@ -38,13 +39,14 @@ def model_support_state_to_list(model_support_state):
     return result
 
 def model_support_state_from_list(model_support_state_flag_list):
-    result = BrokenHillModelSupportState()
-    if str(BrokenHillModelSupportState.TORCH_CONFIGURATION_CLASS_SUPPORTED) in model_support_state_flag_list:
-        result = result | BrokenHillModelSupportState.TORCH_CONFIGURATION_CLASS_SUPPORTED
-    if str(BrokenHillModelSupportState.PASSES_SMOKE_TEST) in model_support_state_flag_list:
-        result = result | BrokenHillModelSupportState.PASSES_SMOKE_TEST
-    if str(BrokenHillModelSupportState.HAS_KNOWN_CHAT_TEMPLATE) in model_support_state_flag_list:
-        result = result | BrokenHillModelSupportState.HAS_KNOWN_CHAT_TEMPLATE
+    result = 0
+    if isinstance(model_support_state_flag_list, list):
+        if str(BrokenHillModelSupportState.TORCH_CONFIGURATION_CLASS_SUPPORTED) in model_support_state_flag_list:
+            result = result | BrokenHillModelSupportState.TORCH_CONFIGURATION_CLASS_SUPPORTED
+        if str(BrokenHillModelSupportState.PASSES_SMOKE_TEST) in model_support_state_flag_list:
+            result = result | BrokenHillModelSupportState.PASSES_SMOKE_TEST
+        if str(BrokenHillModelSupportState.HAS_KNOWN_CHAT_TEMPLATE) in model_support_state_flag_list:
+            result = result | BrokenHillModelSupportState.HAS_KNOWN_CHAT_TEMPLATE
     return result
 
 class BrokenHillModelAlignmentInfo(IntFlag):
@@ -69,17 +71,56 @@ def alignment_info_to_list(model_support_state):
         result.append(str(BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ADDITIONAL_RESTRICTIONS))
     return result
 
-def alignment_info_from_list(model_support_state_flag_list):
-    result = BrokenHillModelAlignmentInfo()
-    if str(BrokenHillModelAlignmentInfo.MODEL_HAS_ALIGNMENT_RESTRICTIONS) in model_support_state_flag_list:
-        result = result | BrokenHillModelAlignmentInfo.MODEL_HAS_ALIGNMENT_RESTRICTIONS
-    if str(BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ALIGNMENT) in model_support_state_flag_list:
-        result = result | BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ALIGNMENT
-    if str(BrokenHillModelAlignmentInfo.MODEL_GENERALLY_FOLLOWS_ADDITIONAL_RESTRICTIONS) in model_support_state_flag_list:
-        result = result | BrokenHillModelAlignmentInfo.MODEL_GENERALLY_FOLLOWS_ADDITIONAL_RESTRICTIONS
-    if str(BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ADDITIONAL_RESTRICTIONS) in model_support_state_flag_list:
-        result = result | BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ADDITIONAL_RESTRICTIONS
+def alignment_info_from_list(alignment_info_flag_list):
+    result = 0
+    if isinstance(alignment_info_flag_list, list):
+        if str(BrokenHillModelAlignmentInfo.MODEL_HAS_ALIGNMENT_RESTRICTIONS) in alignment_info_flag_list:
+            result = result | BrokenHillModelAlignmentInfo.MODEL_HAS_ALIGNMENT_RESTRICTIONS
+        if str(BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ALIGNMENT) in alignment_info_flag_list:
+            result = result | BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ALIGNMENT
+        if str(BrokenHillModelAlignmentInfo.MODEL_GENERALLY_FOLLOWS_ADDITIONAL_RESTRICTIONS) in alignment_info_flag_list:
+            result = result | BrokenHillModelAlignmentInfo.MODEL_GENERALLY_FOLLOWS_ADDITIONAL_RESTRICTIONS
+        if str(BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ADDITIONAL_RESTRICTIONS) in alignment_info_flag_list:
+            result = result | BrokenHillModelAlignmentInfo.BROKEN_HILL_HAS_DEFEATED_ADDITIONAL_RESTRICTIONS
     return result
+
+def print_model_parameter_info(attack_state):
+    model_calculated_bytes_in_memory = None
+    model_as_is_calculated_bytes_in_memory = None
+    current_memory_parameter_info_string = ""
+    as_is_storage_memory_parameter_info_string = ""
+    
+    model_calculated_bytes_in_memory = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_parameter_size_in_memory(attack_state.model.dtype)
+    current_memory_parameter_info_string = f" Using the current data type '{attack_state.model.dtype}', the model data should occupy {model_calculated_bytes_in_memory} bytes of device memory."
+        
+    if attack_state.model_weight_storage_dtype is not None:
+        model_as_is_calculated_bytes_in_memory = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_parameter_size_in_memory(attack_state.model_weight_storage_dtype)
+        as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{attack_state.model_weight_storage_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory." 
+            
+    model_parameter_info_string = f"The current model has {attack_state.persistable.overall_result_data.model_parameter_info_collection.total_parameter_count} total parameters in named groups."
+    if attack_state.persistable.attack_params.display_verbose_model_parameter_info:
+        model_parameter_info_string = f"{model_parameter_info_string} {attack_state.persistable.overall_result_data.model_parameter_info_collection.trainable_parameter_count} of the parameters are trainable, and {attack_state.persistable.overall_result_data.model_parameter_info_collection.nontrainable_parameter_count} of the parameters are not trainable.{current_memory_parameter_info_string}{as_is_storage_memory_parameter_info_string}"
+        trainable_params = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_trainable_parameters()
+        nontrainable_params = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_nontrainable_parameters()
+        if len(trainable_params) > 0:
+            info_substring = f"\nNamed parameter groups (trainable) and their parameter counts:\n"
+            for i in range(0, len(trainable_params)):
+                param = trainable_params[i]
+                info_substring = f"{info_substring}\t{param.module_name}: {param.parameter_count}\n"
+            model_parameter_info_string = f"{model_parameter_info_string}{info_substring}"                
+        if len(nontrainable_params) > 0:
+            info_substring = f"\nNamed parameter groups (non-trainable) and their parameter counts:\n"
+            for i in range(0, len(nontrainable_params)):
+                param = nontrainable_params[i]
+                info_substring = f"{info_substring}\t{param.module_name}: {param.parameter_count}\n"
+            model_parameter_info_string = f"{model_parameter_info_string}{info_substring}"
+    else:
+        model_parameter_info_string = f"{model_parameter_info_string}{current_memory_parameter_info_string}"
+    
+    print(model_parameter_info_string)
+
+class LargeLanguageModelParameterException(Exception):
+    pass
 
 class LargeLanguageModelParameterInfo(JSONSerializableObject):
     def __init__(self):
@@ -115,7 +156,7 @@ class LargeLanguageModelParameterInfoCollection(JSONSerializableObject):
         self.trainable_parameter_count = None
         self.nontrainable_parameter_count = None
 
-    def get_total_parameter_count(only_trainable = False):
+    def get_total_parameter_count(self, only_trainable = False):
         result = 0
         for param_name in self.parameters.keys():
             param = self.parameters[param_name]
@@ -129,6 +170,34 @@ class LargeLanguageModelParameterInfoCollection(JSONSerializableObject):
         self.total_parameter_count = self.get_total_parameter_count(only_trainable = False)
         self.trainable_parameter_count = self.get_total_parameter_count(only_trainable = True)
         self.nontrainable_parameter_count = self.total_parameter_count - self.trainable_parameter_count
+
+    def get_parameter_size_in_memory(self, dtype):
+        result = None
+        try:
+            result = int(float(self.total_parameter_count) * float(torch_dtype_to_bit_count(dtype)) / 8.0)
+        except Exception as e:
+            raise LargeLanguageModelParameterException(f"Error calculating model memory use for parameter count {self.total_parameter_count} and data type {dtype}: {e}")
+        return result
+    
+    def get_trainable_parameters(self):
+        result = []
+        for k in self.parameters.keys():
+            if self.parameters[k].is_trainable:
+                result.append(self.parameters[k])
+        return result
+        
+    def get_nontrainable_parameters(self):
+        result = []
+        for k in self.parameters.keys():
+            if not self.parameters[k].is_trainable:
+                result.append(self.parameters[k])
+        return result
+
+    def get_all_parameters(self):
+        result = []
+        for k in self.parameters.keys():
+            result.append(self.parameters[k])
+        return result
     
     # BEGIN: based in part on https://stackoverflow.com/questions/49201236/check-the-total-number-of-parameters-in-a-pytorch-model
     @staticmethod
@@ -195,8 +264,8 @@ class LargeLanguageModelInfo(JSONSerializableObject):
         self.parameter_info_collection = None
         self.safe_tensors = None
         self.custom_options = None
-        self.support_state = BrokenHillModelSupportState()
-        self.alignment_info = BrokenHillModelAlignmentInfo()
+        self.support_state = 0
+        self.alignment_info = 0
         self.comment = None    
     
     def get_parameter_count(self):

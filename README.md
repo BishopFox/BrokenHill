@@ -22,11 +22,11 @@ Our original goal was to greatly expand the accessibility of this fascinating ar
 
 The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only supported a few base models, and while some of those models were available in forms that could fit into VRAM on an RTX 4090, it typically didn't leave enough memory available for the actual attack. 
 
-Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
+Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
 
 ## Documentation
 
-[Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
+[Documentation for Broken Hill is in its own directory tree due to the volume of material](docs/README.md).
 
 [Broken Hill version history](version_history.md)
 

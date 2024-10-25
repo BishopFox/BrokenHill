@@ -3,13 +3,16 @@
 import copy
 import json
 import numpy
+import psutil
 import re
+import time
 import torch
 import uuid
 
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
+from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
@@ -20,9 +23,11 @@ from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_de
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
+from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
+from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 
 class DecodingException(Exception):
@@ -30,57 +35,6 @@ class DecodingException(Exception):
 
 class EncodingException(Exception):
     pass
-
-# for debugging
-class FakeException(Exception):
-    pass
-
-class PyTorchDevice():
-    def __init__(self):
-        self.type_name = None
-        # The device's index within its type of device, e.g. 0 for cuda:0
-        self.device_number = None
-        self.device_name = None
-        self.device_display_name = None
-        self.total_memory = None
-        self.gpu_total_memory = None
-        self.gpu_free_memory = None
-        self.gpu_used_memory = None
-        self.process_reserved_memory = None
-        self.available_memory = None
-        self.process_reserved_allocated_memory = None
-        self.process_reserved_unallocated_memory = None
-        self.total_memory_utilization = None
-        self.process_reserved_utilization = None
-        self.process_reserved_utilization = None
-    
-    @staticmethod
-    def from_cuda_device_number(device_number):
-        result = PyTorchDevice()
-        result.device_number = device_number
-        result.device_name = f"cuda:{device_number}"
-        gpu_wide_memory_info = torch.cuda.mem_get_info(device=device_number)
-        result.gpu_free_memory = gpu_wide_memory_info[0]
-        result.gpu_total_memory = gpu_wide_memory_info[1]
-        result.gpu_used_memory = result.gpu_total_memory - result.gpu_free_memory
-        
-        device_props = torch.cuda.get_device_properties(device_number)
-        result.device_display_name = device_props.name
-        result.total_memory = device_props.total_memory        
-        result.process_reserved_memory = torch.cuda.memory_reserved(device_number)
-        result.process_reserved_allocated_memory = torch.cuda.memory_allocated(device_number)
-        result.process_reserved_unallocated_memory = result.process_reserved_memory - result.process_reserved_allocated_memory
-        #result.available_memory = result.total_memory - result.process_reserved_memory
-        result.available_memory = result.gpu_free_memory
-        result.total_memory_utilization = float(result.gpu_used_memory) / float(result.total_memory)
-        result.process_memory_utilization = float(result.process_reserved_memory) / float(result.total_memory)
-        if result.process_reserved_memory > 0:
-            result.process_reserved_utilization = float(result.process_reserved_allocated_memory) / float(result.process_reserved_memory)
-        else:
-            result.process_reserved_utilization = 0.0        
-        if result.total_memory != result.gpu_total_memory:
-            print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
-        return result
 
 class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
@@ -378,6 +332,75 @@ class AttackParams(JSONSerializableObject):
             return None
         return re.compile(self.token_filter_regex)
 
+    def get_devices(self):
+        return [ self.model_device, self.gradient_device ]
+
+    def get_cpu_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "cpu":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+    
+    def get_cuda_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] == "cuda":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def get_non_cuda_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] != "cuda":
+                    result = add_value_to_list_if_not_already_present(result, d)
+            else:
+                result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def get_mps_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "mps":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def using_cpu(self):
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "cpu":
+                    return True
+        return False
+
+    def using_cuda(self):
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] == "cuda":
+                    return True
+        return False
+        
+    def using_mps(self):
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "mps":
+                    return True
+        return False
+
     def __init__(self):
         self.operating_mode = BrokenHillMode.GCG_ATTACK
         
@@ -406,7 +429,7 @@ class AttackParams(JSONSerializableObject):
         
         self.template_name = None
         
-        self.override_fschat_templates = False
+        self.override_fschat_templates = True
         
         # Replace any existing system prompt in the conversation template with this custom content
         self.custom_system_prompt = None
@@ -424,7 +447,7 @@ class AttackParams(JSONSerializableObject):
         # Maximum number of times to run the main loop before exiting
         self.max_iterations = 500
 
-        # TKTK: option to require that loss decreases between iterations or the tool will roll back to the previous adversarial content and re-randomize
+        # TKTK: option to require that loss decreases between iterations or Broken Hill will roll back to the previous adversarial content and re-randomize
         # Maybe a threshold, so that the requirement goes away below some sort of minimum loss value?
         
         # The prompt to start with
@@ -500,7 +523,7 @@ class AttackParams(JSONSerializableObject):
 
         # TKTK: detect jailbreak based on some loss threshold?
         
-        # If this value is specified, at each iteration, the tool will test results using <VALUE> additional random seed values, to attempt to avoid focusing on fragile results
+        # If this value is specified, at each iteration, Broken Hill will test results using <VALUE> additional random seed values, to attempt to avoid focusing on fragile results
         # The values are selected from the hardcoded results in attack_manager.py => get_random_seed_list_for_comparisons()
         # If the current value in the list is already used for any of the existing random seeds, it will be skipped
         # Meaning the operator could theoretically choose to compare against 253-256 random seeds
@@ -670,6 +693,9 @@ class AttackParams(JSONSerializableObject):
         # Perform the attack even if the jailbreak self-tests indicate the results are unlikely to be useful
         self.ignore_jailbreak_self_tests = False
 
+        # Display detailed information on the named parameter groups when the model is loaded
+        self.display_verbose_model_parameter_info = False
+
         # Stop iterating after the first successful jailbreak detection
         self.break_on_success = False
         
@@ -702,8 +728,8 @@ class AttackParams(JSONSerializableObject):
         # if self.required_loss_threshold is not None, and this value is not None, make this many attempts at finding a candidate that meets the required threshold before giving up
         self.loss_threshold_max_attempts = None
         
-        # exit the tool entirely if the loss threshold is not met after the maximum attempt count is reached.
-        # If this value is False, the tool will use the "best best" value determined during the attempt to find a value that met the threshold.
+        # exit Broken Hill entirely if the loss threshold is not met after the maximum attempt count is reached.
+        # If this value is False, Broken Hill will use the "best best" value determined during the attempt to find a value that met the threshold.
         self.exit_on_loss_threshold_failure = False
 
         # if the loss value increases between iterations, roll back to the last "good" adversarial data
@@ -725,13 +751,14 @@ class AttackParams(JSONSerializableObject):
         # If the result is not an improvement, trigger a rollback and re-randomize even if rollback is not enabled for other criteria.
         # If rollback is enabled, and the next iteration after randomization would trigger a rollback, the rollback should also be re-randomized.
         # TKTK: related option to increase the number of tokens that are randomized in the event of sequential randomizations.
-        # e.g. randomization is triggered, and four tokens are randomized. The result does not meet the "success" criteria. The tool should therefore roll back to the pre-randomization value, and randomize e.g. five tokens instead of four.
+        # e.g. randomization is triggered, and four tokens are randomized. The result does not meet the "success" criteria. Broken Hill should therefore roll back to the pre-randomization value, and randomize e.g. five tokens instead of four.
 
         self.radiation_gardens = []
 
         # output options
         self.overwrite_output = False
         self.json_output_file = None
+        self.performance_stats_output_file = None
         
         # TKTK: option to generate a dynamically-quantized version of the model and also check results against it, because quantized models seem much less susceptible to this type of attack.
         # As noted below in the "Quantization options" section, the attack itself cannot be performed (at least using PyTorch) against an integer-based model - it must be floating point.
@@ -749,7 +776,7 @@ class AttackParams(JSONSerializableObject):
         # quantized models so that attacks against larger LLMs could fit into memory 
         # on consumer hardware. Maybe they'll be useful again someday.
         #
-        # The attack performed by this tool depends on PyTorch features that 
+        # The attack performed by Broken Hill depends on PyTorch features that 
         # do not currently support quantized data. In particular, the gradient operations.
         # The PyTorch developers claim that gradient operations are only possible
         # for floating-point values, because they require continuous functions.
@@ -806,32 +833,146 @@ class AttackParams(JSONSerializableObject):
     def from_json(json_string):
         return AttackParams.from_dict(json.loads(json_string))
 
-class AttackState(JSONSerializableObject):
+class RandomNumberGeneratorStateCollection(JSONSerializableObject):
     def __init__(self):
-        self.attack_params = None
-        self.iteration_count = 0
-        
+        # PyTorch default
+        self.torch_rng_state = None
+        # PyTorch seeded CPU
+        self.random_generator_cpu_state = None
+        # PyTorch seeded model device
+        self.random_generator_attack_params_model_device_state = None
+        # PyTorch seeded gradient device
+        self.random_generator_attack_params_gradient_device_state = None                    
+        # NumPy
+        self.numpy_rng_state = None
+
     def to_dict(self):
-        result = super(AttackState, self).properties_to_dict(self)
+        print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
+        result = super(RandomNumberGeneratorStateCollection, self).properties_to_dict(self)
+        print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: result = {result}, result.torch_rng_state = {result.torch_rng_state}, result.random_generator_cpu_state = {result.random_generator_cpu_state}, result.random_generator_attack_params_model_device_state = {result.random_generator_attack_params_model_device_state}, result.random_generator_attack_params_gradient_device_state = {result.random_generator_attack_params_gradient_device_state}, result.numpy_rng_state = {result.numpy_rng_state}.")
         return result
 
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
     
     def copy(self):
-        return AttackState.from_dict(self.to_dict())
+        return RandomNumberGeneratorStateCollection.from_dict(self.to_dict())
     
     @staticmethod
     def from_dict(property_dict):
-        result = AttackState()
-        super(AttackState, result).set_properties_from_dict(result, property_dict)
+        result = RandomNumberGeneratorStateCollection()
+        super(RandomNumberGeneratorStateCollection, result).set_properties_from_dict(result, property_dict)
         if result.attack_params is not None:
             result.attack_params = AttackParams.from_dict(result.attack_params)
         return result
     
     @staticmethod
     def from_json(json_string):
-        return AttackState.from_dict(json.loads(json_string))
+        return RandomNumberGeneratorStateCollection.from_dict(json.loads(json_string))
+
+class BrokenHillRandomNumberGenerators():
+    def __init__(self, attack_state):
+        self.random_generator_attack_params_model_device = torch.Generator(device = attack_state.model_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.random_generator_attack_params_gradient_device = torch.Generator(device = attack_state.model_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.gradient_device:
+            self.random_generator_attack_params_gradient_device = torch.Generator(device = attack_state.gradient_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.numpy_random_generator = numpy.random.default_rng(seed = attack_state.persistable.attack_params.numpy_random_seed)
+    
+    def get_current_states(self):
+        result = RandomNumberGeneratorStateCollection()
+        
+        # PyTorch default
+        result.torch_rng_state = torch.get_rng_state()
+        # PyTorch seeded CPU
+        result.random_generator_cpu_state = self.random_generator_cpu.get_state()
+        # PyTorch seeded model device
+        result.random_generator_attack_params_model_device_state = self.random_generator_attack_params_model_device.get_state()
+        # PyTorch seeded gradient device
+        result.random_generator_attack_params_gradient_device_state = self.random_generator_attack_params_gradient_device.get_state()                    
+        # NumPy
+        result.numpy_rng_state = self.numpy_random_generator.bit_generator.state
+        
+        return result
+    
+    def set_states(self, rng_state_collection):
+        # PyTorch default
+        torch.set_rng_state(rng_state_collection.torch_rng_state)
+        # PyTorch seeded CPU
+        self.random_generator_cpu.set_state(rng_state_collection.random_generator_cpu_state)
+        # PyTorch seeded model device
+        self.random_generator_attack_params_model_device.set_state(rng_state_collection.random_generator_attack_params_model_device_state)
+        # PyTorch seeded gradient device
+        self.random_generator_attack_params_gradient_device.set_state(rng_state_collection.random_generator_attack_params_gradient_device_state)                    
+        # NumPy
+        self.numpy_random_generator.bit_generator.state = rng_state_collection.numpy_rng_state
+
+# Anything about the attack state that can and should be persisted as JSON goes here
+class PersistableAttackState(JSONSerializableObject):
+    def __init__(self):
+        self.attack_params = None
+        self.performance_data = ResourceUtilizationData()
+        self.main_loop_iteration_number = 0
+        self.successful_attack_count = 0
+        self.overall_result_data = BrokenHillResultData()
+        self.random_number_generator_states = None
+        self.current_adversarial_content = None
+        self.tested_adversarial_content = AdversarialContentList()
+        # There is only one "last known good" adversarial value tracked to avoid the following scenario:
+        # User has multiple types of rollback enabled
+        # Rollback type 1 is triggered, and the script rolls back to the last-known-good adversarial value associated with rollback type 1
+        # The rollback type 2 last-known-good adversarial value is updated to the value that caused the rollback
+        # In the next iteration, rollback type 2 is triggered, and the script "rolls sideways" to the data that caused the first rollback, making the script branch into bad values
+        self.last_known_good_adversarial_content = AdversarialContent()
+        self.last_known_good_adversarial_content.token_ids = None
+        self.last_known_good_adversarial_content.tokens = None
+        self.last_known_good_adversarial_content.as_string = None
+        self.best_loss_value = None
+        self.best_jailbreak_count = None
+        self.original_new_adversarial_value_candidate_count = None
+        self.original_topk = None
+        
+    def to_dict(self):
+        result = super(PersistableAttackState, self).properties_to_dict(self)
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
+    
+    def copy(self):
+        return PersistableAttackState.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = PersistableAttackState()
+        super(PersistableAttackState, result).set_properties_from_dict(result, property_dict)
+        if result.attack_params is not None:
+            result.attack_params = AttackParams.from_dict(result.attack_params)
+        return result
+    
+    @staticmethod
+    def from_json(json_string):
+        return PersistableAttackState.from_dict(json.loads(json_string))
+
+# Anything about the attack state that can't be easily persisted (or that doesn't make sense to) goes here
+# As well as a reference to the persistable data, so there's just the one thing to pass around
+class VolatileAttackState():
+    def __init__(self):
+        self.persistable = PersistableAttackState()
+        self.random_number_generators = None
+        self.model = None
+        self.tokenizer = None
+        self.language_manager = None
+        self.adversarial_content_manager = None
+        self.conversation_template = None
+        self.random_seed_values = get_random_seed_list_for_comparisons()
+        self.model_weight_type = None
+        self.model_weight_storage_dtype = None
+        self.model_weight_storage_string = None
+        self.token_allow_and_deny_lists = None
+        self.model_device = None
+        self.gradient_device = None
+        
 
 class AttackResultInfoData(JSONSerializableObject):
     def __init__(self):
@@ -855,32 +996,6 @@ class AttackResultInfoData(JSONSerializableObject):
         self.decoded_llm_output_tokens = None
         # a single string decoded from llm_output_token_ids
         self.decoded_llm_output_string = None
-
-    # def set_values(self, tokenizer, max_token_length, generated_prompt_token_ids, llm_generation_token_ids, user_input_token_ids, llm_output_token_ids):
-        # self.max_token_length = max_token_length
-        # self.generated_prompt_token_ids = generated_prompt_token_ids
-        # self.llm_generation_token_ids = llm_generation_token_ids
-        # self.user_input_token_ids = user_input_token_ids
-        # self.llm_output_token_ids = llm_output_token_ids
-        
-        # # make sure data is in a serializable format
-        # if isinstance(self.generated_prompt_token_ids, torch.Tensor):
-            # self.generated_prompt_token_ids = self.generated_prompt_token_ids.tolist()
-        # if isinstance(self.llm_generation_token_ids, torch.Tensor):
-            # self.llm_generation_token_ids = self.llm_generation_token_ids.tolist()
-        # if isinstance(self.user_input_token_ids, torch.Tensor):
-            # self.user_input_token_ids = self.user_input_token_ids.tolist()
-        # if isinstance(self.llm_output_token_ids, torch.Tensor):
-            # self.llm_output_token_ids = self.llm_output_token_ids.tolist()
-        
-        # self.decoded_generated_prompt_tokens = get_decoded_tokens(tokenizer, generated_prompt_token_ids)
-        # self.decoded_generated_prompt_string = tokenizer.decode(generated_prompt_token_ids)
-        # self.decoded_llm_generation_tokens = get_decoded_tokens(tokenizer, llm_generation_token_ids)
-        # self.decoded_llm_generation_string = tokenizer.decode(llm_generation_token_ids)
-        # self.decoded_user_input_tokens = get_decoded_tokens(tokenizer, user_input_token_ids)
-        # self.decoded_user_input_string = tokenizer.decode(user_input_token_ids)
-        # self.decoded_llm_output_tokens = get_decoded_tokens(tokenizer, llm_output_token_ids)
-        # self.decoded_llm_output_string = tokenizer.decode(llm_output_token_ids)
 
     def set_values(self, tokenizer, max_token_length, llm_generation_token_ids, llm_output_token_ids):
         self.max_token_length = max_token_length
@@ -1009,9 +1124,6 @@ class AttackResultInfoCollection(JSONSerializableObject):
         # a single string decoded from user_input_token_ids
         self.decoded_user_input_string = None
 
-        # The full prompt (including adversarial content) in string form used for this iteration
-        # use self.decoded_user_input_string instead
-        #self.complete_user_input = None
         self.unique_results = {}
         self.unique_result_count = 0
         self.results = []
@@ -1037,11 +1149,6 @@ class AttackResultInfoCollection(JSONSerializableObject):
             rds_results = []
             for result_data_set_name in r.result_data_sets.keys():
                 output_value = r.result_data_sets[result_data_set_name].decoded_llm_output_string
-                #if output_value is not None:
-                    # output_value_count = 1
-                    # if output_value in unique_output_values.keys():
-                        # output_value_count = unique_output_values[output_value] + 1
-                    # unique_output_values[output_value] = output_value_count
                 rds_results = add_value_to_list_if_not_already_present(rds_results, output_value, ignore_none = True)
             rds_results_filtered = []
             for rdsr_num in range(0, len(rds_results)):
@@ -1126,7 +1233,7 @@ class BrokenHillResultData(JSONSerializableObject):
         result = BrokenHillResultData()
         super(BrokenHillResultData, result).set_properties_from_dict(result, property_dict)
         
-        result.model_parameter_info_collection is not None:
+        if result.model_parameter_info_collection is not None:
             result.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_dict(result.model_parameter_info_collection)
         
         if len(result.attack_results) > 0:
@@ -1194,6 +1301,165 @@ class GenerationResults(JSONSerializableObject):
     @staticmethod
     def from_json(json_string):
         return GenerationResults.from_dict(json.loads(json_string))
+
+class ResourceUtilizationSnapshot(Exception):
+    pass
+
+class CUDADeviceUtilizationData(JSONSerializableObject):
+    def __init__(self, cuda_device):
+        self.device_name = cuda_device.device_name
+        self.device_display_name = cuda_device.device_display_name
+        self.total_memory = cuda_device.total_memory
+        self.gpu_used_memory = cuda_device.gpu_used_memory
+        self.available_memory = cuda_device.available_memory
+        self.total_memory_utilization = cuda_device.total_memory_utilization
+        self.process_reserved_memory = cuda_device.process_reserved_memory
+        self.process_memory_utilization = cuda_device.process_memory_utilization
+        self.process_reserved_allocated_memory = cuda_device.process_reserved_allocated_memory
+        self.process_reserved_unallocated_memory = cuda_device.process_reserved_unallocated_memory
+        self.process_reserved_utilization = cuda_device.process_reserved_utilization
+
+class ResourceUtilizationSnapshot(JSONSerializableObject):
+    def __init__(self, location_description):
+        self.epoch_time = time.time_ns()
+        self.location_description = location_description
+        process_mem_info = psutil.Process().memory_full_info()
+        self.process_physical_memory = process_mem_info.rss
+        self.process_virtual_memory = process_mem_info.vms
+        self.process_swap = None
+        if hasattr(process_mem_info, "swap"):
+            self.process_swap = process_mem_info.swap
+        system_mem_info = psutil.virtual_memory()
+        self.system_physical_memory = system_mem_info.total
+        self.system_available_memory = system_mem_info.available
+        self.system_in_use_memory = system_mem_info.used
+        self.system_swap_total = None
+        self.system_swap_in_use = None
+        self.system_swap_free = None
+        self.system_swap_percent = None
+        try:
+            system_swap_info = psutil.swap_memory()
+            self.system_swap_total = system_swap_info.total
+            self.system_swap_in_use = system_swap_info.used
+            self.system_swap_free = system_swap_info.free
+            self.system_swap_percent = system_swap_info.percent
+        except Exception as e:
+            raise ResourceUtilizationSnapshot(f"Error getting swap memory information: {e}")
+        self.system_memory_util_percent = float(self.system_in_use_memory) / float(self.system_physical_memory)
+        
+        self.cuda_device_data = []
+        cuda_devices = PyTorchDevice.get_all_cuda_devices()
+        for i in range(0, len(cuda_devices)):
+            cd = CUDADeviceUtilizationData(cuda_devices[i])
+            self.cuda_device_data.append(cd)
+
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality      
+
+    def to_dict(self):
+        result = super(ResourceUtilizationSnapshot, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = ResourceUtilizationSnapshot()
+        super(ResourceUtilizationSnapshot, result).set_properties_from_dict(result, property_dict)
+        if len(result.cuda_device_data) > 0:
+            deserialized_results = []
+            for i in range(0, len(result.cuda_device_data)):
+                deserialized_results.append(CUDADeviceUtilizationData.from_dict(result.cuda_device_data[i]))
+            result.cuda_device_data = deserialized_results
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return ResourceUtilizationSnapshot.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return ResourceUtilizationSnapshot.from_dict(json.loads(json_string))
+
+class ResourceUtilizationData(JSONSerializableObject):
+    def __init__(self):
+        self.snapshots = []    
+
+    def to_dict(self):
+        result = super(ResourceUtilizationData, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = ResourceUtilizationData()
+        super(ResourceUtilizationData, result).set_properties_from_dict(result, property_dict)
+        if len(result.snapshots) > 0:
+            deserialized_results = []
+            for i in range(0, len(result.snapshots)):
+                deserialized_results.append(ResourceUtilizationSnapshot.from_dict(result.snapshots[i]))
+            result.snapshots = deserialized_results
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return ResourceUtilizationData.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return ResourceUtilizationData.from_dict(json.loads(json_string))
+
+    def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
+        current_snapshot = ResourceUtilizationSnapshot(location_description)
+        self.snapshots.append(current_snapshot)
+        if attack_state.persistable.attack_params.performance_stats_output_file is not None:
+            safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
+        
+        if not is_key_snapshot_event:
+            return
+        
+        display_string = "---\n"
+        if location_description is None:
+            print(f"System resource statistics")
+        else:
+            print(f"System resource statistics ({location_description})")
+        
+        if attack_state.persistable.attack_params.using_cpu():
+            display_string += f"System-level memory utilization:\n"
+            display_string += f"\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
+            display_string += f"\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
+            display_string += f"\tAvailable memory: {current_snapshot.system_available_memory:n} bytes\n"
+            display_string += f"\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
+            if current_snapshot.system_swap_total is not None:
+                display_string += f"\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
+                display_string += f"\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
+                display_string += f"\tFree swap memory: {current_snapshot.system_swap_free:n} bytes\n"
+                display_string += f"\tSwap utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
+            display_string += f"\tBroken Hill process physical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
+            display_string += f"\tBroken Hill process virtual memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
+            if current_snapshot.process_swap is not None:
+                display_string += f"\tProcess swap memory in use: {current_snapshot.process_swap:n} bytes\n"
+
+        if attack_state.persistable.attack_params.using_cuda():
+            for i in range(0, len(current_snapshot.cuda_device_data)):
+                d = current_snapshot.cuda_device_data[i]            
+                display_string += f"CUDA device {d.device_name} - {d.device_display_name}\n"
+                display_string += f"\tTotal memory: {d.total_memory:n} bytes\n"
+                display_string += f"\tMemory in use across the entire device: {d.gpu_used_memory:n}\n"
+                display_string += f"\tMemory available across the entire device: {d.available_memory:n}\n"
+                display_string += f"\tMemory utilization across the entire device: {d.total_memory_utilization:.0%}\n"
+                display_string += f"\tDevice memory reserved for Broken Hill: {d.process_reserved_memory:n} bytes\n"
+                display_string += f"\tDevice memory utilization for Broken Hill: {d.process_memory_utilization:.0%}\n"
+                display_string += f"\tDevice reserved allocated memory for Broken Hill: {d.process_reserved_allocated_memory:n} bytes\n"
+                display_string += f"\tDevice reserved unallocated memory for Broken Hill: {d.process_reserved_unallocated_memory:n} bytes\n"
+                display_string += f"\tReserved memory utilization within Broken Hill's reserved memory space: {d.process_reserved_utilization:.0%}\n"
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+        if current_snapshot.process_swap is not None:
+            if current_snapshot.process_swap > 0:
+                display_string += f"Warning: this process has {current_snapshot.process_swap:n} bytes swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM to handle the current Broken Hill configuration.\n"
+        display_string += "---\n"
+        print(display_string)
+                
 
 class FailureCounterBehaviour(IntFlag):
     # If a rollback to a parent node is triggered, the counter is reset to 0

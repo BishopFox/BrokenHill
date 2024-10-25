@@ -32,9 +32,19 @@ An optional parameter used to specify a path to the base directory for a PEFT pr
 
 Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.
 
-## --json-output-file <string> and --overwrite-output
+## Output file options
 
-If specified, causes the tool to write result information in JSON format to the specified file. If the file already exists, the tool will exit with an error unless `--overwrite-output` is also specified.
+### --json-output-file <string>
+
+If specified, causes Broken Hill to write result information in JSON format to the specified file.
+
+### --performance-output-file <string>
+
+If specified, Broken Hill will record performance/resource-utilization information in JSON format to the specified file. This is generally used for determining device memory requirements for testing models, and debugging code related to memory use optimization.
+
+### --overwrite-output
+
+If an existing output file of any type already exists, overwrite it. If this option is not specified, Broken Hill will exit instead of overwriting the file.
 
 ## --self-test
 
@@ -47,6 +57,10 @@ When performing self tests, if there is a significant difference between the con
 ## --ignore-jailbreak-self-tests
 
 Perform testing even if one of the jailbreak self-tests indicates the attempt is unlikely to succeed.
+
+## --model-parameter-info
+
+Display detailed information about the model's parameters after loading the model.
 
 ## Setting the prompt and target output
 
@@ -78,9 +92,9 @@ Many common model names (e.g. `phi`) are not currently recognized by `fschat` an
 
 Output a list of all template names for the version of the `fschat` library you have installed (to use with `--template`), then exit.
 
-### --override-fschat-templates
+### --do-not-override-fschat-templates
 
-Use the custom Broken Hill chat template, even if `fschat` has added a template with the same name.
+If `fschat` already has a conversation template with the same name as one of Broken Hill's custom templates, use the `fschat` version instead.
 
 ### --system-prompt
 
@@ -126,7 +140,7 @@ This can be useful for edge cases such as models that tokenize "### Human" into 
 
 ## Setting initial adversarial content
 
-These options control the value that the tool begins with and alters at each iteration.
+These options control the value that Broken Hill begins with and alters at each iteration.
 
 ### --initial-adversarial-string <string>
 
@@ -158,7 +172,7 @@ Maximum number of times to iterate on the adversarial data (default: 500)
 
 The original code written by the authors of [the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://arxiv.org/abs/2307.15043) re-encoded the adversarial content from tokens to string and then back to tokens with every iteration. This potentially caused the number of tokens and their values to change at every iteration. For example, the content-generation stage might generate a single token with ID 12345 that decoded to the string "<|assistant|>", but when re-encoded, the tokenizer might parse it into multiple tokens, such as [ '<', '|', 'assistant', '|', and '>' ], [ '<|', 'assist', 'ant', '|>' ], etc.
 
-This tool manages adversarial content as token IDs by default, and does not exhibit the behaviour described above as a result. If you would like to re-enable that behaviour, include the `--reencode-every-iteration` option.
+Broken Hill manages adversarial content as token IDs by default, and does not exhibit the behaviour described above as a result. If you would like to re-enable that behaviour, include the `--reencode-every-iteration` option.
 
 [This topic is discussed in more detail in the "Re-encoding at every iteration (the `--reencode-every-iteration` option in Broken Hill)" document](re-encoding.md).
 
@@ -168,7 +182,7 @@ This tool manages adversarial content as token IDs by default, and does not exhi
 
 ### --always-use-nanogcg-sampling-algorithm
 
-*Experimental* Ordinarily, omitting `--number-of-tokens-to-update-every-iteration` (i.e. configuring the tool to only update one adversarial content token every iteration) will cause Broken Hill to use the sampling algorithm from the demonstration code by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson. If this option is specified, the alternative algorithm borrowed from nanogcg will be used instead.
+*Experimental* Ordinarily, omitting `--number-of-tokens-to-update-every-iteration` (i.e. configuring Broken Hill to only update one adversarial content token every iteration) will cause Broken Hill to use the sampling algorithm from the demonstration code by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson. If this option is specified, the alternative algorithm borrowed from nanogcg will be used instead.
 
 ### --temperature <floating-point number>
 
@@ -184,7 +198,7 @@ Specify the low and high end (inclusive) of a range of [temperature values](temp
 
 `--topk` controls the number of results assessed when determining the best possible candidate adversarial data for each iteration. (default: 256)
 
-If the tool, during a given iteration, finds that candidate filtering has resulted in zero candidates, it will increase the `--topk` value to (n * topk), where n is the number of times zero candidates have occurred. By default, this will occur without limit. Use the `--max-topk` option to specify a value which will cause the script to exit instead of attempting to include even more candidates.
+If Broken Hill, during a given iteration, finds that candidate filtering has resulted in zero candidates, it will increase the `--topk` value to (n * topk), where n is the number of times zero candidates have occurred. By default, this will occur without limit. Use the `--max-topk` option to specify a value which will cause the script to exit instead of attempting to include even more candidates.
 
 ### --ignore-prologue-during-gcg-operations
 
@@ -192,7 +206,7 @@ If the tool, during a given iteration, finds that candidate filtering has result
 
 ## Randomization
 
-These options control more or less all of the randomized operations performed by the tool. A fixed seed is used to allow reproducible results.
+These options control more or less all of the randomized operations performed by Broken Hill. A fixed seed is used to allow reproducible results.
 
 ### --random-seed-numpy <integer>
 
@@ -208,7 +222,7 @@ Random seed for CUDA (default: 20)
 
 ### --random-seed-comparisons <number>
 
-This will cause the tool to generate <number> additional versions of the LLM-generated output for each candidate adversarial value, after temporarily re-seeding the pseudo-random number generators with a list of alternative values that do not include any of the three options above. This can help avoid focusing on fragile results - if a given adversarial value only works in one of four randomized trials, it's unlikely to work against the same LLM running on someone else's system.
+This will cause Broken Hill to generate <number> additional versions of the LLM-generated output for each candidate adversarial value, after temporarily re-seeding the pseudo-random number generators with a list of alternative values that do not include any of the three options above. This can help avoid focusing on fragile results - if a given adversarial value only works in one of four randomized trials, it's unlikely to work against the same LLM running on someone else's system.
 
 When using this option, `--temperature` must also be set to a non-default value, because otherwise models that have sample-based output disabled by default will simply return <number> identical results.
 
@@ -224,7 +238,7 @@ You can help make up for a low `--new-adversarial-value-candidate-count` value b
 
 If you are running out of memory and have already set `--batch-size-get-logits` to 1, and `--new-adversarial-value-candidate-count` is greater than 16, try reducing it. If you still run out of memory with this value set to 16 and `--batch-size-get-logits` set to 1, you're probably out of luck without more VRAM.
 
-If an iteration occurs where all candidate values are filtered out, the tool may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-value-candidate-count` can be used to reduce or increase that limit.
+If an iteration occurs where all candidate values are filtered out, Broken Hill may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-value-candidate-count` can be used to reduce or increase that limit.
 
 ### --batch-size-get-logits <positive integer>
 
@@ -232,7 +246,7 @@ The PyTorch batch size to use when calling the `get_logits` function, which is t
 
 ## Limiting candidate adversarial content during the generation stage
 
-These options control the pool of tokens that the tool is allowed to select from when generating candidate adversarial content at each iteration. They are the most efficient way to control output, because they prevent the tool from wasting CPU and GPU cycles on data that will never be used. However, because they apply to the individual token level, they cannot control e.g. the total length of the adversarial content when represented as a string.
+These options control the pool of tokens that Broken Hill is allowed to select from when generating candidate adversarial content at each iteration. They are the most efficient way to control output, because they prevent the tool from wasting CPU and GPU cycles on data that will never be used. However, because they apply to the individual token level, they cannot control e.g. the total length of the adversarial content when represented as a string.
 
 ### --exclude-newline-tokens
 
@@ -338,7 +352,7 @@ If you want to limit the number of tokens (e.g. to prevent the attack from wasti
 
 ## Controlling the data that's used to calculate loss at every iteration
 
-The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code this tool was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
+The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code Broken Hill was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
 
 How much of the magic is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
 
@@ -388,9 +402,9 @@ Output the full decoded input and output for failed jailbreak attempts (in addit
 
 ## --jailbreak-detection-rules-file <string> and --write-jailbreak-detection-rules-file <string>
 
-`--jailbreak-detection-rules-file` causes the tool to read jailbreak detection rules from a JSON file instead of using the default configuration.
+`--jailbreak-detection-rules-file` causes Broken Hill to read jailbreak detection rules from a JSON file instead of using the default configuration.
 
-If `--write-jailbreak-detection-rules-file <string>` is specified, specified, the jailbreak detection rule set will be written to the specified JSON file and the tool will then exit. If `--jailbreak-detection-rules-file <string>` is not specified, this will cause the default rules to be written to the file. This is currently the best way to view example content for the file format. If `--jailbreak-detection-rules-file <string>` *is* specified, then the custom rules will be normalized and written in the current standard format to the specified output file.
+If `--write-jailbreak-detection-rules-file <string>` is specified, specified, the jailbreak detection rule set will be written to the specified JSON file and Broken Hill will then exit. If `--jailbreak-detection-rules-file <string>` is not specified, this will cause the default rules to be written to the file. This is currently the best way to view example content for the file format. If `--jailbreak-detection-rules-file <string>` *is* specified, then the custom rules will be normalized and written in the current standard format to the specified output file.
 
 ## --max-new-tokens <positive integer>
 
@@ -461,7 +475,7 @@ Do not pass an attention mask to the model. Required for some models, such as Ma
 		
 ### --ignore-mismatched-sizes
 
-When loading the model, pass `ignore_mismatched_sizes=True`, which may allow you to load some models with mismatched size data. It will probably only let the tool get a little further before erroring out, though.
+When loading the model, pass `ignore_mismatched_sizes=True`, which may allow you to load some models with mismatched size data. It will probably only let Broken Hill get a little further before erroring out, though.
 
 ### --low-cpu-mem-usage
 
