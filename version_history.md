@@ -2,7 +2,10 @@
 
 # 0.34 - 2024-10-xx
 
-* Significant refactoring in support of more comprehensive suspend/resume
+This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
+
+* [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
+  * If you really want to disable this feature, there is also a `--disable-state-backup` option.
 * Added support for the following models and families:
   * [Azurro's APT family](https://huggingface.co/Azurro)
     * APT
@@ -53,9 +56,14 @@
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
-* Added the following [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
+* Added the following additional [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
   * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.
+  * `--verbose-resource-info`, which displays system resource utilization/performance data every time it's collected instead of only at key intervals.
   * `--model-parameter-info`, which displays more detailed information about the model's parameters.
+  * [Option-saving and loading](docs/all_command-line_options.md#saving-and-reusing-broken-hill-options):
+    * `--save-options`
+	* `--load-options`
+	* `--load-options-from-state`
   * *Experimental* `--model-device` and `--gradient-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
   * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
@@ -72,6 +80,7 @@
   * Minor correction to the custom `stablelm2` chat template.
   * Many other lesser fixes.
 * Removed a bunch of leftover code that was no longer used to make it slightly easier to understand what was going on.
+
 
 # 0.33 - 2024-10-08
 

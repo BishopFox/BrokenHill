@@ -98,7 +98,7 @@ def print_model_parameter_info(attack_state):
         as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{attack_state.model_weight_storage_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory." 
             
     model_parameter_info_string = f"The current model has {attack_state.persistable.overall_result_data.model_parameter_info_collection.total_parameter_count} total parameters in named groups."
-    if attack_state.persistable.attack_params.display_verbose_model_parameter_info:
+    if attack_state.persistable.attack_params.verbose_model_parameter_info:
         model_parameter_info_string = f"{model_parameter_info_string} {attack_state.persistable.overall_result_data.model_parameter_info_collection.trainable_parameter_count} of the parameters are trainable, and {attack_state.persistable.overall_result_data.model_parameter_info_collection.nontrainable_parameter_count} of the parameters are not trainable.{current_memory_parameter_info_string}{as_is_storage_memory_parameter_info_string}"
         trainable_params = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_trainable_parameters()
         nontrainable_params = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_nontrainable_parameters()

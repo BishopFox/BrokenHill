@@ -156,6 +156,7 @@ from llm_attacks_bishopfox.util.util_functions import FakeException
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
+from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
@@ -298,6 +299,12 @@ def check_for_attack_success(attack_state, input_token_id_data, temperature, jai
 
 def main(attack_params):
 
+    attack_params.state_directory
+
+    # only test write capability if there is not an existing state file, so it's not overwritten
+    if not os.path.isfile(attack_params.state_file):
+        verify_output_file_capability(attack_params.state_file, attack_params.overwrite_output)
+
     attack_state = VolatileAttackState()
     attack_state.persistable.attack_params = attack_params
     attack_state.model_device = torch.device(attack_state.persistable.attack_params.model_device)
@@ -422,7 +429,7 @@ def main(attack_params):
             attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
         print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
-        attack_state.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
+        attack_state.persistable.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
             attack_state.persistable.attack_params.not_allowed_token_list, 
             device = attack_state.model_device, 
             additional_token_strings_case_insensitive = attack_state.persistable.attack_params.not_allowed_token_list_case_insensitive, 
@@ -434,11 +441,11 @@ def main(attack_params):
             token_regex = attack_state.persistable.attack_params.get_token_filter_regex()
             )
         
-        #print(f"Debug: attack_state.token_allow_and_deny_lists.denylist = '{attack_state.token_allow_and_deny_lists.denylist}', attack_state.token_allow_and_deny_lists.allowlist = '{attack_state.token_allow_and_deny_lists.allowlist}'")
+        #print(f"Debug: attack_state.persistable.token_allow_and_deny_lists.denylist = '{attack_state.persistable.token_allow_and_deny_lists.denylist}', attack_state.persistable.token_allow_and_deny_lists.allowlist = '{attack_state.persistable.token_allow_and_deny_lists.allowlist}'")
         not_allowed_tokens = None
-        if len(attack_state.token_allow_and_deny_lists.denylist) > 0:
+        if len(attack_state.persistable.token_allow_and_deny_lists.denylist) > 0:
             #print(f"[main] Debug: getting not_allowed_tokens from token allowlist and denylist.")
-            not_allowed_tokens = get_token_list_as_tensor(attack_state.token_allow_and_deny_lists.denylist, device='cpu')
+            not_allowed_tokens = get_token_list_as_tensor(attack_state.persistable.token_allow_and_deny_lists.denylist, device='cpu')
         #print(f"Debug: not_allowed_tokens = '{not_allowed_tokens}'")
 
         original_model_size = 0
@@ -539,7 +546,7 @@ def main(attack_params):
             initial_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, attack_state.persistable.attack_params.initial_adversarial_token_ids)
         
         if attack_state.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
-            token_ids = get_random_token_ids(numpy_random_generator, attack_state.token_allow_and_deny_lists, attack_state.persistable.attack_params.initial_adversarial_token_count)
+            token_ids = get_random_token_ids(numpy_random_generator, attack_state.persistable.token_allow_and_deny_lists, attack_state.persistable.attack_params.initial_adversarial_token_count)
             initial_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, trash_fire_token_treasury, token_ids)
         
         post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
@@ -557,11 +564,11 @@ def main(attack_params):
         tokens_not_in_tokenizer = []
         for i in range(0, len(initial_adversarial_content.token_ids)):
             token_id = initial_adversarial_content.token_ids[i]
-            if token_id in attack_state.token_allow_and_deny_lists.denylist:
+            if token_id in attack_state.persistable.token_allow_and_deny_lists.denylist:
                 if token_id not in tokens_in_denylist:
                     tokens_in_denylist.append(token_id)
             else:
-                if token_id not in attack_state.token_allow_and_deny_lists.allowlist:
+                if token_id not in attack_state.persistable.token_allow_and_deny_lists.allowlist:
                     if token_id not in tokens_not_in_tokenizer:
                         tokens_not_in_tokenizer.append(token_id)
         
@@ -576,12 +583,12 @@ def main(attack_params):
                     token_list_string += ", {formatted_token}"
             print(f"Warning: the following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
             new_denylist = []
-            for existing_denylist_index in range(0, len(attack_state.token_allow_and_deny_lists.denylist)):
-                if attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
-                    attack_state.token_allow_and_deny_lists.allowlist.append(attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index])
+            for existing_denylist_index in range(0, len(attack_state.persistable.token_allow_and_deny_lists.denylist)):
+                if attack_state.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
+                    attack_state.persistable.token_allow_and_deny_lists.allowlist.append(attack_state.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index])
                 else:
-                    new_denylist.append(attack_state.token_allow_and_deny_lists.denylist[existing_denylist_index])
-            attack_state.token_allow_and_deny_lists.denylist = new_denylist
+                    new_denylist.append(attack_state.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index])
+            attack_state.persistable.token_allow_and_deny_lists.denylist = new_denylist
         if len(tokens_not_in_tokenizer) > 0:
             print(f"Warning: the following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
         
@@ -1288,6 +1295,8 @@ if __name__=='__main__':
     print(f"{script_name} version {script_version}, {script_date}\n{short_description}")
     
     attack_params = AttackParams()
+    attack_params.original_command_line_array = copy.deepcopy(sys.argv)
+    attack_params.original_command_line = command_array_to_string(attack_params.original_command_line_array)
     
     cuda_available = torch.cuda.is_available()
     mps_available = torch.backends.mps.is_available()
@@ -1607,8 +1616,12 @@ if __name__=='__main__':
         help="Perform the attack even if the jailbreak self-tests indicate that the results will likely not be useful.")
 
     parser.add_argument("--model-parameter-info", type = str2bool, nargs='?',
-        const=True, default=attack_params.display_verbose_model_parameter_info,
+        const=True, default=attack_params.verbose_model_parameter_info,
         help="Display detailed information about the model's parameters after loading the model.")
+        
+    parser.add_argument("--verbose-resource-info", type = str2bool, nargs='?',
+        const=True, default=attack_params.verbose_resource_info,
+        help="Display system resource utilization/performance information every time it's collected instead of only at key intervals.")
 
     parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
         default=attack_params.required_loss_threshold,
@@ -1713,9 +1726,30 @@ if __name__=='__main__':
         help=f"Write detailed result data in JSON format to the specified file.")
     parser.add_argument("--performance-output-file", type = str,
         help=f"Write detailed performance/resource-utilization data in JSON format to the specified file.")
+    parser.add_argument("--state-directory", type = str,
+        help=f"Back up attack state data to a file in the specified directory at every iteration instead of the default location. If this option is not specified, Broken Hill will store its state files in a subdirectory of the current user's home directory named '{attack_params.default_state_directory}'.")
+    parser.add_argument("--state-file", type = str,
+        help=f"Override Broken Hill's standard behaviour and write state information to a specific file instead of creating a new file for the attack within the state-backup directory. Using this option is strongly discouraged due to the potential for accidentally overwriting useful information. This option can only be used if --state-directory is not.")
+    parser.add_argument("--load-state", type = str,
+        help=f"Load the attack state from the specified JSON file, to resume a test that exited early, continue with additional iterations beyond the original limit, etc. If this option is specified, a new state file will be created to store the results of the resumed test, unless --overwrite-existing-state is also specified. The new state file will be created in the same directory as the existing state file, unless --state-directory is also specified.")
     parser.add_argument("--overwrite-output", type = str2bool, nargs='?',
         const=True,
-        help="Overwrite any existing output files (--json-output-file, etc.).")
+        help="Overwrite any existing output files (--json-output-file, etc.) instead of exiting with an error.")
+    parser.add_argument("--disable-state-backup", type = str2bool, nargs='?',
+        const=True,
+        help="Prevents the automatic backup of attack state at each iteration that Broken Hill performs by default. Using this option is not recommended except during development and testing of Broken Hill.")
+    parser.add_argument("--overwrite-existing-state", type = str2bool, nargs='?',
+        const=True,
+        help="When --load-state is specified, continue saving state to the same file instead of creating a new state file. Using this option is not recommended, because it risks losing all of the progress saved in the existing state file.")
+    parser.add_argument("--delete-state-on-completion", type = str2bool, nargs='?',
+        const=True,
+        help="If this option is specified, *and* Broken Hill reaches the maximum configured number of iterations (or --break-on-success is specified and Broken Hill discovers a jailbreak), the automatically-generated state file will be deleted. If this option is not specified, the state file will be retained for use with the --load-state option. If --load-state is specified, but --overwrite-existing-state is not specified, *only* the new state file will be deleted upon successful completion. If --load-state and --overwrite-existing-state are both specified, the state file that was used to resume testing will be deleted on successful completion. Using this option is strongly discouraged due to the possibility of unintentionally deleting data.")
+    parser.add_argument("--save-options", type = str,
+        help=f"Save all of the current attack parameters (default values + any explicitly-specified command-line options) to the specified file in JSON format, then exit.")
+    parser.add_argument("--load-options", type = str,
+        help=f"Load all attack parameters from the specified JSON file. Any additional command-line options specified will override the values from the JSON file.")
+    parser.add_argument("--load-options-from-state", type = str,
+        help=f"Load all attack parameters from the specified Broken Hill state-backup file.")
 
     args = parser.parse_args()
 
@@ -2100,8 +2134,10 @@ if __name__=='__main__':
     attack_params.ignore_jailbreak_self_tests = args.ignore_jailbreak_self_tests
     
     if args.model_parameter_info:
-        attack_params.display_verbose_model_parameter_info = True
+        attack_params.verbose_model_parameter_info = True
     
+    attack_params.verbose_resource_info = args.verbose_resource_info
+
     attack_params.break_on_success = args.break_on_success
     
     attack_params.rollback_on_loss_increase = args.rollback_on_loss_increase
@@ -2215,6 +2251,27 @@ if __name__=='__main__':
                 print(f"Error: {peft_message}")
                 sys.exit(1)
 
+    # set up state-saving parameters
+    # TKTK: one resuming from a state file is implemented, wrap this entire section a few check:
+    # If a state file is specified using --load-state set attack_params.state_directory using the basename of that path *unless* --state-directory is also specified, in which case that takes precedence
+    # Always create a new value for attack_params.state_file, *unless* --overwrite-existing-state is also specified
+    if args.state_directory:
+        attack_params.state_directory = os.path.abspath(args.state_directory)
+    else:
+        set_default_state_directory = False
+        if attack_params.state_directory is None:
+            set_default_state_directory = True
+        else:
+            # In case the state directory value is being loaded from a saved state
+            if not os.path.isdir(attack_params.state_directory):
+                set_default_state_directory = True
+        if set_default_state_directory:
+            attack_params.state_directory = os.path.abspath(os.path.join(pathlib.Path.home(), default_state_directory))
+
+    if args.load_state:
+
+    # verify ability to write to any remaining output files that have been specified
+
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)
         verify_output_file_capability(attack_params.json_output_file, attack_params.overwrite_output)
@@ -2222,6 +2279,8 @@ if __name__=='__main__':
     if args.performance_output_file:
         attack_params.performance_stats_output_file = args.performance_output_file
         verify_output_file_capability(attack_params.performance_stats_output_file, attack_params.overwrite_output)
+        
+    
     
     main(attack_params)
 

@@ -11,7 +11,7 @@ from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObjec
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import command_array_to_bash_c_argument
+from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 
 # placeholder to use in generated command strings for things like > log.txt 2>&1
@@ -150,7 +150,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         if self.shell_path is None or self.shell_path.strip() == "":
             return command_array
         command_array.append(POST_COMMAND_PLACEHOLDER)
-        command_array_as_bash_c_arg = command_array_to_bash_c_argument(command_array)
+        command_array_as_bash_c_arg = command_array_to_string(command_array)
         if redirect_output:
             log_path = shlex.quote(self.get_console_output_path())
             command_array_as_bash_c_arg = command_array_as_bash_c_arg.replace(POST_COMMAND_PLACEHOLDER, f" > {log_path} 2>&1")

@@ -40,6 +40,7 @@ class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
     GCG_ATTACK_SELF_TEST  = 'gcg_attack_self_test'
     LIST_IETF_TAGS = 'list_ietf_tags'
+    SAVE_OPTIONS = 'save_options'
 
 # not currently used
 class OverallScoringFunction(StrEnum):
@@ -402,6 +403,8 @@ class AttackParams(JSONSerializableObject):
         return False
 
     def __init__(self):
+        self.original_command_line_array = None
+        self.original_command_line = None
         self.operating_mode = BrokenHillMode.GCG_ATTACK
         
         #self.device = 'cuda'
@@ -694,7 +697,10 @@ class AttackParams(JSONSerializableObject):
         self.ignore_jailbreak_self_tests = False
 
         # Display detailed information on the named parameter groups when the model is loaded
-        self.display_verbose_model_parameter_info = False
+        self.verbose_model_parameter_info = False
+        
+        # Display system resource/performance information every time it's collected, instead of only at key intervals
+        self.verbose_resource_info = False
 
         # Stop iterating after the first successful jailbreak detection
         self.break_on_success = False
@@ -759,6 +765,20 @@ class AttackParams(JSONSerializableObject):
         self.overwrite_output = False
         self.json_output_file = None
         self.performance_stats_output_file = None
+       
+        # parameter save/load options
+        self.save_options_path = None
+        self.load_options_path = None
+        self.load_options_from_state_path = None
+       
+        # state backup/restore options
+        self.save_state = True
+        self.delete_state_on_completion = False
+        # Default directory name (in user's home directory) to store state files if a location is not explicitly specified
+        self.default_state_directory = '.broken_hill'
+        self.state_directory = None
+        self.state_file = None
+        self.load_state_from_file = None
         
         # TKTK: option to generate a dynamically-quantized version of the model and also check results against it, because quantized models seem much less susceptible to this type of attack.
         # As noted below in the "Quantization options" section, the attack itself cannot be performed (at least using PyTorch) against an integer-based model - it must be floating point.
@@ -931,6 +951,7 @@ class PersistableAttackState(JSONSerializableObject):
         self.best_jailbreak_count = None
         self.original_new_adversarial_value_candidate_count = None
         self.original_topk = None
+        self.token_allow_and_deny_lists = None
         
     def to_dict(self):
         result = super(PersistableAttackState, self).properties_to_dict(self)
@@ -946,8 +967,31 @@ class PersistableAttackState(JSONSerializableObject):
     def from_dict(property_dict):
         result = PersistableAttackState()
         super(PersistableAttackState, result).set_properties_from_dict(result, property_dict)
+        
         if result.attack_params is not None:
             result.attack_params = AttackParams.from_dict(result.attack_params)
+
+        if result.performance_data is not None:
+            result.performance_data = ResourceUtilizationData.from_dict(result.performance_data)
+
+        if result.overall_result_data is not None:
+            result.overall_result_data = BrokenHillResultData.from_dict(result.overall_result_data)
+
+        if result.random_number_generator_states is not None:
+            result.random_number_generator_states = RandomNumberGeneratorStateCollection.from_dict(result.random_number_generator_states)
+
+        if result.current_adversarial_content is not None:
+            result.current_adversarial_content = AdversarialContent.from_dict(result.current_adversarial_content)
+
+        if result.tested_adversarial_content is not None:
+            result.tested_adversarial_content = AdversarialContentList.from_dict(result.tested_adversarial_content)
+
+        if result.last_known_good_adversarial_content is not None:
+            result.last_known_good_adversarial_content = AdversarialContent.from_dict(result.last_known_good_adversarial_content)
+
+        if result.token_allow_and_deny_lists is not None:
+            result.token_allow_and_deny_lists = TokenAllowAndDenyList.from_dict(result.token_allow_and_deny_lists)
+
         return result
     
     @staticmethod
@@ -968,8 +1012,7 @@ class VolatileAttackState():
         self.random_seed_values = get_random_seed_list_for_comparisons()
         self.model_weight_type = None
         self.model_weight_storage_dtype = None
-        self.model_weight_storage_string = None
-        self.token_allow_and_deny_lists = None
+        self.model_weight_storage_string = None        
         self.model_device = None
         self.gradient_device = None
         
@@ -1302,58 +1345,108 @@ class GenerationResults(JSONSerializableObject):
     def from_json(json_string):
         return GenerationResults.from_dict(json.loads(json_string))
 
-class ResourceUtilizationSnapshot(Exception):
+class ResourceUtilizationException(Exception):
     pass
 
 class CUDADeviceUtilizationData(JSONSerializableObject):
-    def __init__(self, cuda_device):
-        self.device_name = cuda_device.device_name
-        self.device_display_name = cuda_device.device_display_name
-        self.total_memory = cuda_device.total_memory
-        self.gpu_used_memory = cuda_device.gpu_used_memory
-        self.available_memory = cuda_device.available_memory
-        self.total_memory_utilization = cuda_device.total_memory_utilization
-        self.process_reserved_memory = cuda_device.process_reserved_memory
-        self.process_memory_utilization = cuda_device.process_memory_utilization
-        self.process_reserved_allocated_memory = cuda_device.process_reserved_allocated_memory
-        self.process_reserved_unallocated_memory = cuda_device.process_reserved_unallocated_memory
-        self.process_reserved_utilization = cuda_device.process_reserved_utilization
+    def __init__(self):
+        self.device_name = None
+        self.device_display_name = None
+        self.total_memory = None
+        self.gpu_used_memory = None
+        self.available_memory = None
+        self.total_memory_utilization = None
+        self.process_reserved_memory = None
+        self.process_memory_utilization = None
+        self.process_reserved_allocated_memory = None
+        self.process_reserved_unallocated_memory = None
+        self.process_reserved_utilization = None
+
+    @staticmethod
+    def create_snapshot(cuda_device):
+        result = CUDADeviceUtilizationData()
+        result.device_name = cuda_device.device_name
+        result.device_display_name = cuda_device.device_display_name
+        result.total_memory = cuda_device.total_memory
+        result.gpu_used_memory = cuda_device.gpu_used_memory
+        result.available_memory = cuda_device.available_memory
+        result.total_memory_utilization = cuda_device.total_memory_utilization
+        result.process_reserved_memory = cuda_device.process_reserved_memory
+        result.process_memory_utilization = cuda_device.process_memory_utilization
+        result.process_reserved_allocated_memory = cuda_device.process_reserved_allocated_memory
+        result.process_reserved_unallocated_memory = cuda_device.process_reserved_unallocated_memory
+        result.process_reserved_utilization = cuda_device.process_reserved_utilization
+        return result
+
+    def to_dict(self):
+        result = super(CUDADeviceUtilizationData, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = CUDADeviceUtilizationData()
+        super(CUDADeviceUtilizationData, result).set_properties_from_dict(result, property_dict)        
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return CUDADeviceUtilizationData.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return CUDADeviceUtilizationData.from_dict(json.loads(json_string))
 
 class ResourceUtilizationSnapshot(JSONSerializableObject):
-    def __init__(self, location_description):
-        self.epoch_time = time.time_ns()
-        self.location_description = location_description
-        process_mem_info = psutil.Process().memory_full_info()
-        self.process_physical_memory = process_mem_info.rss
-        self.process_virtual_memory = process_mem_info.vms
+    def __init__(self):
+        self.epoch_time = None
+        self.location_description = None
+        self.process_physical_memory = None
+        self.process_virtual_memory = None
         self.process_swap = None
-        if hasattr(process_mem_info, "swap"):
-            self.process_swap = process_mem_info.swap
-        system_mem_info = psutil.virtual_memory()
-        self.system_physical_memory = system_mem_info.total
-        self.system_available_memory = system_mem_info.available
-        self.system_in_use_memory = system_mem_info.used
+        self.system_physical_memory = None
+        self.system_available_memory = None
+        self.system_in_use_memory = None
+        self.system_memory_util_percent = None
         self.system_swap_total = None
         self.system_swap_in_use = None
         self.system_swap_free = None
         self.system_swap_percent = None
+        self.cuda_device_data = []
+    
+    @staticmethod
+    def create_snapshot(location_description):
+        result = ResourceUtilizationSnapshot()
+        result.epoch_time = time.time_ns()
+        result.location_description = location_description
+        process_mem_info = psutil.Process().memory_full_info()
+        result.process_physical_memory = process_mem_info.rss
+        result.process_virtual_memory = process_mem_info.vms
+        result.process_swap = None
+        if hasattr(process_mem_info, "swap"):
+            result.process_swap = process_mem_info.swap
+        system_mem_info = psutil.virtual_memory()
+        result.system_physical_memory = system_mem_info.total
+        result.system_available_memory = system_mem_info.available
+        result.system_in_use_memory = system_mem_info.used
+        result.system_memory_util_percent = float(result.system_in_use_memory) / float(result.system_physical_memory)
         try:
             system_swap_info = psutil.swap_memory()
-            self.system_swap_total = system_swap_info.total
-            self.system_swap_in_use = system_swap_info.used
-            self.system_swap_free = system_swap_info.free
-            self.system_swap_percent = system_swap_info.percent
+            result.system_swap_total = system_swap_info.total
+            result.system_swap_in_use = system_swap_info.used
+            result.system_swap_free = system_swap_info.free
+            result.system_swap_percent = system_swap_info.percent
         except Exception as e:
             raise ResourceUtilizationSnapshot(f"Error getting swap memory information: {e}")
-        self.system_memory_util_percent = float(self.system_in_use_memory) / float(self.system_physical_memory)
         
-        self.cuda_device_data = []
         cuda_devices = PyTorchDevice.get_all_cuda_devices()
         for i in range(0, len(cuda_devices)):
-            cd = CUDADeviceUtilizationData(cuda_devices[i])
-            self.cuda_device_data.append(cd)
+            cd = CUDADeviceUtilizationData.create_snapshot(cuda_devices[i])
+            result.cuda_device_data.append(cd)
 
-        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality      
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality     
+        return result
 
     def to_dict(self):
         result = super(ResourceUtilizationSnapshot, self).properties_to_dict(self)
@@ -1409,14 +1502,18 @@ class ResourceUtilizationData(JSONSerializableObject):
     def from_json(json_string):
         return ResourceUtilizationData.from_dict(json.loads(json_string))
 
+    def get_overall_statistics(self):
+        
+
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
-        current_snapshot = ResourceUtilizationSnapshot(location_description)
+        current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
         self.snapshots.append(current_snapshot)
         if attack_state.persistable.attack_params.performance_stats_output_file is not None:
             safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
         
-        if not is_key_snapshot_event:
-            return
+        if not attack_state.persistable.attack_params.verbose_resource_info:
+            if not is_key_snapshot_event:
+                return
         
         display_string = "---\n"
         if location_description is None:

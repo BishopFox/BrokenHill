@@ -4,6 +4,7 @@ import re
 import sys
 import torch
 
+from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import append_single_or_list_members
@@ -663,10 +664,31 @@ def get_nonmatching_token_list(tokenizer, tokenizer_vocabulary_decoded, filter_r
 def get_token_list_as_tensor(token_list, device='cpu'):    
     return torch.tensor(token_list, device=device)    
 
-class TokenAllowAndDenyList:
+class TokenAllowAndDenyList(JSONSerializableObject):
     def __init__(self):
         self.allowlist = []
         self.denylist = []
+
+    def to_dict(self):
+        result = super(SearchTreeNode, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = TokenAllowAndDenyList()
+        super(TokenAllowAndDenyList, result).set_properties_from_dict(result, property_dict)
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
+    
+    def copy(self):
+        return TokenAllowAndDenyList.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return TokenAllowAndDenyList.from_dict(json.loads(json_string))
+
 
 def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, tokenizer_vocabulary_decoded, string_list, case_sensitive = True):
     for i in range(0, len(string_list)):

@@ -32,6 +32,78 @@ An optional parameter used to specify a path to the base directory for a PEFT pr
 
 Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.
 
+## Saving and reusing Broken Hill options
+
+### --save-options <string>
+
+Save all of the current attack parameters (default values + any explicitly-specified command-line options) to the specified file in JSON format, then exit.
+
+### --load-options <string>
+
+Load all attack parameters from the specified JSON file, created using the `--save-options` option.
+
+### --load-options-from-state <string>
+
+Load all attack parameters from the specified Broken Hill state backup file (discussed in the next section), but do not load the other state data. This option can be used in combination with `--save-options` to export just the attack configuration from an existing state file, e.g.:
+
+```
+bin/python -u ./BrokenHill/brokenhill.py \
+	--load-options-from-state state_file_from_epic_test_but_where_i_forgot_to_save_the_options_i_used.json \
+	--save-options the_sweet_options_i_thought_were_lost_forever.json
+```
+
+## Options related to attack state backup and resumption
+
+By default, Broken Hill 0.34 and later back up the attack state to a JSON file at each attack iteration, so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results. 
+
+This mechanism preserves every possible state-related factor we could find, such as the state of every random number generator. This means that the following uses of Broken Hill should produce identical results, as long as no other options are changed:
+
+* One test with `--max-iterations 400`
+* Two tests with `--max-iterations 200`, where the second test uses `--load-state` to load the state generated at the end of the first test
+
+### --state-directory <string>
+
+By default, Broken Hill writes state files to a subdirectory of the current user's home directory named `.broken_hill`. The `--state-directory` option can be used to specify a different directory, while still retaining the default behaviour of creating a dynamically-named state file in that directory every time Broken Hill is launched.
+
+### --state-file <string>
+
+If you really, *really* want Broken Hill to store state information for the attack in a specific file, instead of letting it generate a new, dynamically-named file for you in the state-backup directory, this is the option that will do that.
+
+**Using this option is strongly discouraged, because of the potential to accidentally overwrite useful data that could take hours or days to regenerate.**
+
+### --load-state <string>
+
+Resume testing from the attack state in the specified JSON file. Can be used to resume a test that exited early, continue with additional iterations beyond the original limit, etc.
+
+If this option is specified, a new state file will be created to store the results of the resumed test, unless `--overwrite-existing-state` is also specified. The new state file will be created in the same directory as the existing state file, unless `--state-directory` is also specified.
+
+If this option is specified, all Broken Hill options will be set to the values stored in the state file. Those options can be changed by specifying them explicitly on the command line, by using the `--load-options` option, or both.
+
+### --overwrite-existing-state
+
+If `--load-state` is specified, continue saving state to the existing file instead of creating a new state file.
+
+**Using this option is strongly discouraged, because of the potential to accidentally overwrite useful data that could take hours or days to regenerate.**
+
+If `--load-state` is *not* specified, this option has no effect.
+
+### --delete-state-on-completion
+
+If this option is specified, *and* one of the two following conditions occurs, the automatically-generated state file will be deleted:
+
+* Broken Hill reaches the maximum configured number of iterations
+* `--break-on-success` is specified and Broken Hill discovers a jailbreak
+
+If this option is not specified, the state file will be retained for use with the `--load-state` option regardless of the reason that Broken Hill exits. Retaining the file is the default behaviour because of the likelihood of the operator wanting to conduct follow-on testing beyond the original maximum number of iterations.
+
+If --load-state is specified, but --overwrite-existing-state is not specified, *only* the new state file will be deleted upon successful completion. If --load-state and --overwrite-existing-state are both specified, the state file that was used to resume testing will be deleted on successful completion.
+
+**Using this option is strongly discouraged, because of the potential to accidentally overwrite useful data that could take hours or days to regenerate.**
+
+### --disable-state-backup
+
+Completely disables the automatic backup of attack state. Using this option is not recommended except during development and testing of Broken Hill.
+
 ## Output file options
 
 ### --json-output-file <string>
@@ -46,21 +118,27 @@ If specified, Broken Hill will record performance/resource-utilization informati
 
 If an existing output file of any type already exists, overwrite it. If this option is not specified, Broken Hill will exit instead of overwriting the file.
 
-## --self-test
+## Self-test options
+
+### --self-test
 
 Exit with an error code of 0 after performing self tests.
 
-## --verbose-self-test-output
+### --verbose-self-test-output
 
 When performing self tests, if there is a significant difference between the conversation template Broken Hill is using and the output of the `apply_chat_template` method included with the tokenizer, display detailed information about the token IDs and tokens for debugging purposes.
 
-## --ignore-jailbreak-self-tests
+### --ignore-jailbreak-self-tests
 
 Perform testing even if one of the jailbreak self-tests indicates the attempt is unlikely to succeed.
 
 ## --model-parameter-info
 
 Display detailed information about the model's parameters after loading the model.
+
+## --verbose-resource-info
+
+Display system resource utilization/performance data every time it's collected instead of only at key intervals.
 
 ## Setting the prompt and target output
 
@@ -392,15 +470,15 @@ If this value is specified, it will be used to replace any newline characters in
 
 ## Jailbreak detection options
 
-## --break-on-success
+### --break-on-success
 
 Stop iterating upon the first detection of a potential successful jailbreak.
 
-## --display-failure-output
+### --display-failure-output
 
 Output the full decoded input and output for failed jailbreak attempts (in addition to successful attempts, which are always output).
 
-## --jailbreak-detection-rules-file <string> and --write-jailbreak-detection-rules-file <string>
+### --jailbreak-detection-rules-file <string> and --write-jailbreak-detection-rules-file <string>
 
 `--jailbreak-detection-rules-file` causes Broken Hill to read jailbreak detection rules from a JSON file instead of using the default configuration.
 
