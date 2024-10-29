@@ -14,6 +14,10 @@ Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recomm
 
 *Experimental* The PyTorch device to use for the gradient used in the GCG attack. The gradient is one of the largest elements of the GCG attack, and gradient-related operations represent a large fraction of GCG processing. Handling it on a separate device from the other elements *may* allow larger models to be tested on some devices with limited CUDA device memory more efficiently than processing everything on the CPU.
 
+## --forward-device <string>
+
+*Experimental* The PyTorch device to use for aggregation of logits values during the 'forward' operation. This operation consumes more memory than any other part of the GCG attack, but is not computationally intensive, so it may be a good candidate to offload to the CPU.
+
 ## --model <string>
 
 The path to the directory containing the LLM you want to test against.

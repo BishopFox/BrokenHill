@@ -195,8 +195,8 @@ def check_pytorch_devices(attack_params):
         for dn in device_names:
             d = all_devices[dn]
             message += f"\t{d.device_name} - {d.device_display_name}\n"
-            message += f"\t\tTotal memory: {d.total_memory:n}\n"
-            message += f"\t\tMemory in use across the entire device: {d.gpu_used_memory:n}\n"
+            message += f"\t\tTotal memory: {d.total_memory:n} byte(s)\n"
+            message += f"\t\tMemory in use across the entire device: {d.gpu_used_memory:n} byte(s)\n"
             message += f"\t\tCurrent memory utilization for the device as a whole: {d.total_memory_utilization:.0%}\n"
         print(message)
     above_threshold_device_names = list(devices_above_threshold.keys())
@@ -1118,6 +1118,8 @@ if __name__=='__main__':
         help="Experimental: The device to use for loading the model and performing PyTorch operations other than those related to the gradient ('cuda', 'cuda:0', etc.).")
     parser.add_argument("--gradient-device", type = str, 
         help="Experimental: The device to use for PyTorch gradient operations ('cuda', 'cuda:0', etc.).")
+    parser.add_argument("--forward-device", type = str, 
+        help="Experimental: The device to use for PyTorch aggregation of logits values during the 'forward' operation ('cuda', 'cuda:0', etc.).")
     
     # TKTK: add a --multi-device mode that uses torch.nn.DataParallel
     # model= nn.DataParallel(model)
@@ -1516,6 +1518,7 @@ if __name__=='__main__':
     if args.device != default_device:
         attack_params.model_device = args.device
         attack_params.gradient_device = args.device
+        attack_params.forward_device = args.device
         combined_device_params = True
     if args.model_device:
         attack_params.model_device = args.model_device
@@ -1523,8 +1526,11 @@ if __name__=='__main__':
     if args.gradient_device:
         attack_params.gradient_device = args.gradient_device
         individual_device_params = True
+    if args.forward_device:
+        attack_params.forward_device = args.forward_device
+        individual_device_params = True
     if individual_device_params and combined_device_params:
-        print(f"--device can only be specified if --model-device and --gradient-device are not specified.")
+        print(f"--device can only be specified if none of --model-device, --gradient-device, and --forward-device are specified.")
         sys.exit(1)
 
     if cuda_available:

@@ -904,6 +904,12 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
     # [forward] Debug: new_row.shape = torch.Size([46, 61, 151936]), len(logits) = 1
     # With batch_size = 1, no increase for 15 iterations, then it eventually works its way up to about 3 GiB of additional device memory
     # With batch_size = 1, model_result.logits, it's about 1.9 GiB instead of ~3 GiB of additional device memory, but jumps to about 3.6 GiB after the torch.cat operation
+    #
+    # Doing the aggregation logits.append(model_result_logits) and result = torch.cat(logits, dim=0) on the CPU saves about 1 GiB of GPU memory, at a cost of about 10% slower performance per iteration for a 500M parameter model
+    # For Phi-3 (3,821,079,552 parameters), it only saves about 300 MiB of GPU memory.
+    # For Gemma 2 (2,614,341,888 parameters),
+    
+    
     for i in range(0, input_ids.shape[0], batch_size):
         
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"forward - beginning of loop iteration {i + 1}")
@@ -924,13 +930,18 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}'")
 
-        logits.append(model_result.logits)
-        #print(f"[forward] Debug: new_row.shape = {model_result.logits.shape}, len(logits) = {len(logits)}")
-        #new_row = model_result.logits.detach().clone()
+        model_result_logits = model_result.logits
+        if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.forward_device:
+            model_result_logits = model_result_logits.to(attack_state.forward_device)
+
+        logits.append(model_result_logits)
+        #print(f"[forward] Debug: new_row.shape = {model_result_logits.shape}, len(logits) = {len(logits)}")
+        #new_row = model_result_logits.detach().clone()
         #logits.append(new_row)
         #print(f"[forward] Debug: new_row.shape = {new_row.shape}, len(logits) = {len(logits)}")
 
         del model_result
+        del model_result_logits
         del batch_input_ids
         del batch_attention_mask
         gc.collect()
@@ -939,7 +950,11 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
     result = torch.cat(logits, dim=0)
     del logits
     gc.collect()
-    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "forward - after creating result")    
+    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "forward - after creating result")
+    if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.forward_device:
+        result = result.to(attack_state.model_device)
+        gc.collect()
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "forward - after converting result to model device")
     return result
 
 # In this function, the logits returned by get_logits and forward are compared against the token IDs returned by get_logits

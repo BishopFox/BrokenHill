@@ -71,7 +71,7 @@ This is the most significant update to Broken Hill since its public release in S
     * `--save-options`
 	* `--load-options`
 	* `--load-options-from-state`
-  * *Experimental* `--model-device` and `--gradient-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
+  * *Experimental* `--model-device`, `--gradient-device`, and `--forward-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
   * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
 * A few additions to the default jailbreak detection rules.
