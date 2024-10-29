@@ -3,8 +3,10 @@
 import json
 
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
-from fastchat.conversation import Conversation
-from fastchat.conversation import SeparatorStyle
+import fastchat as fschat
+import fastchat.conversation as fschat_conversation
+# from fastchat.conversation import Conversation
+# from fastchat.conversation import SeparatorStyle
 
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
@@ -43,24 +45,24 @@ def get_apply_chat_template_ignored_template_names():
 
 def fschat_separator_style_to_string(fschat_separator_style):
     result = None
-    member_map = SeparatorStyle._member_map_
+    member_map = fschat_conversation.SeparatorStyle._member_map_
     for member_name in member_map.keys():
         if member_map[member_name] == fschat_separator_style:
             result = member_name
             break
     if isinstance(result, type(None)):
-        raise SeparatorStyleConversionException(f"Could not convert '{fschat_separator_style}' to a string because it was not in the _member_map_ list for the SeparatorStyle enum ({member_map})")
+        raise SeparatorStyleConversionException(f"Could not convert '{fschat_separator_style}' to a string because it was not in the _member_map_ list for the fschat_conversation.SeparatorStyle enum ({member_map})")
     return result
 
 def fschat_separator_style_from_string(fschat_separator_style_string):
     result = None
-    member_map = SeparatorStyle._member_map_
+    member_map = fschat_conversation.SeparatorStyle._member_map_
     for member_name in member_map.keys():
         if member_name == fschat_separator_style_string:
             result = member_map[member_name]
             break
     if isinstance(result, type(None)):
-        raise SeparatorStyleConversionException(f"Could not convert '{fschat_separator_style_string}' to a SeparatorStyle because it was not in the _member_map_ list for the SeparatorStyle enum ({member_map})")
+        raise SeparatorStyleConversionException(f"Could not convert '{fschat_separator_style_string}' to a SeparatorStyle because it was not in the _member_map_ list for the fschat_conversation.SeparatorStyle enum ({member_map})")
     return result
 
 def fschat_conversation_template_to_dict(fschat_conversation_template):
@@ -84,7 +86,7 @@ def fschat_conversation_template_to_json(fschat_conversation_template):
     return json.dumps(result_dict)
     
 def fschat_conversation_template_from_dict(fschat_conversation_template_dict):
-    result = fastchat.conversation.Conversation
+    result = fschat_conversation.Conversation
     try:
         result.name = fschat_conversation_template_dict["name"]
         result.system_template = fschat_conversation_template_dict["system_template"]

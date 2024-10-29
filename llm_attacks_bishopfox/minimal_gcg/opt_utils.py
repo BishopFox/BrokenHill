@@ -6,9 +6,6 @@ import numpy
 import psutil
 import re
 import torch
-import torch.nn as nn
-from transformers import AutoModelForCausalLM
-from transformers import AutoTokenizer
 
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
@@ -399,10 +396,10 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
 
     if attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.CROSS_ENTROPY:
         try:
-            loss = nn.CrossEntropyLoss()(loss_logits, targets)
+            loss = torch.nn.CrossEntropyLoss()(loss_logits, targets)
             got_loss = True
         except Exception as e:
-            raise GradientCreationException(f"Error calling nn.CrossEntropyLoss()(loss_logits, targets) with loss_logits = '{loss_logits}', targets = '{targets}': {e}")
+            raise GradientCreationException(f"Error calling torch.nn.CrossEntropyLoss()(loss_logits, targets) with loss_logits = '{loss_logits}', targets = '{targets}': {e}")
 
     # TKTK: fix this
     # if not got_loss and attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.MELLOWMAX:
@@ -967,14 +964,14 @@ def target_loss(attack_state, logits, ids, input_id_data):
     loss_logits = logits[0,input_id_data.slice_data.loss,:]
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating loss_logits")
     if attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.CROSS_ENTROPY:
-        crit = nn.CrossEntropyLoss(reduction='none')
+        crit = torch.nn.CrossEntropyLoss(reduction='none')
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating crit")
         loss = crit(logits_sliced_transposed, ids_sliced)
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating loss")
         got_loss = True
     # if not got_loss and attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.MELLOWMAX:
         # #loss = mellowmax(-loss_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1)
-        # #crit = nn.CrossEntropyLoss(reduction='none')
+        # #crit = torch.nn.CrossEntropyLoss(reduction='none')
         # #loss = crit(logits_sliced_transposed, ids_sliced)
         # #print(f"[target_loss] Debug: cross-entropy loss = '{loss}'")
         
@@ -995,137 +992,3 @@ def target_loss(attack_state, logits, ids, input_id_data):
 
     return result
 
-def get_missing_pad_token_names():
-    result = [  "unk", 
-                "bos",
-                "eos" ]
-    return result
-
-def get_missing_pad_token_replacement(tokenizer, replacement_name):
-    allowed_names = get_missing_pad_token_names()
-    if replacement_name not in get_missing_pad_token_names():
-        raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
-    result = None
-    if replacement_name == "bos":
-        result = tokenizer.bos_token_id, tokenizer.bos_token
-    if replacement_name == "eos":
-        result = tokenizer.eos_token_id, tokenizer.eos_token
-    if replacement_name == "unk":
-        result = tokenizer.unk_token_id, tokenizer.unk_token
-    return result
-
-def load_model_and_tokenizer(attack_state):
-    #print(f"[load_model_and_tokenizer] Debug: attack_state.persistable.attack_params.model_path = '{attack_state.persistable.attack_params.model_path}', attack_state.persistable.attack_params.tokenizer_path = '{attack_state.persistable.attack_params.tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
-
-    #if ignore_mismatched_sizes:
-    #    kwargs["ignore_mismatched_sizes"] = True
-
-    # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
-    # Inspired by the following PyTorch output:
-    #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
-    #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
-
-    model = None
-
-    if attack_state.model_weight_type is None:
-        model = AutoModelForCausalLM.from_pretrained(
-                attack_state.persistable.attack_params.model_path,
-                trust_remote_code = attack_state.persistable.attack_params.load_options_trust_remote_code,
-                ignore_mismatched_sizes = attack_state.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                low_cpu_mem_usage = attack_state.persistable.attack_params.low_cpu_mem_usage,
-                use_cache = attack_state.persistable.attack_params.use_cache
-            ).to(attack_state.model_device).eval()
-    else:
-        # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
-        charlie_prince_bf16 = False
-        charlie_prince_fp16 = False
-        charlie_prince_fp32 = False
-        if attack_state.model_weight_type == torch.bfloat16:
-            charlie_prince_bf16 = True
-        if attack_state.model_weight_type == torch.float16:
-            charlie_prince_fp16 = True
-        if attack_state.model_weight_type == torch.float32:
-            charlie_prince_fp32= True
-        #print(f"[load_model_and_tokenizer] Debug: attack_state.model_weight_type = {attack_state.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                    attack_state.persistable.attack_params.model_path,
-                    torch_dtype = attack_state.model_weight_type,
-                    bf16 = charlie_prince_bf16,
-                    fp16 = charlie_prince_fp16,
-                    fp32 = charlie_prince_fp32,
-                    trust_remote_code = attack_state.persistable.attack_params.load_options_trust_remote_code,
-                    ignore_mismatched_sizes = attack_state.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                    low_cpu_mem_usage = attack_state.persistable.attack_params.low_cpu_mem_usage,
-                    use_cache = attack_state.persistable.attack_params.use_cache
-                ).to(attack_state.model_device).eval()
-        except Exception as e:
-            #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
-            model = AutoModelForCausalLM.from_pretrained(
-                    attack_state.persistable.attack_params.model_path,
-                    torch_dtype = attack_state.model_weight_type,
-                    trust_remote_code = attack_state.persistable.attack_params.load_options_trust_remote_code,
-                    ignore_mismatched_sizes = attack_state.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                    low_cpu_mem_usage = attack_state.persistable.attack_params.low_cpu_mem_usage,
-                    use_cache = attack_state.persistable.attack_params.use_cache
-                ).to(attack_state.model_device).eval()                
-    
-    tokenizer_path_to_load = attack_state.persistable.attack_params.model_path
-    if attack_state.persistable.attack_params.tokenizer_path is not None:
-        tokenizer_path_to_load = attack_state.persistable.attack_params.tokenizer_path
-    
-    #print(f"[load_model_and_tokenizer] Debug: attack_state.persistable.attack_params.tokenizer_path = '{attack_state.persistable.attack_params.tokenizer_path}', attack_state.persistable.attack_params.model_path = '{attack_state.persistable.attack_params.model_path}'")
-
-    tokenizer = None
-    
-    #is_mamba = args.model_name.startswith("state-spaces/mamba-")
-    #    if is_mamba:
-    #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-    #model = MambaLMHeadModel.from_pretrained(args.model_name, device = attack_state.model_device, attack_state.model_weight_type = attack_state.model_weight_type)
-    
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_path_to_load,
-            trust_remote_code = attack_state.persistable.attack_params.load_options_trust_remote_code,
-            use_fast = False
-        )
-    except Exception as e:
-        handled = False
-        #if isinstance(e, ValueError):
-        if 2 > 1:
-            print(f"[load_model_and_tokenizer] Warning: unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    tokenizer_path_to_load,
-                    trust_remote_code = attack_state.persistable.attack_params.load_options_trust_remote_code,
-                    use_fast = True
-                )
-                handled = True
-            except Exception as e2:
-                print(f"[load_model_and_tokenizer] Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'")
-                raise e        
-        if not handled:
-            print(f"[load_model_and_tokenizer] Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
-            raise e
-    
-    if attack_state.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
-        if 'oasst-sft-6-llama-30b' in tokenizer_path_to_load:
-            tokenizer.bos_token_id = 1
-            tokenizer.unk_token_id = 0
-        if 'guanaco' in tokenizer_path_to_load:
-            tokenizer.eos_token_id = 2
-            tokenizer.unk_token_id = 0
-        if 'llama-2' in tokenizer_path_to_load:
-            tokenizer.pad_token = tokenizer.unk_token
-            tokenizer.padding_side = 'left'
-        if 'falcon' in tokenizer_path_to_load:
-            tokenizer.padding_side = 'left'
-            
-    if not tokenizer.pad_token:
-        if attack_state.persistable.attack_params.missing_pad_token_replacement is not None:
-            tokenizer.pad_token_id, tokenizer.pad_token = get_missing_pad_token_replacement(tokenizer, attack_state.persistable.attack_params.missing_pad_token_replacement)
-            print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{attack_state.persistable.attack_params.missing_pad_token_replacement}' specified by the operator. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
-        else:
-            print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value on the command line.")
-    
-    return model, tokenizer

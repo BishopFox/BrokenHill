@@ -156,6 +156,10 @@ Display detailed information about the model's parameters after loading the mode
 
 Display system resource utilization/performance data every time it's collected instead of only at key intervals.
 
+## --verbose-stats
+
+When Broken Hill finishes testing, it defaults to displaying a relatively short list of overall resource utilization/performance statistics. If `--verbose-stats` is specified, it will instead display a longer list."
+
 ## Setting the prompt and target output
 
 ### --base-prompt <string> --target-output <string>
@@ -228,7 +232,7 @@ Example:
 
 ### --generic-role-template <string>
 
-The Python formatting string to use if fastchat defaults to a generic chat template. e.g `--generic-role-template '[{role}]'`, `--generic-role-template '<|{role}|>'`. (default: `### {role}`)
+The Python formatting string to use if `fschat` defaults to a generic chat template. e.g `--generic-role-template '[{role}]'`, `--generic-role-template '<|{role}|>'`. (default: `### {role}`)
 
 This can be useful for edge cases such as models that tokenize "### Human" into [ "#", "##", " Human" ] instead of [ "###", "Human" ], because the attack depends on being able to locate the role indicators in generated output.
 

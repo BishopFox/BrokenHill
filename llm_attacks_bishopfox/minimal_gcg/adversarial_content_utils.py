@@ -4,15 +4,16 @@ import copy
 import sys
 import torch
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
-import fastchat
+import fastchat as fschat
+import fastchat.conversation as fschat_conversation
 
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token 
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens 
 
-from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
-from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
+#from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
+#from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import get_llama2_and_3_fschat_template_names
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
@@ -40,10 +41,6 @@ TEMPLATE_NAMES_REMOVE_TOKENS_AFTER_TARGET_OUTPUT = [ "aquila-v1", "falcon", "fal
 class PromptGenerationException(Exception):
     pass
 
-def get_default_generic_role_indicator_template():
-    # note: using "### {role}:" instead will cause issues 
-    return "### {role}"
-
 def is_phi3_template(template_name):
     if len(template_name) >3 and template_name[0:4].lower() == "phi3":
         return True
@@ -59,18 +56,17 @@ def is_phi_template(template_name):
         return True
     return False
 
-
 DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
 
 def get_default_conversation_template():
-    return fastchat.conversation.get_conv_template(DEFAULT_CONVERSATION_TEMPLATE_NAME)
+    return fschat_conversation.get_conv_template(DEFAULT_CONVERSATION_TEMPLATE_NAME)
 
 # def get_gemma_conversation_template():
     # conv_template = get_default_conversation_template().copy()
     # conv_template.name = "gemma"
     # conv_template.system_message = "<bos>"
     # conv_template.roles = ("<start_of_turn>user\n", "<start_of_turn>model\n")
-    # conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    # conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     # conv_template.sep="<end_of_turn>\n"
     # conv_template.stop_str="<end_of_turn>"
     # return conv_template
@@ -81,7 +77,7 @@ def get_blenderbot_conversation_template():
     conv_template.system_template="{system_message}"
     conv_template.system_message = ""
     conv_template.roles=tuple(["   ", "  "])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep=""
     conv_template.sep2=""
     conv_template.stop_str=""
@@ -89,7 +85,7 @@ def get_blenderbot_conversation_template():
     return conv_template
 
 def get_daredevil_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("mistral").copy()
+    conv_template = fschat_conversation.get_conv_template("mistral").copy()
     conv_template.name = "daredevil"
     conv_template.system_template = "<s> [INST] {system_message}\n"
     conv_template.sep2 = "</s>"
@@ -102,7 +98,7 @@ def get_felladrin_llama_conversation_template():
 {system_message}"""
     conv_template.system_message=""
     conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
-    conv_template.sep_style=fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep_style=fschat_conversation.SeparatorStyle.CHATML
     conv_template.sep = "<|im_end|>"
     conv_template.stop_str = None
     return conv_template
@@ -116,7 +112,7 @@ def get_gemma_conversation_template():
     #conv_template.roles = ("<start_of_turn>user", "<start_of_turn>model")
     #conv_template.roles=tuple(["<start_of_turn>user", "<start_of_turn>model"])
     conv_template.roles=tuple(["<start_of_turn>user\n", "<start_of_turn>model\n"])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep="<end_of_turn>\n"
     #conv_template.stop_str="<end_of_turn>"
     conv_template.stop_str=""
@@ -128,26 +124,26 @@ def get_gptneox_conversation_template():
     conv_template.system_template = "<|system|>\n{system_message}"
     conv_template.system_message = ""
     conv_template.roles = tuple(["<|end|>\n<|user|>\n", "<|end|>\n<|assistant|>\n"])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep = ''
     #conv_template.sep2 = ''
     conv_template.stop_str = "<|end|>\n<|endoftext|>"
     return conv_template
 
 def get_guanaco_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("zero_shot").copy()
+    conv_template = fschat_conversation.get_conv_template("zero_shot").copy()
     conv_template.name = "guanaco"
     conv_template.sep=" ### "
     conv_template.stop_str = " </s>"
     return conv_template
 
 def get_llama2_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("llama-2").copy()
+    conv_template = fschat_conversation.get_conv_template("llama-2").copy()
     conv_template.name = "llama2"
     conv_template.system_template = "<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n"
     if conv_template.system_message is None:
         conv_template.system_message = ""
-    #conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    #conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     #roles=("</s><s>[INST]", "[/INST]"),
     #roles=("[INST]", "[/INST]"),
     #conv_template.sep = ' '
@@ -159,7 +155,7 @@ def get_llama2_conversation_template():
     return conv_template
     
 def get_mpt_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("mpt-7b-chat").copy()
+    conv_template = fschat_conversation.get_conv_template("mpt-7b-chat").copy()
     conv_template.name = "mpt"
     return conv_template
 
@@ -169,7 +165,7 @@ def get_phi2_conversation_template():
     conv_template.system_template = "System: {system_message}\n"
     conv_template.system_message = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions."
     conv_template.roles = tuple(["User", "Assistant"])
-    #conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    #conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep = '\n'
     conv_template.sep2 = '\n'
     return conv_template
@@ -182,14 +178,14 @@ def get_phi3_conversation_template():
     conv_template.system_message = ""
     #conv_template.roles = tuple(["\n<|user|>", "\n<|assistant|>"])
     conv_template.roles = tuple(["<|end|>\n<|user|>\n", "<|end|>\n<|assistant|>\n"])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
     conv_template.sep = ''
     #conv_template.sep2 = ''
     conv_template.stop_str = "<|end|>\n<|endoftext|>"
     return conv_template
 
 def get_qwen_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("qwen-7b-chat").copy()
+    conv_template = fschat_conversation.get_conv_template("qwen-7b-chat").copy()
     conv_template.name = "qwen"
     conv_template.stop_str = None
     return conv_template
@@ -202,7 +198,7 @@ def get_qwen2_conversation_template():
     return conv_template
 
 def get_solar_conversation_template():
-    conv_template = fastchat.conversation.get_conv_template("solar").copy()
+    conv_template = fschat_conversation.get_conv_template("solar").copy()
     conv_template.name = "solar"
     conv_template.system_template = "### System:\n{system_message}"
     conv_template.stop_str = " </s>"
@@ -214,7 +210,7 @@ def get_smollm_conversation_template():
     conv_template.system_template = "<|im_start|>system\n{system_message}"
     conv_template.system_message = ""
     conv_template.roles = ("<|im_start|>user", "<|im_start|>assistant")
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.CHATML
     conv_template.sep="<|im_end|>"
     conv_template.stop_token_ids=[
         0,
@@ -231,7 +227,7 @@ def get_stablelm2_conversation_template():
 {system_message}"""
     conv_template.system_message = "You are a helpful assistant."
     conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.CHATML
     conv_template.sep = "<|im_end|>"
     conv_template.stop_str = None
     return conv_template
@@ -243,7 +239,7 @@ def get_vikhr_conversation_template():
 {system_message}"""
     conv_template.system_message = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
     conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
-    conv_template.sep_style = fastchat.conversation.SeparatorStyle.CHATML
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.CHATML
     conv_template.sep = "<|im_end|>"
     conv_template.stop_str = None
     return conv_template
@@ -251,12 +247,12 @@ def get_vikhr_conversation_template():
 def register_custom_conversation_template(attack_params, fschat_has_existing_template, template_name, template):
     register_conv_template = True
     
-    if template_name in fastchat.conversation.conv_templates.keys():
+    if template_name in fschat_conversation.conv_templates.keys():
         fschat_has_existing_template.append(template_name)
         if attack_params.override_fschat_templates:
-            fastchat.conversation.conv_templates[template_name] = template
+            fschat_conversation.conv_templates[template_name] = template
     else:
-        fastchat.conversation.register_conv_template(template = template, override = True)
+        fschat_conversation.register_conv_template(template = template, override = True)
         
     return fschat_has_existing_template
 
@@ -305,70 +301,7 @@ def register_custom_conversation_templates(attack_params):
                 added_support_message += f"Because --do-not-override-fschat-templates was specified, the fschat version of the template will be used. If you receive warnings or errors from the conversation template self-test, try omitting the --do-not-override-fschat-templates option to use the custom Broken Hill definition instead."
             print(added_support_message)
 
-def load_conversation_template(model_path, template_name = None, generic_role_indicator_template = None, system_prompt = None, clear_existing_template_conversation = False, conversation_template_messages=None):
-    #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'. generic_role_indicator_template='{generic_role_indicator_template}', system_prompt='{system_prompt}', clear_existing_template_conversation='{clear_existing_template_conversation}'")
-    conv_template = None
-    
-    if template_name is not None:
-        if template_name not in fastchat.conversation.conv_templates.keys():
-            print(f"[load_conversation_template] Warning: chat template '{template_name}' was not found in fastchat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
-            template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
-        #print(f"[load_conversation_template] Debug: loading chat template '{template_name}'")
-        conv_template = fastchat.conversation.get_conv_template(template_name)
-    else:
-        #print(f"[load_conversation_template] Debug: determining chat template based on content in '{model_path}'")
-        conv_template = fastchat.model.get_conversation_template(model_path)
-    # make sure fastchat doesn't sneak the one_shot messages in when zero_shot was requested
-    if clear_existing_template_conversation:
-        if hasattr(conv_template, "messages"):
-            #print(f"[load_conversation_template] Debug: resetting conv_template.messages from '{conv_template.messages}' to []")
-            conv_template.messages = []
-        else:
-            print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
-            conv_template.messages = []
-    generic_role_template = get_default_generic_role_indicator_template()
-    if generic_role_indicator_template is not None:
-        # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
-        conv_template.sep_style = fastchat.conversation.SeparatorStyle.NO_COLON_SINGLE
-        #generic_role_template = f"\n{generic_role_indicator_template}"
-        generic_role_template = f" {generic_role_indicator_template}"
-        #generic_role_template = generic_role_indicator_template        
-        conv_template.sep = '\n'
-    # note: the original logic was equivalent to the following:
-    #generic_role_template = "### {role}"
-    if conv_template.name == 'zero_shot':# or conv_template.name == 'one_shot':
-        #conv_template.roles = tuple(['### ' + r for r in conv_template.roles])
-        conv_template.roles = tuple([generic_role_template.format(role=r) for r in conv_template.roles])
-        conv_template.sep = "\n "
-        conv_template.sep2 = "\n "
-    if generic_role_indicator_template is not None:
-        conv_template.roles = tuple([generic_role_template.format(role=r) for r in conv_template.roles])
-    #if conv_template.name == 'llama-2':
-    #    conv_template.sep2 = conv_template.sep2.strip()
-    if system_prompt is not None:
-        if hasattr(conv_template, "system_message"):
-            original_system_message = conv_template.system_message
-            conv_template.system_message = system_prompt
-            #print(f"[load_conversation_template] Debug: replaced default system message '{original_system_message}' with '{system_prompt}'.")
-        else:
-            print("[load_conversation_template] Warning: the option to set the conversation template's system message was enabled, but the template does not include a system message.")
-    if conversation_template_messages is not None:
-        if not hasattr(conv_template, "messages"):
-            conv_template.messages = []
-        #print(f"[load_conversation_template] Debug: existing conversation template messages '{conv_template.messages}'.")
-        for i in range(0, len(conversation_template_messages)):
-            role_id_or_name = conversation_template_messages[i][0]
-            message = conversation_template_messages[i][1]
-            # If role IDs were specified, convert them to the correct format for the template
-            if isinstance(role_id_or_name, int):
-                try:
-                    role_id_or_name = conv_template.roles[role_id_or_name]
-                except Exception as e:
-                    raise Exception("Could not convert the role ID '{}' to an entry in the template's list of roles ('{conv_template.roles}'): {e}")
-            conv_template.messages.append((role_id_or_name, message))
-        #print(f"[load_conversation_template] Debug: customized conversation template messages: '{conv_template.messages}'.")
-    
-    return conv_template
+
 
 class PromptSliceData(JSONSerializableObject):
     def __init__(self):
@@ -704,11 +637,11 @@ class AdversarialContentManager:
     
     def conversation_template_appends_colon_to_role_names(self):
         result = False
-        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_SINGLE:
+        if self.conv_template.sep_style == fschat_conversation.SeparatorStyle.ADD_COLON_SINGLE:
             result = True
-        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_TWO:
+        if self.conv_template.sep_style == fschat_conversation.SeparatorStyle.ADD_COLON_TWO:
             result = True
-        if self.conv_template.sep_style == fastchat.conversation.SeparatorStyle.ADD_COLON_SPACE_SINGLE:
+        if self.conv_template.sep_style == fschat_conversation.SeparatorStyle.ADD_COLON_SPACE_SINGLE:
             result = True
         #print(f"[conversation_template_appends_colon_to_role_names] Debug: self.conv_template.sep_style = {self.conv_template.sep_style}, result = {result}")
         return result

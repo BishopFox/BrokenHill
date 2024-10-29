@@ -11,13 +11,11 @@ from typing import Optional, Any
 
 import numpy
 import peft.peft_model
-import pandas as pd
+#import pandas as pd
 import torch
-import torch.multiprocessing as mp
-import torch.nn as nn
-import torch.nn.functional as F
-# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
-from fastchat.model import get_conversation_template
+#import torch.multiprocessing as mp
+#import torch.nn
+#import torch.nn.functional as F
 #from tokenizers import AddedToken
 from transformers import (AutoTokenizer, GPT2LMHeadModel)
 
@@ -162,11 +160,11 @@ def get_embedding_matrix(model):
     if callable(result):
         result = result()
         #print(f"[get_embedding_matrix] Debug: result after calling original result = {result}")
-        if not isinstance(result, nn.Parameter):
+        if not isinstance(result, torch.nn.Parameter):
             try:
-                result = nn.Parameter(result)
+                result = torch.nn.Parameter(result)
             except Exception as e:
-                result = nn.Parameter(result, requires_grad=False)
+                result = torch.nn.Parameter(result, requires_grad=False)
             #print(f"[get_embedding_matrix] Debug: result after conversion to Parameter = {result}")
     return result
 

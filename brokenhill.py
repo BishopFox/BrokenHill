@@ -72,9 +72,12 @@ def get_short_script_description():
 
 import argparse
 import base64
+import copy
 import datetime
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
-import fastchat.conversation
+#import fastchat.conversation
+import fastchat as fschat
+import fastchat.conversation as fschat_conversation
 import gc
 import locale
 import json
@@ -104,7 +107,6 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillMode
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillRandomNumberGenerators
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillResultData
-from llm_attacks_bishopfox.attack.attack_classes import GenerationResults
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
@@ -112,32 +114,17 @@ from llm_attacks_bishopfox.attack.attack_classes import ModelDataFormatHandling
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PersistableAttackState
 from llm_attacks_bishopfox.attack.attack_classes import VolatileAttackState
-from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
-from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
-from llm_attacks_bishopfox.base.attack_manager import get_embedding_matrix
-from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
-from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
-from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
-from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
-from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
-from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
+from llm_attacks_bishopfox.attack.attack_classes import get_missing_pad_token_names
+#from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
+#from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
 #from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_nonascii_token_list
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
-from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
-from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
-from llm_attacks_bishopfox.llms.large_language_models import print_model_parameter_info
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
-from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_custom_conversation_templates
-from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
-from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import load_conversation_template
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientSamplingException
@@ -147,13 +134,10 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import PaddingException
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_adversarial_content_candidates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_logits
-from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_missing_pad_token_names
-from llm_attacks_bishopfox.minimal_gcg.opt_utils import load_model_and_tokenizer
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
 from llm_attacks_bishopfox.util.util_functions import FakeException
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
-from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
 from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_broken_hill_state_file_name
@@ -169,14 +153,11 @@ from llm_attacks_bishopfox.util.util_functions import numeric_string_to_float
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import str2bool
-from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
-from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
 from llm_attacks_bishopfox.util.util_functions import update_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import verify_output_file_capability
 from peft import PeftModel
 from torch.quantization import quantize_dynamic
 from torch.quantization.qconfig import float_qparams_weight_only_qconfig
-from transformers.generation import GenerationConfig
 
 SAFETENSORS_WEIGHTS_FILE_NAME = "adapter_model.safetensors"
 
@@ -226,77 +207,7 @@ def check_pytorch_devices(attack_params):
         warning_message += f"If you encounter out-of-memory errors when using Broken Hill, consider suspending other processes that use GPU resources, to maximize the amount of memory available to PyTorch. For example, on Linux desktops with a GUI enabled, consider switching to a text-only console to suspend the display manager and free up the associated VRAM. On Debian, Ctrl-Alt-F2 switches to the second console, and Ctrl-Alt-F1 switches back to the default console.\n"
         print(warning_message)
 
-def generate(attack_state, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
-    working_gen_config = gen_config
-    # Copy the generation config to avoid changing the original
-    if gen_config is None:
-        working_gen_config = GenerationConfig.from_dict(config_dict = attack_state.model.generation_config.to_dict())
-    else:
-        working_gen_config = GenerationConfig.from_dict(config_dict = gen_config.to_dict())
-    
-    if temperature != 1.0 and do_sample:
-        working_gen_config.do_sample = True
-        working_gen_config.temperature = temperature
-    if attack_state.persistable.attack_params.display_full_failed_output or generate_full_output:
-        working_gen_config.max_new_tokens = attack_state.persistable.attack_params.full_decoding_max_new_tokens
-    else:
-        working_gen_config.max_new_tokens = attack_state.persistable.attack_params.generation_max_new_tokens
 
-    result = GenerationResults()
-    result.max_new_tokens = working_gen_config.max_new_tokens
-
-    result.input_token_id_data = input_token_id_data
-    input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(attack_state.model_device)
-    input_ids_sliced = input_ids
-    if not include_target_content:
-        input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
-    input_ids_converted = input_ids_sliced.to(attack_state.model.device).unsqueeze(0)
-    attn_masks = torch.ones_like(input_ids_converted).to(attack_state.model.device)
-    
-    if attack_state.persistable.attack_params.use_attention_mask:
-        result.output_token_ids = attack_state.model.generate(input_ids_converted, 
-                                    attention_mask = attn_masks, 
-                                    generation_config = working_gen_config,
-                                    pad_token_id = attack_state.tokenizer.pad_token_id)[0]
-    else:
-        result.output_token_ids = attack_state.model.generate(input_ids_converted, 
-                                    generation_config = working_gen_config,
-                                    pad_token_id = attack_state.tokenizer.pad_token_id)[0]
-    
-    result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
-    
-    result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
-    
-    #print(f"[generate] Debug: result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
-    
-    return result
-    
-def check_for_attack_success(attack_state, input_token_id_data, temperature, jailbreak_detector, gen_config = None, do_sample = True, include_target_content = False):
-    generation_results = generate(attack_state, 
-                                    input_token_id_data, 
-                                    temperature,
-                                    gen_config = gen_config,
-                                    do_sample = do_sample,
-                                    include_target_content = include_target_content)
-                                            
-    result_ar_info_data = AttackResultInfoData()
-    result_ar_info_data.set_values(attack_state.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
-    
-    #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
-    #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
-    
-    jailbroken = False
-    
-    jailbreak_check_result = JailbreakDetectionRuleResult.FAILURE
-    
-    if result_ar_info_data.decoded_llm_output_string.strip() != "":
-        jailbreak_check_result = jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
-
-    if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
-        jailbroken = True
-    #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
-    
-    return jailbroken, result_ar_info_data, generation_results
 
 def main(attack_params):
     attack_state = VolatileAttackState()
@@ -319,12 +230,14 @@ def main(attack_params):
     
     if not attack_params.load_state_from_file:
         attack_state.initialize_devices()
-        attack_state.initialize_random_number_generators()
+        attack_state.initialize_random_number_generators()        
         attack_state.persistable.initialize_language_manager()
+    
+    attack_state.initialize_jailbreak_detector()
     
     # if there is not an existing state file, create a new one in the specified directory
     if attack_state.persistable.attack_params.state_file is None:
-        attack_state.persistable.attack_params.state_directory = get_broken_hill_state_file_name(attack_state)
+        attack_state.persistable.attack_params.state_file = os.path.join(attack_state.persistable.attack_params.state_directory, get_broken_hill_state_file_name(attack_state))
 
     # only test write capability if there is not an existing state file, so it's not overwritten
     if not os.path.isfile(attack_state.persistable.attack_params.state_file):
@@ -340,9 +253,6 @@ def main(attack_params):
         print(f"Warning: using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
 
     user_aborted = False
-
-    jailbreak_detector = LLMJailbreakDetector()
-    jailbreak_detector.rule_set = attack_state.persistable.attack_params.jailbreak_detection_rule_set
 
     ietf_tag_names = None
     ietf_tag_data = None
@@ -429,11 +339,7 @@ def main(attack_params):
 
         attack_state.test_conversation_template()
 
-        if attack_state.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
-            if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
-                if not attack_state.persistable.attack_params.ignore_jailbreak_self_tests:
-                    print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
-                    sys.exit(1)
+        attack_state.perform_jailbreak_tests()
         
         if attack_state.persistable.attack_params.operating_mode == BrokenHillMode.GCG_ATTACK_SELF_TEST:
             print(f"Broken Hill has completed all self-test operations and will now exit.")
@@ -858,10 +764,8 @@ def main(attack_params):
                     
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before checking for jailbreak success")
                         #print(f"Checking for success")
-                        is_success, jailbreak_check_data, jailbreak_check_generation_results = check_for_attack_success(attack_state,
-                                                best_new_adversarial_content_input_token_id_data,
+                        is_success, jailbreak_check_data, jailbreak_check_generation_results = attack_state.check_for_attack_success(best_new_adversarial_content_input_token_id_data,
                                                 current_temperature,
-                                                jailbreak_detector,
                                                 do_sample = do_sample)            
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after checking for jailbreak success")
                         if is_success:
@@ -887,7 +791,7 @@ def main(attack_params):
                                 numpy.random.seed(random_seed)
                                 torch.manual_seed(random_seed)
                                 torch.cuda.manual_seed_all(random_seed)
-                            generation_results = generate(attack_state, best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
+                            generation_results = attack_state.generate(best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
                             full_output_data.set_values(attack_state.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
@@ -1037,11 +941,12 @@ def main(attack_params):
     attack_state.persistable.overall_result_data.end_date_time = end_ts
     attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
     # collect the stats now so that they're in the files that are written
-    overall_stats = attack_state.persistable.performance_data.get_overall_statistics()
+    attack_state.persistable.performance_data.populate_statistics()
     #if attack_state.persistable.attack_params.json_output_file is not None:
     #    safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
     attack_state.write_output_files()
     attack_state.write_persistent_state()
+    attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
     
     
 
@@ -1130,11 +1035,11 @@ if __name__=='__main__':
         help=f"Experimental: specify the type to load the model's data as. 'as-is' will load the data in its native format.  Default: float16. Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.")    
     
     parser.add_argument("--template", type = str, 
-        help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fastchat library will attempt to load the correct template based on the base model directory contents.")
+        help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fschat library will attempt to load the correct template based on the base model directory contents.")
 
     parser.add_argument("--list-templates", type = str2bool, nargs='?',
         const=True,
-        help="Output a list of all template names for the version of the fastchat library you have installed (to use with --template), then exit.")
+        help="Output a list of all template names for the version of the fschat library you have installed (to use with --template), then exit.")
         
     parser.add_argument("--do-not-override-fschat-templates", type = str2bool, nargs='?',
         const=True,
@@ -1374,7 +1279,7 @@ if __name__=='__main__':
     #    help=f"If --random-seed-comparisons is set to 1 or more, use this statistical function to generate an overall score for the results. Default: median.")
 
     parser.add_argument("--generic-role-template", type = str, 
-        help="The Python formatting string to use if fastchat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
+        help="The Python formatting string to use if fschat defaults to a generic chat template. e.g --generic-role-template '[{role}]', '<|{role}|>'.")
     
     parser.add_argument("--trust-remote-code", type = str2bool, nargs='?',
         const=True, default=attack_params.load_options_trust_remote_code,
@@ -1407,6 +1312,10 @@ if __name__=='__main__':
     parser.add_argument("--verbose-resource-info", type = str2bool, nargs='?',
         const=True, default=attack_params.verbose_resource_info,
         help="Display system resource utilization/performance information every time it's collected instead of only at key intervals.")
+
+    parser.add_argument("--verbose-stats", type = str2bool, nargs='?',
+        const=True, default=attack_params.verbose_statistics,
+        help="Display verbose resource utilization/performance statistics when Broken Hill finishes testing, instead of the shorter default list.")
 
     parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
         default=attack_params.required_loss_threshold,
@@ -1543,13 +1452,13 @@ if __name__=='__main__':
 
     if args.list_templates:
         fc_template_list = []
-        for fct_name in fastchat.conversation.conv_templates.keys():
+        for fct_name in fschat_conversation.conv_templates.keys():
             fc_template_list.append(fct_name)
         fc_template_list.sort()     
         list_string = "Custom conversation templates developed by Bishop Fox:\n"
         for ct_name in get_custom_conversation_template_names():
             list_string += f"{ct_name}\n"
-        list_string += "\nAll templates included with the version of the fastchat library in your environment:\n"
+        list_string += "\nAll templates included with the version of the fschat library (frequently referred to as 'fastchat') in your environment:\n"
         for fctl in fc_template_list:
             list_string += f"{fctl}\n"
         print(list_string)
@@ -1922,6 +1831,8 @@ if __name__=='__main__':
         attack_params.verbose_model_parameter_info = True
     
     attack_params.verbose_resource_info = args.verbose_resource_info
+    
+    attack_params.verbose_statistics = args.verbose_stats
 
     attack_params.break_on_success = args.break_on_success
     
@@ -2066,7 +1977,7 @@ if __name__=='__main__':
             if not os.path.isdir(attack_params.state_directory):
                 set_default_state_directory = True
         if set_default_state_directory:
-            attack_params.state_directory = os.path.abspath(os.path.join(pathlib.Path.home(), default_state_directory))
+            attack_params.state_directory = os.path.abspath(os.path.join(pathlib.Path.home(), attack_params.default_state_directory))
 
     if args.load_state:
         attack_params.load_state_from_file = os.path.abspath(args.load_state)

@@ -52,13 +52,17 @@ This is the most significant update to Broken Hill since its public release in S
   * `gptneox`
   * `solar`
   * `vikhr`
+* System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.
+  * Use `--verbose-resource-info` to display the data every time it's collected. This is probably only useful when debugging Broken Hill.
+* The resource utilization information is used to compile and display statistical information at the end of a test.
+  * By default, a relatively short list of statistics are displayed.
+  * Use `--verbose-stats` to output the complete list instead.
 * Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
 * Added the following additional [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
-  * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.
-  * `--verbose-resource-info`, which displays system resource utilization/performance data every time it's collected instead of only at key intervals.
+  * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.  
   * `--model-parameter-info`, which displays more detailed information about the model's parameters.
   * [Option-saving and loading](docs/all_command-line_options.md#saving-and-reusing-broken-hill-options):
     * `--save-options`

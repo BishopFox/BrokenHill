@@ -1,6 +1,7 @@
 #!/bin/env python
 
 import datetime
+import json
 import math
 import os
 import pathlib
@@ -111,7 +112,7 @@ def get_string_option_from_sys_argv(sys_argv, option_flag, return_first = False)
     for i in range(0, len(sys.argv)):        
         if sys.argv[i] == option_flag:
             if i == (len(sys.argv) - 1):
-                print(f"The option {} requires a second parameter, and none was found.")
+                print(f"The option {option_flag} requires a second parameter, and none was found.")
                 sys.exit(1)
             if return_first:
                 return sys.argv[i + 1]
@@ -122,12 +123,12 @@ def get_string_option_from_sys_argv(sys_argv, option_flag, return_first = False)
 # For getting file content from options (e.g. --load-state somefile.json) prior to using argparse
 def get_file_content_from_sys_argv(sys_argv, option_flag, return_first = False, failure_is_critical = True):
     result = []
-    file_paths = os.path.abspath(get_string_option_from_sys_argv(sys_argv, option_flag, return_first = return_first))
+    file_paths = get_string_option_from_sys_argv(sys_argv, option_flag, return_first = return_first)
     if return_first:
-        return get_file_content(file_paths, failure_is_critical = failure_is_critical)
+        return get_file_content(os.path.abspath(file_paths), failure_is_critical = failure_is_critical)
     else:
         for i in range(0, len(file_paths)):
-            file_content = get_file_content(file_paths[i], failure_is_critical = failure_is_critical)
+            file_content = get_file_content(os.path.abspath(file_paths[i]), failure_is_critical = failure_is_critical)
             if file_content is not None:
                 result.append(file_content)
     return result
@@ -270,11 +271,18 @@ def get_model_size(mdl):
 
 # write content to a temporary file first, then delete any existing output file, then move the temporary file to the output file location
 # Prevents overwriting a complete output file with partial output in the event of a crash
-def safely_write_text_output_file(file_path, content, file_mode = "w"):
+def safely_write_text_output_file(file_path, content, file_mode = "w", create_directory = True):
     file_directory_path = os.path.dirname(file_path)
     if not os.path.isdir(file_directory_path):
-        err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist."
-        raise Exception(err_message)
+        if create_directory:
+            try:
+                pathlib.Path(file_directory_path).mkdir(parents = True, exist_ok = True)
+            except Exception as e:
+                err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist, and Broken Hill could not create it: {e}"
+                raise Exception(err_message)
+        else:
+            err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist."
+            raise Exception(err_message)
     # thanks for deprecating mktemp, Python devs!
     temporary_path = None
     try:

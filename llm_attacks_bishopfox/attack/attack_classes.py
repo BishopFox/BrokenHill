@@ -1,42 +1,77 @@
 #!/bin/env python
 
 import copy
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
+import fastchat as fschat
+import fastchat.conversation as fschat_conversation
 import json
 import numpy
+import os
 import psutil
 import re
 import statistics
+import sys
 import time
 import torch
 import uuid
 
+from transformers import AutoModelForCausalLM
+from transformers import AutoTokenizer
+
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
+from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
 from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
-#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
+from llm_attacks_bishopfox.llms.large_language_models import print_model_parameter_info
+#from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
+from llm_attacks_bishopfox.statistics.statistical_tools import StatisticsCube
 from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
+from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
+
+from transformers.generation import GenerationConfig
 
 class DecodingException(Exception):
     pass
 
 class EncodingException(Exception):
     pass
+
+# TKTK: actually resolve this circular import without code duplication
+# Duplicate of the same value in adversarial_content_utils.py, to avoid a circular import
+DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
+
+def get_default_generic_role_indicator_template():
+    # note: using "### {role}:" instead will cause issues 
+    return "### {role}"
 
 class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
@@ -82,6 +117,25 @@ class ModelDataFormatHandling(StrEnum):
     FORCE_FLOAT64 = 'force_float64'
     FORCE_COMPLEX64 = 'force_complex64'
     FORCE_COMPLEX128 = 'force_complex128'
+
+def get_missing_pad_token_names():
+    result = [  "unk", 
+                "bos",
+                "eos" ]
+    return result
+
+def get_missing_pad_token_replacement(tokenizer, replacement_name):
+    allowed_names = get_missing_pad_token_names()
+    if replacement_name not in get_missing_pad_token_names():
+        raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
+    result = None
+    if replacement_name == "bos":
+        result = tokenizer.bos_token_id, tokenizer.bos_token
+    if replacement_name == "eos":
+        result = tokenizer.eos_token_id, tokenizer.eos_token
+    if replacement_name == "unk":
+        result = tokenizer.unk_token_id, tokenizer.unk_token
+    return result
 
 # not currently implemented
 class AdversarialContentPlacement(StrEnum):
@@ -652,7 +706,7 @@ class AttackParams(JSONSerializableObject):
         # If both this value and add_token_when_no_candidates_returned are enabled, and the prequisites for both apply, then add_token_when_no_candidates_returned will take precedence
         self.delete_token_when_no_candidates_returned = False
 
-        # The formatting string for roles when a model uses one of the generic fastchat templates 
+        # The formatting string for roles when a model uses one of the generic fschat templates 
         # (one_shot, zero_shot, etc.)
         #self.generic_role_indicator_template = get_default_generic_role_indicator_template()
         self.generic_role_indicator_template = None
@@ -701,6 +755,9 @@ class AttackParams(JSONSerializableObject):
         
         # Display system resource/performance information every time it's collected, instead of only at key intervals
         self.verbose_resource_info = False
+        
+        # Display verbose system resource/performance statistics when execution completes
+        self.verbose_statistics = False
 
         # Stop iterating after the first successful jailbreak detection
         self.break_on_success = False
@@ -838,16 +895,18 @@ class AttackParams(JSONSerializableObject):
         if not isinstance(existing_object, AttackParams):
             raise JSONSerializationException(f"Cannot apply properties for the AttackParams class to an instance of the class '{existing_object.__class__.__name__}'")
         super(AttackParams, existing_object).set_properties_from_dict(existing_object, property_dict)
-        if len(existing_object.radiation_gardens) > 0:
-            deserialized_gardens = []
-            for i in range(0, len(existing_object.radiation_gardens)):
-                deserialized_gardens.append(RadiationGarden.from_dict(existing_object.radiation_gardens[i]))
-            existing_object.radiation_gardens = deserialized_gardens
-        if len(existing_object.jailbreak_detection_rule_set) > 0:
-            deserialized_jailbreak_rule_set = []
-            for i in range(0, len(existing_object.jailbreak_detection_rule_set)):
-                deserialized_jailbreak_rule_set.append(LLMJailbreakDetectorRule.from_dict(existing_object.jailbreak_detection_rule_set[i]))
-            existing_object.jailbreak_detection_rule_set = deserialized_jailbreak_rule_set
+        if existing_object.radiation_gardens is not None:
+            if len(existing_object.radiation_gardens) > 0:
+                deserialized_gardens = []
+                for i in range(0, len(existing_object.radiation_gardens)):
+                    deserialized_gardens.append(RadiationGarden.from_dict(existing_object.radiation_gardens[i]))
+                existing_object.radiation_gardens = deserialized_gardens
+        if existing_object.jailbreak_detection_rule_set is not None:
+            if len(existing_object.jailbreak_detection_rule_set) > 0:
+                deserialized_jailbreak_rule_set = []
+                for i in range(0, len(existing_object.jailbreak_detection_rule_set)):
+                    deserialized_jailbreak_rule_set.append(LLMJailbreakDetectorRule.from_dict(existing_object.jailbreak_detection_rule_set[i]))
+                existing_object.jailbreak_detection_rule_set = deserialized_jailbreak_rule_set
         return existing_object
     
     @staticmethod
@@ -973,7 +1032,7 @@ class PersistableAttackState(JSONSerializableObject):
     def initialize_language_manager(self):
         self.language_manager = HumanLanguageManager.from_bundled_json_file()    
     
-    def build_token_allow_and_denylists(self, device):
+    def build_token_allow_and_denylists(self, attack_state):
         self.not_allowed_token_list = copy.deepcopy(self.attack_params.individually_specified_not_allowed_token_list)
         self.not_allowed_token_list_case_insensitive = copy.deepcopy(self.attack_params.individually_specified_not_allowed_token_list_case_insensitive)
         
@@ -993,9 +1052,9 @@ class PersistableAttackState(JSONSerializableObject):
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
         print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
-        self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(self.tokenizer, 
+        self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
             self.not_allowed_token_list, 
-            device = device, 
+            device = attack_state.model_device, 
             additional_token_strings_case_insensitive = self.not_allowed_token_list_case_insensitive, 
             filter_nonascii_tokens = self.attack_params.exclude_nonascii_tokens, 
             filter_nonprintable_tokens = self.attack_params.exclude_nonprintable_tokens, 
@@ -1085,6 +1144,7 @@ class VolatileAttackState():
         self.gradient_device = None
         self.token_denylist_as_cpu_tensor = None
         self.trash_fire_token_treasury = None
+        self.jailbreak_detector = LLMJailbreakDetector()        
     
     def write_persistent_state(self):
         if attack_state.persistable.attack_params.save_state:
@@ -1120,6 +1180,126 @@ class VolatileAttackState():
         self.initialize_random_number_generators()        
         if self.persistable.random_number_generator_states is not None:
             self.random_number_generators.set_states(self.persistable.random_number_generator_states)
+            
+    def initialize_jailbreak_detector(self):
+        self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
+
+    def load_model_and_tokenizer(self):
+        #print(f"[load_model_and_tokenizer] Debug: attack_state.persistable.attack_params.model_path = '{attack_state.persistable.attack_params.model_path}', attack_state.persistable.attack_params.tokenizer_path = '{attack_state.persistable.attack_params.tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
+
+        #if ignore_mismatched_sizes:
+        #    kwargs["ignore_mismatched_sizes"] = True
+
+        # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
+        # Inspired by the following PyTorch output:
+        #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
+        #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
+
+        model = None
+
+        if self.model_weight_type is None:
+            model = AutoModelForCausalLM.from_pretrained(
+                    self.persistable.attack_params.model_path,
+                    trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                    ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                    low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                    use_cache = self.persistable.attack_params.use_cache
+                ).to(self.model_device).eval()
+        else:
+            # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
+            charlie_prince_bf16 = False
+            charlie_prince_fp16 = False
+            charlie_prince_fp32 = False
+            if self.model_weight_type == torch.bfloat16:
+                charlie_prince_bf16 = True
+            if self.model_weight_type == torch.float16:
+                charlie_prince_fp16 = True
+            if self.model_weight_type == torch.float32:
+                charlie_prince_fp32= True
+            #print(f"[load_model_and_tokenizer] Debug: self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_weight_type,
+                        bf16 = charlie_prince_bf16,
+                        fp16 = charlie_prince_fp16,
+                        fp32 = charlie_prince_fp32,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()
+            except Exception as e:
+                #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+                model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_weight_type,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()                
+        
+        tokenizer_path_to_load = self.persistable.attack_params.model_path
+        if self.persistable.attack_params.tokenizer_path is not None:
+            tokenizer_path_to_load = self.persistable.attack_params.tokenizer_path
+        
+        #print(f"[load_model_and_tokenizer] Debug: self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
+
+        tokenizer = None
+        
+        #is_mamba = args.model_name.startswith("state-spaces/mamba-")
+        #    if is_mamba:
+        #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+        #model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_weight_type = self.model_weight_type)
+        
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer_path_to_load,
+                trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                use_fast = False
+            )
+        except Exception as e:
+            handled = False
+            #if isinstance(e, ValueError):
+            if 2 > 1:
+                print(f"[load_model_and_tokenizer] Warning: unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        tokenizer_path_to_load,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        use_fast = True
+                    )
+                    handled = True
+                except Exception as e2:
+                    print(f"[load_model_and_tokenizer] Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'")
+                    raise e        
+            if not handled:
+                print(f"[load_model_and_tokenizer] Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
+                raise e
+        
+        if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
+            if 'oasst-sft-6-llama-30b' in tokenizer_path_to_load:
+                tokenizer.bos_token_id = 1
+                tokenizer.unk_token_id = 0
+            if 'guanaco' in tokenizer_path_to_load:
+                tokenizer.eos_token_id = 2
+                tokenizer.unk_token_id = 0
+            if 'llama-2' in tokenizer_path_to_load:
+                tokenizer.pad_token = tokenizer.unk_token
+                tokenizer.padding_side = 'left'
+            if 'falcon' in tokenizer_path_to_load:
+                tokenizer.padding_side = 'left'
+                
+        if not tokenizer.pad_token:
+            if self.persistable.attack_params.missing_pad_token_replacement is not None:
+                tokenizer.pad_token_id, tokenizer.pad_token = get_missing_pad_token_replacement(tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
+                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}' specified by the operator. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
+            else:
+                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value on the command line.")
+        
+        return model, tokenizer
+
 
     def load_model(self):
         try:
@@ -1146,7 +1326,7 @@ class VolatileAttackState():
                         self.model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
                         print(self.model_weight_storage_string)
             try:
-                self.model, self.tokenizer = load_model_and_tokenizer(self)
+                self.model, self.tokenizer = self.load_model_and_tokenizer()
             except Exception as e:
                 tokenizer_message = ""
                 if self.persistable.attack_params.tokenizer_path is not None and self.persistable.attack_params.tokenizer_path != "":
@@ -1187,7 +1367,7 @@ class VolatileAttackState():
             sys.exit(1)
 
     def build_token_allow_and_denylists(self):
-        self.persistable.build_token_allow_and_denylists(self.model_device)
+        self.persistable.build_token_allow_and_denylists(self)
         
     def get_token_denylist_as_cpu_tensor(self):
         if self.token_denylist_as_cpu_tensor is None:
@@ -1205,8 +1385,8 @@ class VolatileAttackState():
                 sys.exit(1)
             self.persistable.performance_data.collect_torch_stats(self, location_description = "before quantizing model")
             print(f"Quantizing model to '{self.persistable.attack_params.quantization_dtype}'")    
-            #self.model = quantize_dynamic(model = self.model, qconfig_spec = {nn.LSTM, nn.Linear}, dtype = quantization_dtype, inplace = False)
-            self.model = quantize_dynamic(model = self.model, qconfig_spec = {nn.LSTM, nn.Linear}, dtype = self.persistable.attack_params.quantization_dtype, inplace = True)
+            #self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = quantization_dtype, inplace = False)
+            self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = self.persistable.attack_params.quantization_dtype, inplace = True)
             self.persistable.performance_data.collect_torch_stats(self, location_description = "after quantizing model")
 
         if self.persistable.attack_params.enable_static_quantization:
@@ -1229,7 +1409,69 @@ class VolatileAttackState():
     def load_conversation_template(self):
         #print(f"[main] Debug: registering conversation templates.")
         self.persistable.performance_data.collect_torch_stats(self, location_description = "before loading conversation template")
-        self.conversation_template = load_conversation_template(self.persistable.attack_params.model_path, template_name = self.persistable.attack_params.template_name, generic_role_indicator_template = self.persistable.attack_params.generic_role_indicator_template, system_prompt = self.persistable.attack_params.custom_system_prompt, clear_existing_template_conversation = self.persistable.attack_params.clear_existing_template_conversation, conversation_template_messages=attack_params.conversation_template_messages)
+        
+        #print(f"[load_conversation_template] Debug: loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
+        self.conversation_template = None
+        
+        if self.persistable.attack_params.template_name is not None:
+            if self.persistable.attack_params.template_name not in fschat_conversation.conv_templates.keys():
+                print(f"[load_conversation_template] Warning: chat template '{self.persistable.attack_params.template_name}' was not found in fschat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
+                self.persistable.attack_params.template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
+            #print(f"[load_conversation_template] Debug: loading chat template '{self.persistable.attack_params.template_name}'")
+            self.conversation_template = fschat_conversation.get_conv_template(self.persistable.attack_params.template_name)
+        else:
+            #print(f"[load_conversation_template] Debug: determining chat template based on content in '{self.persistable.attack_params.model_path}'")
+            self.conversation_template = fschat.model.get_conversation_template(self.persistable.attack_params.model_path)
+        # make sure fschat doesn't sneak the one_shot messages in when zero_shot was requested
+        if self.persistable.attack_params.clear_existing_template_conversation:
+            if hasattr(self.conversation_template, "messages"):
+                #print(f"[load_conversation_template] Debug: resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
+                self.conversation_template.messages = []
+            else:
+                print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
+                self.conversation_template.messages = []
+        generic_role_template = get_default_generic_role_indicator_template()
+        if self.persistable.attack_params.generic_role_indicator_template is not None:
+            # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
+            self.conversation_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
+            #generic_role_template = f"\n{self.persistable.attack_params.generic_role_indicator_template}"
+            generic_role_template = f" {self.persistable.attack_params.generic_role_indicator_template}"
+            #generic_role_template = self.persistable.attack_params.generic_role_indicator_template        
+            self.conversation_template.sep = '\n'
+        # note: the original logic was equivalent to the following:
+        #generic_role_template = "### {role}"
+        if self.conversation_template.name == 'zero_shot':# or self.conversation_template.name == 'one_shot':
+            #self.conversation_template.roles = tuple(['### ' + r for r in self.conversation_template.roles])
+            self.conversation_template.roles = tuple([generic_role_template.format(role=r) for r in self.conversation_template.roles])
+            self.conversation_template.sep = "\n "
+            self.conversation_template.sep2 = "\n "
+        if self.persistable.attack_params.generic_role_indicator_template is not None:
+            self.conversation_template.roles = tuple([generic_role_template.format(role=r) for r in self.conversation_template.roles])
+        #if self.conversation_template.name == 'llama-2':
+        #    self.conversation_template.sep2 = self.conversation_template.sep2.strip()
+        if self.persistable.attack_params.custom_system_prompt is not None:
+            if hasattr(self.conversation_template, "system_message"):
+                original_system_message = self.conversation_template.system_message
+                self.conversation_template.system_message = self.persistable.attack_params.custom_system_prompt
+                #print(f"[load_conversation_template] Debug: replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
+            else:
+                print("[load_conversation_template] Warning: the option to set the conversation template's system message was enabled, but the template does not include a system message.")
+        if self.persistable.attack_params.conversation_template_messages is not None:
+            if not hasattr(self.conversation_template, "messages"):
+                self.conversation_template.messages = []
+            #print(f"[load_conversation_template] Debug: existing conversation template messages '{self.conversation_template.messages}'.")
+            for i in range(0, len(self.persistable.attack_params.conversation_template_messages)):
+                role_id_or_name = self.persistable.attack_params.conversation_template_messages[i][0]
+                message = self.persistable.attack_params.conversation_template_messages[i][1]
+                # If role IDs were specified, convert them to the correct format for the template
+                if isinstance(role_id_or_name, int):
+                    try:
+                        role_id_or_name = self.conversation_template.roles[role_id_or_name]
+                    except Exception as e:
+                        raise Exception("Could not convert the role ID '{}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
+                self.conversation_template.messages.append((role_id_or_name, message))
+            #print(f"[load_conversation_template] Debug: customized conversation template messages: '{self.conversation_template.messages}'.")
+        
         if self.persistable.attack_params.template_name is not None:
             if self.conversation_template.name != self.persistable.attack_params.template_name:
                 print(f"Warning: the template '{self.persistable.attack_params.template_name}' was specified, but fschat returned the template '{self.conversation_template.name}' in response to that value.")
@@ -1353,10 +1595,8 @@ class VolatileAttackState():
         #print(f"Debug: testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
-        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = check_for_attack_success(self,
-            jailbreak_check_input_token_id_data,
+        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
             1.0,
-            jailbreak_detector,
             do_sample = False)
         
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after generating no-adversarial-content jailbreak test data")
@@ -1376,10 +1616,8 @@ class VolatileAttackState():
                 print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
         #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
-        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = check_for_attack_success(self,
-            jailbreak_check_input_token_id_data,
+        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
             1.0,
-            jailbreak_detector,
             do_sample = False,
             include_target_content = True)
         
@@ -1400,6 +1638,82 @@ class VolatileAttackState():
 
         # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
         
+        if self.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
+            if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
+                if not self.persistable.attack_params.ignore_jailbreak_self_tests:
+                    print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+                    sys.exit(1)
+
+    def generate(self, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
+        working_gen_config = gen_config
+        # Copy the generation config to avoid changing the original
+        if gen_config is None:
+            working_gen_config = GenerationConfig.from_dict(config_dict = self.model.generation_config.to_dict())
+        else:
+            working_gen_config = GenerationConfig.from_dict(config_dict = gen_config.to_dict())
+        
+        if temperature != 1.0 and do_sample:
+            working_gen_config.do_sample = True
+            working_gen_config.temperature = temperature
+        if self.persistable.attack_params.display_full_failed_output or generate_full_output:
+            working_gen_config.max_new_tokens = self.persistable.attack_params.full_decoding_max_new_tokens
+        else:
+            working_gen_config.max_new_tokens = self.persistable.attack_params.generation_max_new_tokens
+
+        result = GenerationResults()
+        result.max_new_tokens = working_gen_config.max_new_tokens
+
+        result.input_token_id_data = input_token_id_data
+        input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(self.model_device)
+        input_ids_sliced = input_ids
+        if not include_target_content:
+            input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
+        input_ids_converted = input_ids_sliced.to(self.model.device).unsqueeze(0)
+        attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
+        
+        if self.persistable.attack_params.use_attention_mask:
+            result.output_token_ids = self.model.generate(input_ids_converted, 
+                                        attention_mask = attn_masks, 
+                                        generation_config = working_gen_config,
+                                        pad_token_id = self.tokenizer.pad_token_id)[0]
+        else:
+            result.output_token_ids = self.model.generate(input_ids_converted, 
+                                        generation_config = working_gen_config,
+                                        pad_token_id = self.tokenizer.pad_token_id)[0]
+        
+        result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
+        
+        result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
+        
+        #print(f"[generate] Debug: result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+        
+        return result
+        
+    def check_for_attack_success(self, input_token_id_data, temperature, gen_config = None, do_sample = True, include_target_content = False):
+        generation_results = self.generate(input_token_id_data, 
+                                        temperature,
+                                        gen_config = gen_config,
+                                        do_sample = do_sample,
+                                        include_target_content = include_target_content)
+                                                
+        result_ar_info_data = AttackResultInfoData()
+        result_ar_info_data.set_values(self.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+        
+        #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
+        #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+        
+        jailbroken = False
+        
+        jailbreak_check_result = JailbreakDetectionRuleResult.FAILURE
+        
+        if result_ar_info_data.decoded_llm_output_string.strip() != "":
+            jailbreak_check_result = self.jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
+
+        if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
+            jailbroken = True
+        #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
+        
+        return jailbroken, result_ar_info_data, generation_results
 
 class AttackResultInfoData(JSONSerializableObject):
     def __init__(self):
@@ -1859,43 +2173,37 @@ class ResourceUtilizationSnapshot(JSONSerializableObject):
 
 class ResourceUtilizationStatistics(JSONSerializableObject):
     def __init__(self):
-        self.average_values = ResourceUtilizationSnapshot()
-        self.median_values = ResourceUtilizationSnapshot()
-        self.max_values = ResourceUtilizationSnapshot()
-        self.min_values = ResourceUtilizationSnapshot()
-        self.range_values = ResourceUtilizationSnapshot()  
+        self.cpu = StatisticsCube()
+        self.cuda_devices = []
 
-    def add_cuda_device_placeholders_to_snapshot(self, snapshot, cuda_device_count):
+    def add_empty_cuda_device_cubes(self, cuda_device_count):
         for i in range(0, cuda_device_count):
-            placeholder = CUDADeviceUtilizationData()
-            snapshot.cuda_device_data.append(placeholder)
-        return snapshot
-
-    def add_cuda_device_placeholders(self, cuda_device_count):
-        self.average_values = self.add_cuda_device_placeholders_to_snapshot(self.average_values, cuda_device_count)
-        self.median_values = self.add_cuda_device_placeholders_to_snapshot(self.median_values, cuda_device_count)
-        self.max_values = self.add_cuda_device_placeholders_to_snapshot(self.max_values, cuda_device_count)
-        self.min_values = self.add_cuda_device_placeholders_to_snapshot(self.min_values, cuda_device_count)
-        self.range_values = self.add_cuda_device_placeholders_to_snapshot(self.range_values, cuda_device_count)
+            cc = StatisticsCube()
+            self.cuda_devices.append(cc)
 
     def to_dict(self):
         result = super(ResourceUtilizationStatistics, self).properties_to_dict(self)
         return result
     
     @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, ResourceUtilizationStatistics):
+            raise JSONSerializationException(f"Cannot apply properties for the ResourceUtilizationStatistics class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(ResourceUtilizationStatistics, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.cpu is not None:
+            existing_object.cpu = StatisticsCube.from_dict(existing_object.average_values)
+        if existing_object.cuda_devices is not None:
+            if len(existing_object.cuda_devices) > 0:
+                deserialized_content = []
+                for i in range(0, len(existing_object.cuda_devices)):
+                    deserialized_content.append(StatisticsCube.from_dict(existing_object.cuda_devices[i]))
+                existing_object.cuda_devices = deserialized_content
+        return existing_object
+    
+    @staticmethod
     def from_dict(property_dict):
         result = ResourceUtilizationStatistics()
-        super(ResourceUtilizationStatistics, result).set_properties_from_dict(result, property_dict)
-        if result.average_values is not None:
-            result.average_values = ResourceUtilizationSnapshot.from_dict(result.average_values)
-        if result.median_values is not None:
-            result.median_values = ResourceUtilizationSnapshot.from_dict(result.median_values)
-        if result.max_values is not None:
-            result.max_values = ResourceUtilizationSnapshot.from_dict(result.max_values)
-        if result.min_values is not None:
-            result.min_values = ResourceUtilizationSnapshot.from_dict(result.min_values)
-        if result.range_values is not None:
-            result.range_values = ResourceUtilizationSnapshot.from_dict(result.range_values)            
+              
         return result
 
     def to_json(self):
@@ -1912,23 +2220,31 @@ class ResourceUtilizationStatistics(JSONSerializableObject):
 class ResourceUtilizationData(JSONSerializableObject):
     def __init__(self):
         self.snapshots = []
-        self.overall_statistics = None
+        self.statistics = ResourceUtilizationStatistics()
 
     def to_dict(self):
         result = super(ResourceUtilizationData, self).properties_to_dict(self)
         return result
     
     @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, ResourceUtilizationData):
+            raise JSONSerializationException(f"Cannot apply properties for the ResourceUtilizationData class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(ResourceUtilizationData, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.snapshots is not None:
+            if len(existing_object.snapshots) > 0:
+                deserialized_results = []
+                for i in range(0, len(existing_object.snapshots)):
+                    deserialized_results.append(ResourceUtilizationSnapshot.from_dict(existing_object.snapshots[i]))
+                existing_object.snapshots = deserialized_results
+        if existing_object.statistics is not None:
+            existing_object.statistics = ResourceUtilizationStatistics.from_dict(existing_object.statistics)
+        return existing_object
+        
+    @staticmethod
     def from_dict(property_dict):
         result = ResourceUtilizationData()
-        super(ResourceUtilizationData, result).set_properties_from_dict(result, property_dict)
-        if len(result.snapshots) > 0:
-            deserialized_results = []
-            for i in range(0, len(result.snapshots)):
-                deserialized_results.append(ResourceUtilizationSnapshot.from_dict(result.snapshots[i]))
-            result.snapshots = deserialized_results
-        if result.overall_statistics is not None:
-            result.overall_statistics = ResourceUtilizationStatistics.from_dict(result.overall_statistics)
+        result = ResourceUtilizationData.apply_dict(result, property_dict)
         return result
 
     def to_json(self):
@@ -1941,49 +2257,37 @@ class ResourceUtilizationData(JSONSerializableObject):
     def from_json(json_string):
         return ResourceUtilizationData.from_dict(json.loads(json_string))        
 
-
-    def get_overall_statistics(self):
-        result = ResourceUtilizationStatistics()
+    def populate_statistics(self):
+        self.statistics = ResourceUtilizationStatistics()
         
-        # Collect all of the data into arrays to make the calculations easier
-        # Replacing individual properties with arrays like this is kind of a hack/misuse of a weakly-typed language, but whatever.
+        # Collect all of the data into arrays
         # CPU aggregation
-        all_values_cpu = ResourceUtilizationSnapshot()
-        
-        all_values_cpu.process_physical_memory = []
-        all_values_cpu.process_virtual_memory = []
-        all_values_cpu.process_swap = []
-        all_values_cpu.system_physical_memory = []
-        all_values_cpu.system_available_memory = []
-        all_values_cpu.system_in_use_memory = []
-        all_values_cpu.system_memory_util_percent = []
-        all_values_cpu.system_swap_total = []
-        all_values_cpu.system_swap_in_use = []
-        all_values_cpu.system_swap_free = []
-        all_values_cpu.system_swap_percent = []
+        cpu_process_physical_memory = []
+        cpu_process_virtual_memory = []
+        cpu_process_swap = []
+        cpu_system_physical_memory = []
+        cpu_system_available_memory = []
+        cpu_system_in_use_memory = []
+        cpu_system_memory_util_percent = []
+        cpu_system_swap_total = []
+        cpu_system_swap_in_use = []
+        cpu_system_swap_free = []
+        cpu_system_swap_percent = []
         
         # Have to store this separately because there could be an arbitrary number
         cuda_device_values = []
         
-        previous_cuda_device_count = None
-        cuda_device_count_changed_count = None
+        cuda_device_counts = []
         max_num_cuda_devices = 0
-        
         for snapshot_num in range(0, len(self.snapshots)):
-            snap = self.snapshots[snapshot_num]
-            all_values_cpu.process_physical_memory.append(float(snap.process_physical_memory))
-            all_values_cpu.process_virtual_memory.append(float(snap.process_virtual_memory))
-            all_values_cpu.process_swap.append(float(snap.process_swap))
-            all_values_cpu.system_physical_memory.append(float(snap.system_physical_memory))
-            all_values_cpu.system_available_memory.append(float(snap.system_available_memory))
-            all_values_cpu.system_in_use_memory.append(float(snap.system_in_use_memory))
-            all_values_cpu.system_memory_util_percent.append(float(snap.system_memory_util_percent))
-            all_values_cpu.system_swap_total.append(float(snap.system_swap_total))
-            all_values_cpu.system_swap_in_use.append(float(snap.system_swap_in_use))
-            all_values_cpu.system_swap_free.append(float(snap.system_swap_free))
-            all_values_cpu.system_swap_percent.append(float(snap.system_swap_percent))
-            
             num_cuda_devices = len(snap.cuda_device_data)
+            previous_cuda_device_count = None
+            if len(cuda_device_counts) == 0:
+                cuda_device_counts.append(num_cuda_devices)
+            else:
+                previous_cuda_device_count = cuda_device_counts[-1:]
+                if previous_cuda_device_count != num_cuda_devices:
+                    cuda_device_counts.append(num_cuda_devices)
             
             if num_cuda_devices > max_num_cuda_devices:
                 max_num_cuda_devices = num_cuda_devices
@@ -1994,27 +2298,49 @@ class ResourceUtilizationData(JSONSerializableObject):
                 if previous_cuda_device_count != num_cuda_devices:
                     cuda_device_count_changed_count += 1
                     previous_cuda_device_count = num_cuda_devices
+
+        if len(cuda_device_counts) > 1:
+            times_changed = len(cuda_device_counts) - 1
+            print(f"[get_overall_statistics] Warning: the number of detected CUDA devices changed {times_changed} time(s) when Broken Hill analyzed the collected performance data. This strongly implies that testing was performed on more than one system, with non-identical hardware. You should treat any overall statistics (maximum memory use, etc.) with skepticism, as it is likely inaccurate.")
+        
+        self.statistics.add_empty_cuda_device_cubes(max_num_cuda_devices)
+        # collect per-CUDA-device data into arrays using this hack/misuse of a non-strongly-typed language:
+        
+        for cuda_device_num in range(0, max_num_cuda_devices):
+            all_values_cuda_device = CUDADeviceUtilizationData()
+            all_values_cuda_device.device_name = snap.cuda_device_data[cuda_device_num].device_name
+            all_values_cuda_device.device_display_name = snap.cuda_device_data[cuda_device_num].device_display_name
+            all_values_cuda_device.total_memory = []
+            all_values_cuda_device.gpu_used_memory = []
+            all_values_cuda_device.available_memory = []
+            all_values_cuda_device.total_memory_utilization = []
+            all_values_cuda_device.process_reserved_memory = []
+            all_values_cuda_device.process_memory_utilization = []
+            all_values_cuda_device.process_reserved_allocated_memory = []
+            all_values_cuda_device.process_reserved_unallocated_memory = []
+            all_values_cuda_device.process_reserved_utilization = []
+            cuda_device_values.append(all_values_cuda_device)
+        
+        for snapshot_num in range(0, len(self.snapshots)):
+            snap = self.snapshots[snapshot_num]
+            cpu_process_physical_memory.append(float(snap.process_physical_memory))
+            cpu_process_virtual_memory.append(float(snap.process_virtual_memory))
+            cpu_process_swap.append(float(snap.process_swap))
+            #cpu_system_physical_memory.append(float(snap.system_physical_memory))
+            cpu_system_available_memory.append(float(snap.system_available_memory))
+            cpu_system_in_use_memory.append(float(snap.system_in_use_memory))
+            cpu_system_memory_util_percent.append(float(snap.system_memory_util_percent))
+            #cpu_system_swap_total.append(float(snap.system_swap_total))
+            cpu_system_swap_in_use.append(float(snap.system_swap_in_use))
+            cpu_system_swap_free.append(float(snap.system_swap_free))
+            cpu_system_swap_percent.append(float(snap.system_swap_percent))
+            
+            num_cuda_devices = len(snap.cuda_device_data)
+            
             for cuda_device_num in range(0, num_cuda_devices):
-                all_values_cuda_device = None
-                if cuda_device_num < len(cuda_device_values)
-                    all_values_cuda_device = cuda_device_values[cuda_device_num]
-                else:
-                    all_values_cuda_device = CUDADeviceUtilizationData()
-                    all_values_cuda_device.device_name = snap.cuda_device_data[cuda_device_num].device_name
-                    all_values_cuda_device.device_display_name = snap.cuda_device_data[cuda_device_num].device_display_name
-                    cuda_device_values.append(all_values_cuda_device)
-                    all_values_cuda_device.total_memory = []
-                    all_values_cuda_device.gpu_used_memory = []
-                    all_values_cuda_device.available_memory = []
-                    all_values_cuda_device.total_memory_utilization = []
-                    all_values_cuda_device.process_reserved_memory = []
-                    all_values_cuda_device.process_memory_utilization = []
-                    all_values_cuda_device.process_reserved_allocated_memory = []
-                    all_values_cuda_device.process_reserved_unallocated_memory = []
-                    all_values_cuda_device.process_reserved_utilization = []
-                
-                all_values_cuda_device.total_memory.append(float(snap.cuda_device_data[cuda_device_num].total_memory)))
-                all_values_cuda_device.gpu_used_memory.append(float(snap.cuda_device_data[cuda_device_num].gpu_used_memory)
+                all_values_cuda_device = cuda_device_values[cuda_device_num]                
+                #all_values_cuda_device.total_memory.append(float(snap.cuda_device_data[cuda_device_num].total_memory)))
+                all_values_cuda_device.gpu_used_memory.append(float(snap.cuda_device_data[cuda_device_num].gpu_used_memory))
                 all_values_cuda_device.available_memory.append(float(snap.cuda_device_data[cuda_device_num].available_memory))
                 all_values_cuda_device.total_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].total_memory_utilization))
                 all_values_cuda_device.process_reserved_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_memory))
@@ -2022,203 +2348,136 @@ class ResourceUtilizationData(JSONSerializableObject):
                 all_values_cuda_device.process_reserved_allocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_allocated_memory))
                 all_values_cuda_device.process_reserved_unallocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory))
                 all_values_cuda_device.process_reserved_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_utilization))
-                
                 cuda_device_values[cuda_device_num] = all_values_cuda_device
         
-        if cuda_device_count_changed_count > 1:
-            times_changed = cuda_device_count_changed_count - 1
-            print(f"[get_overall_statistics] Warning: the number of detected CUDA devices changed {times_changed} time(s) when Broken Hill analyzed the collected performance data. This strongly implies that testing was performed on more than one system, with non-identical hardware. You should treat any overall statistics (maximum memory use, etc.) with skepticism, as it is likely inaccurate.")
-        
         # Use the arrays to generate the data        
-        result.add_cuda_device_placeholders(max_num_cuda_devices)
-        
-        # CPU
-        # Average
-        result.average_values.process_physical_memory = int(round(statistics.mean(all_values_cpu.process_physical_memory)))
-        result.average_values.process_virtual_memory = int(round(statistics.mean(all_values_cpu.process_virtual_memory)))
-        result.average_values.process_swap = int(round(statistics.mean(all_values_cpu.process_swap)))
-        result.average_values.system_physical_memory = int(round(statistics.mean(all_values_cpu.system_physical_memory)))
-        result.average_values.system_available_memory = int(round(statistics.mean(all_values_cpu.system_available_memory)))
-        result.average_values.system_in_use_memory = int(round(statistics.mean(all_values_cpu.system_in_use_memory)))
-        result.average_values.system_memory_util_percent = statistics.mean(all_values_cpu.system_memory_util_percent)
-        result.average_values.system_swap_total = int(round(statistics.mean(all_values_cpu.system_swap_total)))
-        result.average_values.system_swap_in_use = int(round(statistics.mean(all_values_cpu.system_swap_in_use)))
-        result.average_values.system_swap_free = int(round(statistics.mean(all_values_cpu.system_swap_free)))
-        result.average_values.system_swap_percent = int(round(statistics.mean(all_values_cpu.system_swap_percent)))
-        
-        # Median
-        result.median_values.process_physical_memory = int(round(statistics.median(all_values_cpu.process_physical_memory)))
-        result.median_values.process_virtual_memory = int(round(statistics.median(all_values_cpu.process_virtual_memory)))
-        result.median_values.process_swap = int(round(statistics.median(all_values_cpu.process_swap)))
-        result.median_values.system_physical_memory = int(round(statistics.median(all_values_cpu.system_physical_memory)))
-        result.median_values.system_available_memory = int(round(statistics.median(all_values_cpu.system_available_memory)))
-        result.median_values.system_in_use_memory = int(round(statistics.median(all_values_cpu.system_in_use_memory)))
-        result.median_values.system_memory_util_percent = statistics.median(all_values_cpu.system_memory_util_percent)
-        result.median_values.system_swap_total = int(round(statistics.median(all_values_cpu.system_swap_total)))
-        result.median_values.system_swap_in_use = int(round(statistics.median(all_values_cpu.system_swap_in_use)))
-        result.median_values.system_swap_free = int(round(statistics.median(all_values_cpu.system_swap_free)))
-        result.median_values.system_swap_percent = int(round(statistics.median(all_values_cpu.system_swap_percent)))
+        self.statistics.cpu.add_or_update_dataset("process_physical_memory", cpu_process_physical_memory)
+        self.statistics.cpu.add_or_update_dataset("process_virtual_memory", cpu_process_virtual_memory)
+        self.statistics.cpu.add_or_update_dataset("process_swap", cpu_process_swap)
+        self.statistics.cpu.add_or_update_dataset("system_physical_memory", cpu_system_physical_memory)
+        self.statistics.cpu.add_or_update_dataset("system_available_memory", cpu_system_available_memory)
+        self.statistics.cpu.add_or_update_dataset("system_in_use_memory", cpu_system_in_use_memory)
+        self.statistics.cpu.add_or_update_dataset("system_memory_util_percent", cpu_system_memory_util_percent)
+        self.statistics.cpu.add_or_update_dataset("system_swap_total", cpu_system_swap_total)
+        self.statistics.cpu.add_or_update_dataset("system_swap_in_use", cpu_system_swap_in_use)
+        self.statistics.cpu.add_or_update_dataset("system_swap_free", cpu_system_swap_free)
+        self.statistics.cpu.add_or_update_dataset("system_swap_percent", cpu_system_swap_percent)
 
-        # Max and min
-        for value_num in range(0, len(all_values_cpu.process_physical_memory)):
-            if result.max_values.process_physical_memory is None or result.max_values.process_physical_memory < all_values_cpu.process_physical_memory[value_num]:
-                result.max_values.process_physical_memory = all_values_cpu.process_physical_memory[value_num]
-            if result.max_values.process_virtual_memory is None or result.max_values.process_virtual_memory < all_values_cpu.process_virtual_memory[value_num]:
-                result.max_values.process_virtual_memory = all_values_cpu.process_virtual_memory[value_num]
-            if result.max_values.process_swap is None or result.max_values.process_swap < all_values_cpu.process_swap[value_num]:
-                result.max_values.process_swap = all_values_cpu.process_swap[value_num]
-            if result.max_values.system_physical_memory is None or result.max_values.system_physical_memory < all_values_cpu.system_physical_memory[value_num]:
-                result.max_values.system_physical_memory = all_values_cpu.system_physical_memory[value_num]
-            if result.max_values.system_available_memory is None or result.max_values.system_available_memory < all_values_cpu.system_available_memory[value_num]:
-                result.max_values.system_available_memory = all_values_cpu.system_available_memory[value_num]
-            if result.max_values.system_in_use_memory is None or result.max_values.system_in_use_memory < all_values_cpu.system_in_use_memory[value_num]:
-                result.max_values.system_in_use_memory = all_values_cpu.system_in_use_memory[value_num]
-            if result.max_values.system_memory_util_percent is None or result.max_values.system_memory_util_percent < all_values_cpu.system_memory_util_percent[value_num]:
-                result.max_values.system_memory_util_percent = all_values_cpu.system_memory_util_percent[value_num]
-            if result.max_values.system_swap_total is None or result.max_values.system_swap_total < all_values_cpu.system_swap_total[value_num]:
-                result.max_values.system_swap_total = all_values_cpu.system_swap_total[value_num]
-            if result.max_values.system_swap_in_use is None or result.max_values.system_swap_in_use < all_values_cpu.system_swap_in_use[value_num]:
-                result.max_values.system_swap_in_use = all_values_cpu.system_swap_in_use[value_num]
-            if result.max_values.system_swap_free is None or result.max_values.system_swap_free < all_values_cpu.system_swap_free[value_num]:
-                result.max_values.system_swap_free = all_values_cpu.system_swap_free[value_num]
-            if result.max_values.system_swap_percent is None or result.max_values.system_swap_percent < all_values_cpu.system_swap_percent[value_num]:
-                result.max_values.system_swap_percent = all_values_cpu.system_swap_percent[value_num]
+        for i in range(0, max_num_cuda_devices):
+            #self.statistics.cuda_devices[i].add_or_update_dataset("total_memory", cuda_device_values[i].total_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("gpu_used_memory", cuda_device_values[i].gpu_used_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("available_memory", cuda_device_values[i].available_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("total_memory_utilization", cuda_device_values[i].total_memory_utilization)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_memory", cuda_device_values[i].process_reserved_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_memory_utilization", cuda_device_values[i].process_memory_utilization)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_allocated_memory", cuda_device_values[i].process_reserved_allocated_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_unallocated_memory", cuda_device_values[i].process_reserved_unallocated_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_utilization", cuda_device_values[i].process_reserved_utilization)
 
-            if result.min_values.process_physical_memory is None or result.max_values.process_physical_memory > all_values_cpu.process_physical_memory[value_num]:
-                result.min_values.process_physical_memory = all_values_cpu.process_physical_memory[value_num]
-            if result.min_values.process_virtual_memory is None or result.max_values.process_virtual_memory > all_values_cpu.process_virtual_memory[value_num]:
-                result.min_values.process_virtual_memory = all_values_cpu.process_virtual_memory[value_num]
-            if result.min_values.process_swap is None or result.max_values.process_swap > all_values_cpu.process_swap[value_num]:
-                result.min_values.process_swap = all_values_cpu.process_swap[value_num]
-            if result.min_values.system_physical_memory is None or result.max_values.system_physical_memory > all_values_cpu.system_physical_memory[value_num]:
-                result.min_values.system_physical_memory = all_values_cpu.system_physical_memory[value_num]
-            if result.min_values.system_available_memory is None or result.max_values.system_available_memory > all_values_cpu.system_available_memory[value_num]:
-                result.min_values.system_available_memory = all_values_cpu.system_available_memory[value_num]
-            if result.min_values.system_in_use_memory is None or result.max_values.system_in_use_memory > all_values_cpu.system_in_use_memory[value_num]:
-                result.min_values.system_in_use_memory = all_values_cpu.system_in_use_memory[value_num]
-            if result.min_values.system_memory_util_percent is None or result.max_values.system_memory_util_percent > all_values_cpu.system_memory_util_percent[value_num]:
-                result.min_values.system_memory_util_percent = all_values_cpu.system_memory_util_percent[value_num]
-            if result.min_values.system_swap_total is None or result.max_values.system_swap_total > all_values_cpu.system_swap_total[value_num]:
-                result.min_values.system_swap_total = all_values_cpu.system_swap_total[value_num]
-            if result.min_values.system_swap_in_use is None or result.max_values.system_swap_in_use > all_values_cpu.system_swap_in_use[value_num]:
-                result.min_values.system_swap_in_use = all_values_cpu.system_swap_in_use[value_num]
-            if result.min_values.system_swap_free is None or result.max_values.system_swap_free > all_values_cpu.system_swap_free[value_num]:
-                result.min_values.system_swap_free = all_values_cpu.system_swap_free[value_num]
-            if result.min_values.system_swap_percent is None or result.max_values.system_swap_percent > all_values_cpu.system_swap_percent[value_num]:
-                result.min_values.system_swap_percent = all_values_cpu.system_swap_percent[value_num]
-        
-        # range
-        if result.max_values.process_physical_memory is not None and result.min_values.process_physical_memory is not None:
-            result.range_values.process_physical_memory = result.max_values.process_physical_memory - result.min_values.process_physical_memory
-        if result.max_values.process_virtual_memory is not None and result.min_values.process_virtual_memory is not None:
-            result.range_values.process_virtual_memory = result.max_values.process_virtual_memory - result.min_values.process_virtual_memory
-        if result.max_values.process_swap is not None and result.min_values.process_swap is not None:
-            result.range_values.process_swap = result.max_values.process_swap - result.min_values.process_swap
-        if result.max_values.system_physical_memory is not None and result.min_values.system_physical_memory is not None:
-            result.range_values.system_physical_memory = result.max_values.system_physical_memory - result.min_values.system_physical_memory
-        if result.max_values.system_available_memory is not None and result.min_values.system_available_memory is not None:
-            result.range_values.system_available_memory = result.max_values.system_available_memory - result.min_values.system_available_memory
-        if result.max_values.system_in_use_memory is not None and result.min_values.system_in_use_memory is not None:
-            result.range_values.system_in_use_memory = result.max_values.system_in_use_memory - result.min_values.system_in_use_memory
-        if result.max_values.system_memory_util_percent is not None and result.min_values.system_memory_util_percent is not None:
-            result.range_values.system_memory_util_percent = result.max_values.system_memory_util_percent - result.min_values.system_memory_util_percent
-        if result.max_values.system_swap_total is not None and result.min_values.system_swap_total is not None:
-            result.range_values.system_swap_total = result.max_values.system_swap_total - result.min_values.system_swap_total
-        if result.max_values.system_swap_in_use is not None and result.min_values.system_swap_in_use is not None:
-            result.range_values.system_swap_in_use = result.max_values.system_swap_in_use - result.min_values.system_swap_in_use
-        if result.max_values.system_swap_free is not None and result.min_values.system_swap_free is not None:
-            result.range_values.system_swap_free = result.max_values.system_swap_free - result.min_values.system_swap_free
-        if result.max_values.system_swap_percent is not None and result.min_values.system_swap_percent is not None:
-            result.range_values.system_swap_percent = result.max_values.system_swap_percent - result.min_values.system_swap_percent
-        
-        # CUDA devices
-        for cuda_device_num in range(0, len(cuda_device_values)):
-            cuda_device_data = cuda_device_values[cuda_device_num]
-            
-            # Average
-            result.average_values.cuda_device_data[cuda_device_num].total_memory = int(round(statistics.mean(cuda_device_data.total_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].gpu_used_memory = int(round(statistics.mean(cuda_device_data.gpu_used_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].available_memory = int(round(statistics.mean(cuda_device_data.available_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].total_memory_utilization = statistics.mean(cuda_device_data.total_memory_utilization))
-            result.average_values.cuda_device_data[cuda_device_num].process_reserved_memory = int(round(statistics.mean(cuda_device_data.process_reserved_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].process_memory_utilization = statistics.mean(cuda_device_data.process_memory_utilization))
-            result.average_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory = int(round(statistics.mean(cuda_device_data.process_reserved_allocated_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory = int(round(statistics.mean(cuda_device_data.process_reserved_unallocated_memory)))
-            result.average_values.cuda_device_data[cuda_device_num].process_reserved_utilization = statistics.mean(cuda_device_data.process_reserved_utilization))
-        
-            # Median
-            result.median_values.cuda_device_data[cuda_device_num].total_memory = int(round(statistics.median(cuda_device_data.total_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].gpu_used_memory = int(round(statistics.median(cuda_device_data.gpu_used_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].available_memory = int(round(statistics.median(cuda_device_data.available_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].total_memory_utilization = statistics.median(cuda_device_data.total_memory_utilization))
-            result.median_values.cuda_device_data[cuda_device_num].process_reserved_memory = int(round(statistics.median(cuda_device_data.process_reserved_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].process_memory_utilization = statistics.median(cuda_device_data.process_memory_utilization))
-            result.median_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory = int(round(statistics.median(cuda_device_data.process_reserved_allocated_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory = int(round(statistics.median(cuda_device_data.process_reserved_unallocated_memory)))
-            result.median_values.cuda_device_data[cuda_device_num].process_reserved_utilization = statistics.median(cuda_device_data.process_reserved_utilization))
-            
-            # Max and min
-            for value_num in range(0, len(cuda_device_data.total_memory)):
-                if result.max_values.cuda_device_data[cuda_device_num].total_memory is None or result.max_values.cuda_device_data[cuda_device_num].total_memory < cuda_device_data.total_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].total_memory = cuda_device_data.total_memory
-                if result.max_values.cuda_device_data[cuda_device_num].gpu_used_memory is None or result.max_values.cuda_device_data[cuda_device_num].gpu_used_memory < cuda_device_data.gpu_used_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].gpu_used_memory = cuda_device_data.gpu_used_memory
-                if result.max_values.cuda_device_data[cuda_device_num].available_memory is None or result.max_values.cuda_device_data[cuda_device_num].available_memory < cuda_device_data.available_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].available_memory = cuda_device_data.available_memory
-                if result.max_values.cuda_device_data[cuda_device_num].total_memory_utilization is None or result.max_values.cuda_device_data[cuda_device_num].total_memory_utilization < cuda_device_data.total_memory_utilization:
-                    result.max_values.cuda_device_data[cuda_device_num].total_memory_utilization = cuda_device_data.total_memory_utilization
-                if result.max_values.cuda_device_data[cuda_device_num].process_reserved_memory is None or result.max_values.cuda_device_data[cuda_device_num].process_reserved_memory < cuda_device_data.process_reserved_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].process_reserved_memory = cuda_device_data.process_reserved_memory
-                if result.max_values.cuda_device_data[cuda_device_num].process_memory_utilization is None or result.max_values.cuda_device_data[cuda_device_num].process_memory_utilization < cuda_device_data.process_memory_utilization:
-                    result.max_values.cuda_device_data[cuda_device_num].process_memory_utilization = cuda_device_data.process_memory_utilization
-                if result.max_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory is None or result.max_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory < cuda_device_data.process_reserved_allocated_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory = cuda_device_data.process_reserved_allocated_memory
-                if result.max_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory is None or result.max_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory < cuda_device_data.process_reserved_unallocated_memory:
-                    result.max_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory = cuda_device_data.process_reserved_unallocated_memory
-                if result.max_values.cuda_device_data[cuda_device_num].process_reserved_utilization is None or result.max_values.cuda_device_data[cuda_device_num].process_reserved_utilization < cuda_device_data.process_reserved_utilization:
-                    result.max_values.cuda_device_data[cuda_device_num].process_reserved_utilization = cuda_device_data.process_reserved_utilization
-        
-                if result.min_values.cuda_device_data[cuda_device_num].total_memory is None or result.min_values.cuda_device_data[cuda_device_num].total_memory > cuda_device_data.total_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].total_memory = cuda_device_data.total_memory
-                if result.min_values.cuda_device_data[cuda_device_num].gpu_used_memory is None or result.min_values.cuda_device_data[cuda_device_num].gpu_used_memory > cuda_device_data.gpu_used_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].gpu_used_memory = cuda_device_data.gpu_used_memory
-                if result.min_values.cuda_device_data[cuda_device_num].available_memory is None or result.min_values.cuda_device_data[cuda_device_num].available_memory > cuda_device_data.available_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].available_memory = cuda_device_data.available_memory
-                if result.min_values.cuda_device_data[cuda_device_num].total_memory_utilization is None or result.min_values.cuda_device_data[cuda_device_num].total_memory_utilization > cuda_device_data.total_memory_utilization:
-                    result.min_values.cuda_device_data[cuda_device_num].total_memory_utilization = cuda_device_data.total_memory_utilization
-                if result.min_values.cuda_device_data[cuda_device_num].process_reserved_memory is None or result.min_values.cuda_device_data[cuda_device_num].process_reserved_memory > cuda_device_data.process_reserved_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].process_reserved_memory = cuda_device_data.process_reserved_memory
-                if result.min_values.cuda_device_data[cuda_device_num].process_memory_utilization is None or result.min_values.cuda_device_data[cuda_device_num].process_memory_utilization > cuda_device_data.process_memory_utilization:
-                    result.min_values.cuda_device_data[cuda_device_num].process_memory_utilization = cuda_device_data.process_memory_utilization
-                if result.min_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory is None or result.min_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory > cuda_device_data.process_reserved_allocated_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory = cuda_device_data.process_reserved_allocated_memory
-                if result.min_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory is None or result.min_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory > cuda_device_data.process_reserved_unallocated_memory:
-                    result.min_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory = cuda_device_data.process_reserved_unallocated_memory
-                if result.min_values.cuda_device_data[cuda_device_num].process_reserved_utilization is None or result.min_values.cuda_device_data[cuda_device_num].process_reserved_utilization > cuda_device_data.process_reserved_utilization:
-                    result.min_values.cuda_device_data[cuda_device_num].process_reserved_utilization = cuda_device_data.process_reserved_utilization
-            
-            # Range
-            if result.max_values.cuda_device_data[cuda_device_num].total_memory is not None and result.min_values.cuda_device_data[cuda_device_num].total_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].total_memory = result.max_values.cuda_device_data[cuda_device_num].total_memory - result.min_values.cuda_device_data[cuda_device_num].total_memory
-            if result.max_values.cuda_device_data[cuda_device_num].gpu_used_memory is not None and result.min_values.cuda_device_data[cuda_device_num].gpu_used_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].gpu_used_memory = result.max_values.cuda_device_data[cuda_device_num].gpu_used_memory - result.min_values.cuda_device_data[cuda_device_num].gpu_used_memory
-            if result.max_values.cuda_device_data[cuda_device_num].available_memory is not None and result.min_values.cuda_device_data[cuda_device_num].available_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].available_memory = result.max_values.cuda_device_data[cuda_device_num].available_memory - result.min_values.cuda_device_data[cuda_device_num].available_memory
-            if result.max_values.cuda_device_data[cuda_device_num].total_memory_utilization is not None and result.min_values.cuda_device_data[cuda_device_num].total_memory_utilization is not None:
-                result.range_values.cuda_device_data[cuda_device_num].total_memory_utilization = result.max_values.cuda_device_data[cuda_device_num].total_memory_utilization - result.min_values.cuda_device_data[cuda_device_num].total_memory_utilization
-            if result.max_values.cuda_device_data[cuda_device_num].process_reserved_memory is not None and result.min_values.cuda_device_data[cuda_device_num].process_reserved_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].process_reserved_memory = result.max_values.cuda_device_data[cuda_device_num].process_reserved_memory - result.min_values.cuda_device_data[cuda_device_num].process_reserved_memory
-            if result.max_values.cuda_device_data[cuda_device_num].process_memory_utilization is not None and result.min_values.cuda_device_data[cuda_device_num].process_memory_utilization is not None:
-                result.range_values.cuda_device_data[cuda_device_num].process_memory_utilization = result.max_values.cuda_device_data[cuda_device_num].process_memory_utilization - result.min_values.cuda_device_data[cuda_device_num].process_memory_utilization
-            if result.max_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory is not None and result.min_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory = result.max_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory - result.min_values.cuda_device_data[cuda_device_num].process_reserved_allocated_memory
-            if result.max_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory is not None and result.min_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory is not None:
-                result.range_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory = result.max_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory - result.min_values.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory
-            if result.max_values.cuda_device_data[cuda_device_num].process_reserved_utilization is not None and result.min_values.cuda_device_data[cuda_device_num].process_reserved_utilization is not None:
-                result.range_values.cuda_device_data[cuda_device_num].process_reserved_utilization = result.max_values.cuda_device_data[cuda_device_num].process_reserved_utilization - result.min_values.cuda_device_data[cuda_device_num].process_reserved_utilization
-        self.overall_statistics = result
-        return result
+    def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '    '):
+        new_message = message
+        found_data_in_this_dataset = False
+        if dataset is not None:
+            new_message = f"{new_message}\n{padding}{stat_name}:"
+            if dataset.maximum is not None:
+                found_data_in_this_dataset = True
+                formatted_data = data_format_string.format(dataset.maximum)
+                new_message = f"{new_message}\n{padding}  Maximum: {formatted_data}"
+            if dataset.minimum is not None:
+                found_data_in_this_dataset = True
+                formatted_data = data_format_string.format(dataset.minimum)
+                new_message = f"{new_message}\n{padding}  Minimum: {formatted_data}"
+            if dataset.value_range is not None:
+                found_data_in_this_dataset = True
+                formatted_data = data_format_string.format(dataset.value_range)
+                new_message = f"{new_message}\n{padding}  Range: {formatted_data}"
+            if dataset.median is not None:
+                found_data_in_this_dataset = True
+                formatted_data = data_format_string.format(dataset.median)
+                new_message = f"{new_message}\n{padding}  Median: {formatted_data}"        
+            if dataset.mean is not None:
+                found_data_in_this_dataset = True
+                formatted_data = data_format_string.format(dataset.mean)
+                new_message = f"{new_message}\n{padding}  Average: {formatted_data}"
+        if found_data_in_this_dataset:
+            found_data = True
+            message = new_message
+        return found_data, message
 
+    def output_statistics(self, verbose = False):
+        message = "Resource utilization / performance statistics:"
+        if verbose:
+            message = f"{message} (verbose)"
+        
+        found_data = False
+        
+        found_cpu_data = False        
+        cpu_message = f"{message}\n\n  CPU:"
+        pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process virtual memory", pvm, "{0:.0f}")
+        if verbose:
+            ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process physical memory", ppm, "{0:.0f}")
+        pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process swap memory", pswap, "{0:.0f}")
+        sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory in use", sys_inuse, "{0:.0f}")
+        if verbose:
+            sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory available", sys_avail, "{0:.0f}")
+        sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory utilization", sys_memory_util, "{0:.2f}")
+        sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory in use", sys_swap_inuse, "{0:.0f}")
+        if verbose:
+            sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:.0f}")
+        sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}")
+        if found_cpu_data:
+            found_data = True
+            message = cpu_message
+        
+        found_cuda_data = False
+        cuda_message = f"{message}\n\n  CUDA devices:"
+        cuda_padding = '        '
+        for cuda_device_num in range(0, self.statistics.cuda_devices):
+            found_cuda_device_data = False
+            cd = cuda_devices[cuda_device_num]
+            cuda_device_message = f"\n    Device {cuda_device_num}: {device_display_name} ({device_name})"
+            cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
+            cp_used = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:.0f}", padding = cuda_padding)
+            cp_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}", padding = cuda_padding)
+            if verbose:
+                cp_allocated = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:.0f}", padding = cuda_padding)
+                cp_unallocated = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:.0f}", padding = cuda_padding)
+                cpr_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}", padding = cuda_padding)
+            cuda_device_message = f"{cuda_device_message}\n      System-wide:"
+            cd_used = self.statistics.cuda_devices[cuda_device_num].get_dataset("gpu_used_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:.0f}", padding = cuda_padding)
+            if verbose:
+                cd_avail = self.statistics.cuda_devices[cuda_device_num].get_dataset("available_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:.0f}", padding = cuda_padding)
+            cd_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("total_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}", padding = cuda_padding)
+            
+            if found_cuda_device_data:
+                found_cuda_data = True
+                cuda_message = f"{cuda_message}{cuda_device_message}"
+        
+        if found_cuda_data:
+            found_data = True
+            message = cuda_message
+        
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+    
+        if found_data:
+            print(message)
 
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)

@@ -7,7 +7,6 @@ from copy import deepcopy
 from enum import StrEnum
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import regex_flags_from_list
 from llm_attacks_bishopfox.util.util_functions import regex_flags_to_list
@@ -32,8 +31,7 @@ def generate_trivial_string_variations(input_list):
             done_adding_variations = True
     return result
 
-# Note: "Here are some creative ideas for a 10-year-old's birthday party." is a recurring false-positive 
-# for models that use the fastchat one_shot template.
+# Note: "Here are some creative ideas for a 10-year-old's birthday party." is a recurring false-positive for models that use the fschat one_shot template.
 def get_default_negative_test_strings():
     base_list = [ "a safe and inclusive environment",
                    "a culture of violence",
@@ -394,39 +392,12 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
         result.set_regex()
         return result
 
-    # def to_dict(self):
-        # result = {}
-        # result["match_type"] = self.match_type
-        # result["rule_result"] = self.rule_result
-        # result["pattern"] = self.pattern
-        # result["regex_flags"] = regex_flags_to_list(self.regex_flags)
-        # result["string_match_case_sensitive"] = self.string_match_case_sensitive
-        # return result
-
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
     
     def copy(self):
         return LLMJailbreakDetectorRule.from_dict(self.to_dict())
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = LLMJailbreakDetectorRule()
-        # if "match_type" in property_dict.keys():
-            # result.match_type = property_dict["match_type"]
-        # if "rule_result" in property_dict.keys():
-            # result.rule_result = property_dict["rule_result"]
-        # if "pattern" in property_dict.keys():
-            # result.pattern = property_dict["pattern"]        
-        # if "regex_flags" in property_dict.keys():
-            # result.regex_flags = regex_flags_from_list(property_dict["regex_flags"])
-        # else:
-            # result.regex_flags = re.NOFLAG
-        # result.set_regex()
-        # if "string_match_case_sensitive" in property_dict.keys():
-            # result.string_match_case_sensitive = property_dict["string_match_case_sensitive"]
-        # return result
-    
+        
     @staticmethod
     def from_json(json_string):
         return LLMJailbreakDetectorRule.from_dict(json.loads(json_string))
@@ -458,31 +429,11 @@ class LLMJailbreakDetectorRuleSet(JSONSerializableObject):
             result.rules = deserialized_rules
         return result
 
-    # def to_dict(self):
-        # result = {}
-        # result["rule_set_name"] = self.rule_set_name
-        # result["rules"] = []
-        # for i in range(0, len(self.rules)):
-            # result["rules"].append(self.rules[i].to_dict())
-        
-        # return result
-
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict())
     
     def copy(self):
         return LLMJailbreakDetectorRuleSet.from_dict(self.to_dict())
-    
-    # @staticmethod
-    # def from_dict(property_dict):
-        # result = LLMJailbreakDetectorRuleSet()
-        # if "rule_set_name" in property_dict.keys():
-            # result.rule_set_name = property_dict["rule_set_name"]
-        # result.rules = []
-        # if "rules" in property_dict.keys():
-            # for i in range(0, len(property_dict["rules"])):
-                # result.rules.append(LLMJailbreakDetectorRule.from_dict(property_dict["rules"][i]))        
-        # return result
     
     @staticmethod
     def from_json(json_string):
@@ -531,7 +482,6 @@ class LLMJailbreakDetectorRuleSet(JSONSerializableObject):
             result.rules.append(positive_rule)
         
         return result
-
 
 class LLMJailbreakDetector:
     def __init__(self):

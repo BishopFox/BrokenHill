@@ -90,6 +90,19 @@ class JSONSerializableObject:
                 # deserialized_jailbreak_rule_set.append(LLMJailbreakDetectorRule.from_dict(existing_object.jailbreak_detection_rule_set[i]))
             # existing_object.jailbreak_detection_rule_set = deserialized_jailbreak_rule_set
         # return existing_object
+    
+    # When one of the properties is a dictionary:    
+    # @staticmethod
+    # def apply_dict(existing_object, property_dict):
+        # if not isinstance(existing_object, StatisticsCube):
+            # raise JSONSerializationException(f"Cannot apply properties for the StatisticsCube class to an instance of the class '{existing_object.__class__.__name__}'")
+        # super(StatisticsCube, existing_object).set_properties_from_dict(existing_object, property_dict)
+        # if existing_object.datasets is not None:
+            # deserialized_content = {}
+            # for k in existing_object.datasets.keys():
+                # deserialized_content[k] = (StatisticsDataSet.from_dict(existing_object.datasets[k]))
+            # existing_object.datasets = deserialized_content
+        # return existing_object
 
     # @staticmethod
     # def from_dict(property_dict):

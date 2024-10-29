@@ -10,7 +10,6 @@ import shlex
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 

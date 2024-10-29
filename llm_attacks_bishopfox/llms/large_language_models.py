@@ -9,7 +9,6 @@ from enum import IntFlag
 from enum import auto
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import load_json_from_file
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
