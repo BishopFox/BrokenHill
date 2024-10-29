@@ -10,7 +10,9 @@ import shlex
 import shutil
 import sys
 import tempfile
+import time
 import torch
+import uuid
 
 import numpy
 
@@ -78,6 +80,16 @@ class PyTorchDevice():
             result.append(d)
         return result
 
+# 
+def get_broken_hill_file_name(attack_state, file_type, file_extension):
+    file_uuid = uuid.uuid4()
+    file_ts = time.time_ns()
+    result = f"broken_hill-{file_type}-{file_uuid}-{file_ts}{file_extension}"
+    return result
+
+def get_broken_hill_state_file_name(attack_state):
+    return get_broken_hill_file_name(attack_state, "state", ".json")
+
 def get_escaped_string(input_string):
     #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
     if input_string is None:
@@ -93,6 +105,33 @@ def get_escaped_string(input_string):
     #print(f"[get_escaped_string] Debug: escaped string '{input_string}' to '{result}'")
     return result
 
+# For getting string options (e.g. --load-state somefile.json) from sys.argv prior to using argparse
+def get_string_option_from_sys_argv(sys_argv, option_flag, return_first = False):
+    result = []
+    for i in range(0, len(sys.argv)):        
+        if sys.argv[i] == option_flag:
+            if i == (len(sys.argv) - 1):
+                print(f"The option {} requires a second parameter, and none was found.")
+                sys.exit(1)
+            if return_first:
+                return sys.argv[i + 1]
+            else:
+                result.append(sys.argv[i + 1])
+    return result
+
+# For getting file content from options (e.g. --load-state somefile.json) prior to using argparse
+def get_file_content_from_sys_argv(sys_argv, option_flag, return_first = False, failure_is_critical = True):
+    result = []
+    file_paths = os.path.abspath(get_string_option_from_sys_argv(sys_argv, option_flag, return_first = return_first))
+    if return_first:
+        return get_file_content(file_paths, failure_is_critical = failure_is_critical)
+    else:
+        for i in range(0, len(file_paths)):
+            file_content = get_file_content(file_paths[i], failure_is_critical = failure_is_critical)
+            if file_content is not None:
+                result.append(file_content)
+    return result
+
 def get_file_content(file_path, failure_is_critical = True):
     result = None
     try:
@@ -100,6 +139,18 @@ def get_file_content(file_path, failure_is_critical = True):
             result = input_file.read()        
     except Exception as e:
         print(f"Couldn't read the file '{file_path}': {e}")
+        if failure_is_critical:
+            sys.exit(1)
+        result = None
+    return result
+
+def load_json_from_file(file_path, failure_is_critical = True):
+    result = None
+    file_content = get_file_content(file_path, failure_is_critical = failure_is_critical)
+    try:
+        result = json.loads(file_content)
+    except Exception as e:
+        print(f"Couldn't deserialize JSON data in the file '{file_path}': {e}")
         if failure_is_critical:
             sys.exit(1)
         result = None
@@ -160,11 +211,11 @@ def comma_delimited_string_to_integer_array(input_string):
                 result.append(current_integer)
     return result
 
-def get_now():
-    return datetime.datetime.now(tz=datetime.timezone.utc)
+def get_now(time_zone = datetime.timezone.utc):
+    return datetime.datetime.now(tz = time_zone)
 
 def get_time_string(dt = get_now()):
-    return dt.replace(microsecond=0).isoformat()
+    return dt.replace(microsecond = 0).isoformat()
 
 def update_elapsed_time_string(time_string, new_element_name, count):
     result = time_string
@@ -285,11 +336,14 @@ def safely_write_text_output_file(file_path, content, file_mode = "w"):
         return file_path            
     return None
 
-def verify_output_file_capability(output_file_path, overwrite_existing):
+def verify_output_file_capability(output_file_path, overwrite_existing, is_state_file = False):
     if os.path.isfile(output_file_path):
         if overwrite_existing:
             print(f"Warning: overwriting output file '{output_file_path}'")
         else:
+            if is_state_file:
+                print(f"Error: the state file '{output_file_path}' already exists. THE SPECIFIED CONFIGURATION WILL DELETE THE EXISTING FILE and replace it with a new file. If you really want to do that, specify both --overwrite-output and --overwrite-existing-state are required.")
+                sys.exit(1)            
             print(f"Error: the output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
             sys.exit(1)
     try:

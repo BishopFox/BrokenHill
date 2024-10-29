@@ -10,7 +10,7 @@ from enum import auto
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import get_file_content
+from llm_attacks_bishopfox.util.util_functions import load_json_from_file
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
 
@@ -338,7 +338,7 @@ class LargeLanguageModelInfoList(JSONSerializableObject):
     def from_bundled_json_file():
         base_path = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(base_path, BUNDLED_LLM_LIST_FILE_NAME)
-        file_content = get_file_content(file_path, failure_is_critical = True)
+        file_content = load_json_from_file(file_path, failure_is_critical = True)
         if file_content is None:
             raise LargeLanguageModelException(f"Found no content in the file '{file_path}'")
-        return LargeLanguageModelInfoList.from_json(file_content)
+        return LargeLanguageModelInfoList.from_dict(file_content)

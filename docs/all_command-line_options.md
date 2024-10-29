@@ -42,9 +42,17 @@ Save all of the current attack parameters (default values + any explicitly-speci
 
 Load all attack parameters from the specified JSON file, created using the `--save-options` option.
 
+This option may be specified multiple times to merge several partial options files together in the order specified.
+
 ### --load-options-from-state <string>
 
-Load all attack parameters from the specified Broken Hill state backup file (discussed in the next section), but do not load the other state data. This option can be used in combination with `--save-options` to export just the attack configuration from an existing state file, e.g.:
+Load all attack parameters from the specified Broken Hill state backup file (discussed in the next section), but do not load the other state data.
+
+This option may be specified multiple times to merge several partial options files together in the order specified.
+
+If this option and `--load-options` are both specified, then any files specified using `--load-options-from-state` are processed first, in order, before applying any files specified using `--load-options`.
+
+This option can be used in combination with `--save-options` to export just the attack configuration from an existing state file, e.g.:
 
 ```
 bin/python -u ./BrokenHill/brokenhill.py \
@@ -58,8 +66,9 @@ By default, Broken Hill 0.34 and later back up the attack state to a JSON file a
 
 This mechanism preserves every possible state-related factor we could find, such as the state of every random number generator. This means that the following uses of Broken Hill should produce identical results, as long as no other options are changed:
 
-* One test with `--max-iterations 400`
-* Two tests with `--max-iterations 200`, where the second test uses `--load-state` to load the state generated at the end of the first test
+* One test with `--max-iterations 400` that is allowed to run to completion.
+* A test with `--max-iterations 400` that is interrupted before completion, but resumed using `--load-state` and allowed to complete.
+* A test with `--max-iterations 200` that is allowed to run to completion, followed by a second test that specifies `--max-iterations 400` and uses `--load-state` to load the state generated at the end of the first (200-iteration) test.
 
 ### --state-directory <string>
 
@@ -77,7 +86,14 @@ Resume testing from the attack state in the specified JSON file. Can be used to 
 
 If this option is specified, a new state file will be created to store the results of the resumed test, unless `--overwrite-existing-state` is also specified. The new state file will be created in the same directory as the existing state file, unless `--state-directory` is also specified.
 
-If this option is specified, all Broken Hill options will be set to the values stored in the state file. Those options can be changed by specifying them explicitly on the command line, by using the `--load-options` option, or both.
+If this option is specified, all Broken Hill options will be set to the values stored in the state file. Those options can be changed by specifying them explicitly on the command line, by using `--load-options-from-state` and/or `--load-options`, or any combination of those approaches. Options are layered in the following order, with options from layers later in the list overriding options stored in layers earlier in the list:
+
+1. Options stored in the state file(s) specified using `--load-state`, in the order specified on the command line.
+2. Options stored in the state file(s) specified using `--load-options-from-state`, in the order specified on the command line.
+3. Options stored in the options file(s) specified using `--load-options`, in the order specified on the command line.
+4. Options specified on the command line.
+
+This option can technically be specified multiple times (due to the way the options-loading code is written), but doing so is not recommended. If `--load-state` is specified more than once, then the *options* will be the merged result discussed in the previous paragraphs, but the remainder of the state will be loaded from the last file specified. In other words, specifying `--load-state` more than once is equivalent to specifying all but the final state file using `--load-options-from-state`, and the final state file using `--load-state`.
 
 ### --overwrite-existing-state
 
