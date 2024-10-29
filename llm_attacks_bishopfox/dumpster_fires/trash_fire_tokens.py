@@ -670,7 +670,7 @@ class TokenAllowAndDenyList(JSONSerializableObject):
         self.denylist = []
 
     def to_dict(self):
-        result = super(SearchTreeNode, self).properties_to_dict(self)
+        result = super(TokenAllowAndDenyList, self).properties_to_dict(self)
         return result
     
     @staticmethod

@@ -140,6 +140,7 @@ from llm_attacks_bishopfox.util.util_functions import FakeException
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
 from llm_attacks_bishopfox.util.util_functions import command_array_to_string
+from llm_attacks_bishopfox.util.util_functions import delete_file
 from llm_attacks_bishopfox.util.util_functions import get_broken_hill_state_file_name
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_escaped_string
@@ -235,13 +236,16 @@ def main(attack_params):
     
     attack_state.initialize_jailbreak_detector()
     
-    # if there is not an existing state file, create a new one in the specified directory
-    if attack_state.persistable.attack_params.state_file is None:
-        attack_state.persistable.attack_params.state_file = os.path.join(attack_state.persistable.attack_params.state_directory, get_broken_hill_state_file_name(attack_state))
+    if attack_state.persistable.attack_params.save_state:
+        # if there is not an existing state file, create a new one in the specified directory
+        if attack_state.persistable.attack_params.state_file is None:
+            attack_state.persistable.attack_params.state_file = os.path.join(attack_state.persistable.attack_params.state_directory, get_broken_hill_state_file_name(attack_state))
 
-    # only test write capability if there is not an existing state file, so it's not overwritten
-    if not os.path.isfile(attack_state.persistable.attack_params.state_file):
-        verify_output_file_capability(attack_state.persistable.attack_params.state_file, attack_state.persistable.attack_params.overwrite_output)
+        # only test write capability if there is not an existing state file, so it's not overwritten
+        if not os.path.isfile(attack_state.persistable.attack_params.state_file):
+            verify_output_file_capability(attack_state.persistable.attack_params.state_file, attack_state.persistable.attack_params.overwrite_output)
+        
+        print(f"State information for this attack will be stored in '{attack_state.persistable.attack_params.state_file}'.")
 
     start_dt = get_now()
     start_ts = get_time_string(start_dt)
@@ -253,6 +257,7 @@ def main(attack_params):
         print(f"Warning: using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
 
     user_aborted = False
+    abnormal_termination = False
 
     ietf_tag_names = None
     ietf_tag_data = None
@@ -928,16 +933,22 @@ def main(attack_params):
     
     except torch.OutOfMemoryError as toome:
         print(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.")
-        raise toome
+        print(traceback.format_exc())
+        abnormal_termination = True
+    
+    except Exception as e:
+        print(f"Broken Hill encountered an unhandled exception. The exception details will be displayed below this message for troubleshooting purposes.")
+        print(traceback.format_exc())
+        abnormal_termination = True
 
-    if not user_aborted:
+    if not user_aborted and not abnormal_termination:
         print(f"Main loop complete")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after main loop completion")
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
-    print(f"Finished after {attack_state.persistable.main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {attack_state.persistable.successful_attack_count}")
+    print(f"Completed {attack_state.persistable.main_loop_iteration_number} iterations at {end_ts} - elapsed time {total_elapsed_string} - successful attack count: {attack_state.persistable.successful_attack_count}")
     attack_state.persistable.overall_result_data.end_date_time = end_ts
     attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
     # collect the stats now so that they're in the files that are written
@@ -948,6 +959,27 @@ def main(attack_params):
     attack_state.write_persistent_state()
     attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
     
+    if attack_state.persistable.attack_params.save_state:
+        handled_state_message = False
+        if attack_state.persistable.attack_params.delete_state_on_completion:
+            if not abnormal_termination and not user_aborted:
+                delete_message = "This attack completed successfully, and the operator specified the option to delete the save state on successful completion."
+                try:
+                    delete_file(attack_state.persistable.attack_params.state_file)
+                    delete_message = f"{delete_message} The file '{attack_state.persistable.attack_params.state_file}' was deleted successfully."
+                except Exception as e:
+                    delete_message = f"{delete_message} However, the file '{attack_state.persistable.attack_params.state_file}' could not be deleted: {e}"
+                print(delete_message)
+                handled_state_message = True
+        if not handled_state_message:
+            state_message = f"State information for this attack has been stored in '{attack_state.persistable.attack_params.state_file}'."
+            if attack_state.persistable.attack_params.delete_state_on_completion:
+                state_message = f"The operator specified the option to delete the save state on successful completion, but this attack did not complete successfully. {state_message}"
+            if user_aborted or abnormal_termination or attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
+                state_message = f"{state_message} You can resume the attack where it was interrupted by running Broken Hill with the option --load-state '{attack_state.persistable.attack_params.state_file}'."
+            else:
+                state_message = f"{state_message} You can continue the attack with additional iterations by running Broken Hill with the options --load-state '{attack_state.persistable.attack_params.state_file}' and --max-iterations <number greater than {attack_state.persistable.attack_params.max_iterations}>. For example, to test as many additional iterations as were already tested in this attack, use the options --load-state '{attack_state.persistable.attack_params.state_file}' --max-iterations {attack_state.persistable.attack_params.max_iterations * 2}"
+            print(state_message)
     
 
 if __name__=='__main__':

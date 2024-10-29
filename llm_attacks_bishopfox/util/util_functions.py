@@ -269,6 +269,18 @@ def get_model_size(mdl):
     os.remove(tempfile_path)
     return result
 
+def delete_file(file_path, raise_on_missing = False):
+    file_path_object = pathlib.Path(file_path)
+    if not os.path.isfile(file_path):
+        if raise_on_missing:
+            raise Exception(f"The file '{file_path}' does not exist.")
+        return
+    try:
+        file_path_object.unlink() 
+    except Exception as e:
+        err_message = f"Couldn't delete the file '{file_path}': {e}."
+        raise Exception(err_message)
+
 # write content to a temporary file first, then delete any existing output file, then move the temporary file to the output file location
 # Prevents overwriting a complete output file with partial output in the event of a crash
 def safely_write_text_output_file(file_path, content, file_mode = "w", create_directory = True):
@@ -461,6 +473,24 @@ def slice_from_dict(property_dict):
     if "step" in property_dict.keys():
         step = property_dict["step"]
     result = slice(start, stop, step)
+    return result
+
+def tensor_to_dict(t):
+    result = {}
+    result["data"] = t.tolist()
+    result["dtype"] = t.dtype
+    device = None
+    if t.device is not None:
+        device = t.device
+        result["device"] = f"{device}"
+    return result
+
+def tensor_from_dict(d):
+    dtype = torch_dtype_from_string(d["dtype"])
+    device = None
+    if d["device"] is not None:
+        device = d["device"]
+    result = torch.tensor(d["data"], dtype = dtype, device = device)
     return result
 
 def find_index_of_first_nonmatching_element(list1, list2):

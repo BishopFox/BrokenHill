@@ -55,6 +55,8 @@ from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
+from llm_attacks_bishopfox.util.util_functions import tensor_from_dict
+from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 
 from transformers.generation import GenerationConfig
@@ -936,10 +938,14 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
         # NumPy
         self.numpy_rng_state = None
 
+    # [RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = tensor([20,  0,  0,  ...,  0,  0,  0], dtype=torch.uint8), self.random_generator_cpu_state = tensor([20,  0,  0,  ...,  0,  0,  0], dtype=torch.uint8), self.random_generator_attack_params_model_device_state = tensor([20,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+    #   dtype=torch.uint8), self.random_generator_attack_params_gradient_device_state = tensor([20,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+    #   dtype=torch.uint8), self.numpy_rng_state = {'bit_generator': 'PCG64', 'state': {'state': 3383365900161324816698418978122629783, 'inc': 72763549156770659863042999813056722643}, 'has_uint32': 0, 'uinteger': 0}
+
     def to_dict(self):
-        print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
+        #print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
         result = super(RandomNumberGeneratorStateCollection, self).properties_to_dict(self)
-        print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: result = {result}, result.torch_rng_state = {result.torch_rng_state}, result.random_generator_cpu_state = {result.random_generator_cpu_state}, result.random_generator_attack_params_model_device_state = {result.random_generator_attack_params_model_device_state}, result.random_generator_attack_params_gradient_device_state = {result.random_generator_attack_params_gradient_device_state}, result.numpy_rng_state = {result.numpy_rng_state}.")
+        #print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: result = {result}.")
         return result
 
     def to_json(self):
@@ -954,6 +960,16 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
         super(RandomNumberGeneratorStateCollection, result).set_properties_from_dict(result, property_dict)
         if result.attack_params is not None:
             result.attack_params = AttackParams.from_dict(result.attack_params)
+        if result.torch_rng_state is not None:
+            result.torch_rng_state = tensor_from_dict(result.torch_rng_state)
+        if result.random_generator_cpu_state is not None:
+            result.random_generator_cpu_state = tensor_from_dict(result.random_generator_cpu_state)
+        if result.random_generator_attack_params_model_device_state is not None:
+            result.random_generator_attack_params_model_device_state = tensor_from_dict(result.random_generator_attack_params_model_device_state)
+        if result.random_generator_attack_params_gradient_device_state is not None:
+            result.random_generator_attack_params_gradient_device_state = tensor_from_dict(result.random_generator_attack_params_gradient_device_state)
+        if result.random_generator_cpu_state is not None:
+            result.random_generator_cpu_state = tensor_from_dict(result.random_generator_cpu_state)
         return result
     
     @staticmethod
@@ -1147,8 +1163,8 @@ class VolatileAttackState():
         self.jailbreak_detector = LLMJailbreakDetector()        
     
     def write_persistent_state(self):
-        if attack_state.persistable.attack_params.save_state:
-            safely_write_text_output_file(attack_state.persistable.attack_params.state_file, attack_state.persistable.to_json())
+        if self.persistable.attack_params.save_state:
+            safely_write_text_output_file(self.persistable.attack_params.state_file, self.persistable.to_json())
     
     def write_output_files(self):
         if self.persistable.attack_params.json_output_file is not None:
@@ -2280,7 +2296,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         cuda_device_counts = []
         max_num_cuda_devices = 0
         for snapshot_num in range(0, len(self.snapshots)):
-            num_cuda_devices = len(snap.cuda_device_data)
+            num_cuda_devices = len(self.snapshots[snapshot_num].cuda_device_data)
             previous_cuda_device_count = None
             if len(cuda_device_counts) == 0:
                 cuda_device_counts.append(num_cuda_devices)

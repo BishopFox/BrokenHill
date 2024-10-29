@@ -3,6 +3,9 @@
 import copy
 import json
 import re
+import torch
+
+from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
 
 class JSONSerializationException(Exception):
     pass
@@ -144,6 +147,11 @@ class JSONSerializableObject:
                 handled = True
             if not handled and isinstance(value_to_serialize, type(None)):
                 handled = True
+        # if the object is a tensor, handle that
+        if not handled:
+            if isinstance(value_to_serialize, torch.Tensor):
+                serialized_value = tensor_to_dict(value_to_serialize)
+                handled = True
         # if the object still hasn't been handled, but it has a to_dict() method, use that
         # this is useful for third-party code that follows the to_dict() convention, but also enums and whatnot that probably shouldn't be subclasses of this one.
         if not handled:
@@ -180,7 +188,10 @@ class JSONSerializableObject:
                 handled = True
 
             if include_property:
-                result[key] = JSONSerializableObject.make_value_serializable(value)
+                try:
+                    result[key] = JSONSerializableObject.make_value_serializable(value)
+                except Exception as e:
+                    raise JSONSerializationException(f"Could not serialize property '{key}' of type '{type(value)}' within object of type '{type(object_to_serialize)}': {e}")
         return result
 
     @staticmethod
