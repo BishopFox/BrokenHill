@@ -180,12 +180,12 @@ def get_embeddings(model, input_ids):
     elif isinstance(model, GPTNeoXForCausalLM):
         return_half = True
     
-    print(f"[get_embeddings] Debug: result properties: {result}") 
+    #print(f"[get_embeddings] Debug: result properties: {result}") 
     
     if return_half:
         print("[get_embeddings] Warning: returning .half() variation of embedding layer")
         result = result.half()
-        print(f"[get_embeddings] Debug: result properties after .half(): {result}")
+        #print(f"[get_embeddings] Debug: result properties after .half(): {result}")
     
     return result
 

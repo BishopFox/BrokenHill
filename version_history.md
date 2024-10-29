@@ -5,6 +5,9 @@
 This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
 
 * [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
+  * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
+  * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
+  * However, it *is* a brand new feature, so please let us know if you find any discrepancies.
   * If you really want to disable this feature, there is also a `--disable-state-backup` option.
 * Added support for the following models and families:
   * [Azurro's APT family](https://huggingface.co/Azurro)

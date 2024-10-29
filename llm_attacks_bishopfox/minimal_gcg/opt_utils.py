@@ -602,13 +602,13 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
     result = AdversarialContentList()
     
     if new_adversarial_token_ids is not None:
-        #print(f"[sample_control] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
+        #print(f"[get_adversarial_content_candidates] Debug: new_adversarial_token_ids = {new_adversarial_token_ids}")
         for i in range(new_adversarial_token_ids.shape[0]):
-            #print(f"[sample_control] Debug: new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
+            #print(f"[get_adversarial_content_candidates] Debug: new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
             new_adversarial_token_ids_as_list = new_adversarial_token_ids[i].tolist()
             if AdversarialContent.token_list_contains_invalid_tokens(attack_state.tokenizer, new_adversarial_token_ids_as_list):
                 dummy = 1
-                #print(f"[sample_control] Warning: adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                #print(f"[get_adversarial_content_candidates] Warning: adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
             else:
                 new_candidate = AdversarialContent.from_token_ids(attack_state.tokenizer, attack_state.adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
                 result.append_if_new(new_candidate)
@@ -925,7 +925,7 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
         #print(f"[forward] Debug: getting logits for model_result = '{model_result}'")
 
         logits.append(model_result.logits)
-        print(f"[forward] Debug: new_row.shape = {model_result.logits.shape}, len(logits) = {len(logits)}")
+        #print(f"[forward] Debug: new_row.shape = {model_result.logits.shape}, len(logits) = {len(logits)}")
         #new_row = model_result.logits.detach().clone()
         #logits.append(new_row)
         #print(f"[forward] Debug: new_row.shape = {new_row.shape}, len(logits) = {len(logits)}")

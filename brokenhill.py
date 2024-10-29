@@ -328,7 +328,8 @@ def main(attack_params):
         
         print(f"Initial adversarial content: {attack_state.persistable.initial_adversarial_content.get_full_description()}")
 
-        attack_state.persistable.current_adversarial_content = attack_state.persistable.initial_adversarial_content.copy()
+        if not attack_params.load_state_from_file:
+            attack_state.persistable.current_adversarial_content = attack_state.persistable.initial_adversarial_content.copy()
 
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating adversarial content manager")
         #print(f"[main] Debug: creating adversarial content manager.")        
@@ -2044,7 +2045,8 @@ if __name__=='__main__':
         print("Warning: the option to overwrite the existing attack state backup has been enabled. Using this option is strongly discouraged because of the potential to accidentally delete useful data.")
 
     if args.state_file:
-        attack_params.state_file = os.path.abspath(args.state_file)
+        attack_params.state_file = os.path.abspath(args.state_file)    
+    if attack_params.state_file is not None:
         overwrite_existing = False
         if attack_params.overwrite_output and args.overwrite_existing_state:
             overwrite_existing = True
@@ -2054,10 +2056,12 @@ if __name__=='__main__':
 
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)
+    if attack_params.json_output_file is not None:
         verify_output_file_capability(attack_params.json_output_file, attack_params.overwrite_output)
     
     if args.performance_output_file:
         attack_params.performance_stats_output_file = args.performance_output_file
+    if attack_params.performance_stats_output_file is not None:
         verify_output_file_capability(attack_params.performance_stats_output_file, attack_params.overwrite_output)
     
     main(attack_params)
