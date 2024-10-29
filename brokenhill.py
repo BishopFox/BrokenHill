@@ -150,6 +150,7 @@ from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_random_token_id
 from llm_attacks_bishopfox.util.util_functions import get_random_token_ids
 from llm_attacks_bishopfox.util.util_functions import get_time_string
+from llm_attacks_bishopfox.util.util_functions import load_json_from_file
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_float
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
@@ -238,7 +239,11 @@ def main(attack_params):
     
     if attack_state.persistable.attack_params.save_state:
         # if there is not an existing state file, create a new one in the specified directory
-        if attack_state.persistable.attack_params.state_file is None:
+        create_new_state_file = True
+        if attack_state.persistable.attack_params.state_file is not None:
+            if attack_state.persistable.attack_params.overwrite_output:
+                create_new_state_file = False
+        if create_new_state_file:
             attack_state.persistable.attack_params.state_file = os.path.join(attack_state.persistable.attack_params.state_directory, get_broken_hill_state_file_name(attack_state))
 
         # only test write capability if there is not an existing state file, so it's not overwritten
@@ -321,15 +326,15 @@ def main(attack_params):
         
         attack_state.check_for_adversarial_content_token_problems()
         
-        print(f"Initial adversarial content: {attack_state.initial_adversarial_content.get_full_description()}")
+        print(f"Initial adversarial content: {attack_state.persistable.initial_adversarial_content.get_full_description()}")
 
-        attack_state.persistable.current_adversarial_content = attack_state.initial_adversarial_content.copy()
+        attack_state.persistable.current_adversarial_content = attack_state.persistable.initial_adversarial_content.copy()
 
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating adversarial content manager")
         #print(f"[main] Debug: creating adversarial content manager.")        
         attack_state.adversarial_content_manager = AdversarialContentManager(attack_state = attack_state, 
             conv_template = attack_state.conversation_template, 
-            adversarial_content = attack_state.initial_adversarial_content.copy(),
+            adversarial_content = attack_state.persistable.initial_adversarial_content.copy(),
             trash_fire_tokens = attack_state.trash_fire_token_treasury)
             
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after creating adversarial content manager")
@@ -355,11 +360,15 @@ def main(attack_params):
         
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating embedding_matrix")
         
+        # If loading the state from a file, reload the RNG states right before starting the loop, in case something during initialization has messed with them
+        if attack_params.load_state_from_file:
+            attack_state.restore_random_number_generator_states()
+        
         print(f"Starting main loop")
 
         while attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
             display_iteration_number = attack_state.persistable.main_loop_iteration_number + 1
-            attack_state.persistable.random_number_generator_states = attack_state.random_number_generators.get_current_states()
+            #attack_state.persistable.random_number_generator_states = attack_state.random_number_generators.get_current_states()
             is_success = False
             if user_aborted:
                 break
@@ -937,13 +946,13 @@ def main(attack_params):
         abnormal_termination = True
     
     except Exception as e:
-        print(f"Broken Hill encountered an unhandled exception. The exception details will be displayed below this message for troubleshooting purposes.")
+        print(f"Broken Hill encountered an unhandled exception: {e}. The exception details will be displayed below this message for troubleshooting purposes.")
         print(traceback.format_exc())
         abnormal_termination = True
 
     if not user_aborted and not abnormal_termination:
         print(f"Main loop complete")
-    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after main loop completion")
+    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"after main loop completion")
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
@@ -953,12 +962,13 @@ def main(attack_params):
     attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
     # collect the stats now so that they're in the files that are written
     attack_state.persistable.performance_data.populate_statistics()
+    attack_state.persistable.performance_data.populate_performance_statistics(attack_state)
     #if attack_state.persistable.attack_params.json_output_file is not None:
     #    safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
     attack_state.write_output_files()
     attack_state.write_persistent_state()
     attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
-    
+        
     if attack_state.persistable.attack_params.save_state:
         handled_state_message = False
         if attack_state.persistable.attack_params.delete_state_on_completion:
@@ -993,26 +1003,28 @@ if __name__=='__main__':
     file_contents = get_file_content_from_sys_argv(sys.argv, "--load-state")
     for i in range(0, len(file_contents)):
         try:
-            existing_attack_state = PersistentAttackState.from_json(file_contents[i])            
+            existing_attack_state = PersistableAttackState.from_json(file_contents[i])            
             existing_attack_params = existing_attack_state.attack_params
-            attack_params = AttackParams.apply_dict(existing_attack_params.to_dict())
+            attack_params = AttackParams.apply_dict(attack_params, existing_attack_params.to_dict())
         except Exception as e:
             print(f"Couldn't load options from an existing state file: {e}")
+            print(traceback.format_exc())
             sys.exit(1)
     file_contents = get_file_content_from_sys_argv(sys.argv, "--load-options-from-state")
     for i in range(0, len(file_contents)):
         try:
-            existing_attack_state = PersistentAttackState.from_json(file_contents[i])
+            existing_attack_state = PersistableAttackState.from_json(file_contents[i])
             existing_attack_params = existing_attack_state.attack_params
-            attack_params = AttackParams.apply_dict(existing_attack_params.to_dict())
+            attack_params = AttackParams.apply_dict(attack_params, existing_attack_params.to_dict())
         except Exception as e:
             print(f"Couldn't load options from an existing state file: {e}")
+            print(traceback.format_exc())
             sys.exit(1)
     file_contents = get_file_content_from_sys_argv(sys.argv, "--load-options")
     for i in range(0, len(file_contents)):
         try:
             existing_attack_params = AttackParams.from_json(file_contents[i])
-            attack_params = AttackParams.apply_dict(existing_attack_params.to_dict())
+            attack_params = AttackParams.apply_dict(attack_params, existing_attack_params.to_dict())
         except Exception as e:
             print(f"Couldn't load options from a saved options file: {e}")
             sys.exit(1)
@@ -1952,17 +1964,18 @@ if __name__=='__main__':
         for l in excluded_token_file_content.splitlines():
             attack_params.individually_specified_not_allowed_token_list_case_insensitive = add_value_to_list_if_not_already_present(attack_params.individually_specified_not_allowed_token_list_case_insensitive, l.strip())
 
+    
     if attack_params.operating_mode in [ BrokenHillMode.GCG_ATTACK, BrokenHillMode.GCG_ATTACK_SELF_TEST ]:
         if (not attack_params.base_prompt) or (not attack_params.target_output):
             print(f"Error: a base prompt and a target must be specified, either as distinct values, or using the --auto-target option to set both.")
             sys.exit(1)
 
-        #if attack_params.model_path is None:
-        if args.model is None:
-            print("The --model option is required when performing the selected operation")
-            sys.exit(1)
+        if attack_params.model_path is None:
+            if args.model is None:
+                print("The --model option is required when performing the selected operation")
+                sys.exit(1)
+            attack_params.model_path = os.path.abspath(args.model)
 
-        attack_params.model_path = os.path.abspath(args.model)
         if not os.path.isdir(attack_params.model_path):
             print(f"The specified model directory ('{attack_params.model_path}') does not appear to exist.")
             sys.exit(1)
@@ -2013,6 +2026,10 @@ if __name__=='__main__':
 
     if args.load_state:
         attack_params.load_state_from_file = os.path.abspath(args.load_state)
+        
+        # clear the existing state file name from the loaded state
+        attack_params.state_file = None
+        
         existing_state_directory = os.path.dirname(attack_params.load_state_from_file)
         different_state_directories = False
         if attack_params.state_directory is not None:

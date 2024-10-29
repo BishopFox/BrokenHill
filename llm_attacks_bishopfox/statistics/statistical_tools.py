@@ -19,19 +19,22 @@ class StatisticsDataSet(JSONSerializableObject):
 
     def populate_dataset(self, dataset_name, source_data_array):
         self.dataset_name = dataset_name
-        self.mean = statistics.mean(source_data_array)
-        self.median = statistics.median(source_data_array)
-        self.mode = statistics.mode(source_data_array)
-        self.maximum = None
-        self.minimum = None
-        self.value_range = None
-        for i in range(0, len(source_data_array)):
-            if self.maximum is None or source_data_array[i] > self.maximum:
-                self.maximum = source_data_array[i]
-            if self.minimum is None or source_data_array[i] < self.minimum:
-                self.minimum = source_data_array[i]
-        if self.maximum is not None and self.minimum is not None:
-            self.value_range = self.maximum - self.minimum
+        if len(source_data_array) > 0:
+            self.mean = statistics.mean(source_data_array)
+            self.median = statistics.median(source_data_array)
+            self.mode = statistics.mode(source_data_array)
+            self.maximum = None
+            self.minimum = None
+            self.value_range = None
+            for i in range(0, len(source_data_array)):
+                if self.maximum is None or source_data_array[i] > self.maximum:
+                    self.maximum = source_data_array[i]
+                if self.minimum is None or source_data_array[i] < self.minimum:
+                    self.minimum = source_data_array[i]
+            if self.maximum is not None and self.minimum is not None:
+                self.value_range = self.maximum - self.minimum
+        else:
+            print(f"[populate_dataset] Warning: got an empty source data array for dataset '{dataset_name}'")
 
     def to_dict(self):
         result = super(StatisticsDataSet, self).properties_to_dict(self)
@@ -67,6 +70,7 @@ class StatisticsDataSet(JSONSerializableObject):
     
 class StatisticsCube(JSONSerializableObject):
     def __init__(self):
+        self.cube_name = None
         self.datasets = {}
 
     def get_dataset(self, dataset_name, raise_on_missing = True):

@@ -221,18 +221,21 @@ class LargeLanguageModelParameterInfoCollection(JSONSerializableObject):
     def to_dict(self):
         result = super(LargeLanguageModelParameterInfoCollection, self).properties_to_dict(self)
         return result
+
+    @staticmethod
+    def apply_dict(existing_object, property_dict):
+        super(LargeLanguageModelParameterInfoCollection, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.parameters is not None:
+            deserialized_content = {}
+            for k in existing_object.parameters.keys():
+                deserialized_content[k] = (LargeLanguageModelParameterInfo.from_dict(existing_object.parameters[k]))
+            existing_object.parameters = deserialized_content            
+        return existing_object
     
     @staticmethod
     def from_dict(property_dict):
         result = LargeLanguageModelParameterInfoCollection()
-        super(LargeLanguageModelParameterInfoCollection, result).set_properties_from_dict(result, property_dict)
-        if result.parameters is not None:
-            if len(result.parameters) > 0:
-                deserialized_content = []
-                for i in range(0, len(result.parameters)):
-                    deserialized_content.append(LargeLanguageModelParameterInfo.from_dict(result.parameters[i]))
-                result.parameters = deserialized_content
-        return result
+        return LargeLanguageModelParameterInfoCollection.apply_dict(result, property_dict)
 
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)

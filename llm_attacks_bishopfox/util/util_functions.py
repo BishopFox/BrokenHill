@@ -478,7 +478,7 @@ def slice_from_dict(property_dict):
 def tensor_to_dict(t):
     result = {}
     result["data"] = t.tolist()
-    result["dtype"] = t.dtype
+    result["dtype"] = torch_dtype_to_string(t.dtype)
     device = None
     if t.device is not None:
         device = t.device
@@ -486,6 +486,7 @@ def tensor_to_dict(t):
     return result
 
 def tensor_from_dict(d):
+    #print(f"[tensor_from_dict] Debug: d = {d}")
     dtype = torch_dtype_from_string(d["dtype"])
     device = None
     if d["device"] is not None:

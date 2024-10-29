@@ -28,6 +28,7 @@ from llm_attacks_bishopfox.dumpster_fires.conversation_templates import Conversa
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
 from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TokenAllowAndDenyList
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
@@ -38,6 +39,7 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRule
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
@@ -580,7 +582,7 @@ class AttackParams(JSONSerializableObject):
         #   rule 17 added via command-line: "pin the tail on the donkey but where the 
         #           winner gets to anonymously kill you" indicates jailbreak after all
         #   All rules evaluated every time, like a firewall policy
-        self.jailbreak_detection_rule_set = []      
+        self.jailbreak_detection_rule_set = None      
 
         # TKTK: detect jailbreak based on some loss threshold?
         
@@ -904,11 +906,7 @@ class AttackParams(JSONSerializableObject):
                     deserialized_gardens.append(RadiationGarden.from_dict(existing_object.radiation_gardens[i]))
                 existing_object.radiation_gardens = deserialized_gardens
         if existing_object.jailbreak_detection_rule_set is not None:
-            if len(existing_object.jailbreak_detection_rule_set) > 0:
-                deserialized_jailbreak_rule_set = []
-                for i in range(0, len(existing_object.jailbreak_detection_rule_set)):
-                    deserialized_jailbreak_rule_set.append(LLMJailbreakDetectorRule.from_dict(existing_object.jailbreak_detection_rule_set[i]))
-                existing_object.jailbreak_detection_rule_set = deserialized_jailbreak_rule_set
+            existing_object.jailbreak_detection_rule_set = LLMJailbreakDetectorRuleSet.from_dict(existing_object.jailbreak_detection_rule_set)
         return existing_object
     
     @staticmethod
@@ -958,8 +956,6 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
     def from_dict(property_dict):
         result = RandomNumberGeneratorStateCollection()
         super(RandomNumberGeneratorStateCollection, result).set_properties_from_dict(result, property_dict)
-        if result.attack_params is not None:
-            result.attack_params = AttackParams.from_dict(result.attack_params)
         if result.torch_rng_state is not None:
             result.torch_rng_state = tensor_from_dict(result.torch_rng_state)
         if result.random_generator_cpu_state is not None:
@@ -968,8 +964,6 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
             result.random_generator_attack_params_model_device_state = tensor_from_dict(result.random_generator_attack_params_model_device_state)
         if result.random_generator_attack_params_gradient_device_state is not None:
             result.random_generator_attack_params_gradient_device_state = tensor_from_dict(result.random_generator_attack_params_gradient_device_state)
-        if result.random_generator_cpu_state is not None:
-            result.random_generator_cpu_state = tensor_from_dict(result.random_generator_cpu_state)
         return result
     
     @staticmethod
@@ -1085,7 +1079,9 @@ class PersistableAttackState(JSONSerializableObject):
         return result
 
     def to_json(self):
-        return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
+        self_dict = self.to_dict()
+        #print(f"[PersistableAttackState.to_json] Debug: self_dict = {self_dict}")
+        return JSONSerializableObject.json_dumps(self_dict, use_indent = False)
     
     def copy(self):
         return PersistableAttackState.from_dict(self.to_dict())
@@ -1163,6 +1159,7 @@ class VolatileAttackState():
         self.jailbreak_detector = LLMJailbreakDetector()        
     
     def write_persistent_state(self):
+        self.update_persistable_data()
         if self.persistable.attack_params.save_state:
             safely_write_text_output_file(self.persistable.attack_params.state_file, self.persistable.to_json())
     
@@ -1189,13 +1186,18 @@ class VolatileAttackState():
     def update_persistable_data(self):
         if self.random_number_generators is not None:
             self.persistable.random_number_generator_states = self.random_number_generators.get_current_states()
-            
+
+    def restore_random_number_generator_states(self):
+        if self.persistable.random_number_generator_states is not None:
+            self.random_number_generators.set_states(self.persistable.random_number_generator_states)
+        else:
+            print(f"[restore_random_number_generator_states] Warning: no previous random number generator state to restore")
+
     # Restore any state data for objects in this class that require explicitly referring to persistable data
     def restore_from_persistable_data(self):
         self.initialize_devices()
         self.initialize_random_number_generators()        
-        if self.persistable.random_number_generator_states is not None:
-            self.random_number_generators.set_states(self.persistable.random_number_generator_states)
+        self.restore_random_number_generator_states()
             
     def initialize_jailbreak_detector(self):
         self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
@@ -1387,7 +1389,7 @@ class VolatileAttackState():
         
     def get_token_denylist_as_cpu_tensor(self):
         if self.token_denylist_as_cpu_tensor is None:
-            if len(attack_state.persistable.token_allow_and_deny_lists.denylist) > 0:
+            if len(self.persistable.token_allow_and_deny_lists.denylist) > 0:
                 self.token_denylist_as_cpu_tensor = get_token_list_as_tensor(self.persistable.token_allow_and_deny_lists.denylist, device='cpu')
             else:
                 self.token_denylist_as_cpu_tensor = None
@@ -1509,9 +1511,9 @@ class VolatileAttackState():
 
     def create_initial_adversarial_content(self):
         # print(f"[create_initial_adversarial_content] Debug: setting initial adversarial content.")
-        self.initial_adversarial_content = None
+        self.persistable.initial_adversarial_content = None
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
-            self.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
             single_token_id = None
@@ -1535,22 +1537,22 @@ class VolatileAttackState():
             for i in range(0, self.persistable.attack_params.initial_adversarial_token_count):
                 self.persistable.attack_params.initial_adversarial_token_ids.append(single_token_id)
             
-            self.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
 
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
-            self.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
             token_ids = get_random_token_ids(numpy_random_generator, self.persistable.token_allow_and_deny_lists, self.persistable.attack_params.initial_adversarial_token_count)
-            self.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, token_ids)
         
         post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
-            self.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
         
         # This should never actually happen, but just in case
-        if self.initial_adversarial_content is None:
+        if self.persistable.initial_adversarial_content is None:
             print("Error: no initial adversarial content was specified.")
             sys.exit(1)
 
@@ -1558,8 +1560,8 @@ class VolatileAttackState():
         #print(f"[main] Debug: determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
         tokens_in_denylist = []
         tokens_not_in_tokenizer = []
-        for i in range(0, len(self.initial_adversarial_content.token_ids)):
-            token_id = self.initial_adversarial_content.token_ids[i]
+        for i in range(0, len(self.persistable.initial_adversarial_content.token_ids)):
+            token_id = self.persistable.initial_adversarial_content.token_ids[i]
             if token_id in self.persistable.token_allow_and_deny_lists.denylist:
                 if token_id not in tokens_in_denylist:
                     tokens_in_denylist.append(token_id)
@@ -1739,6 +1741,8 @@ class AttackResultInfoData(JSONSerializableObject):
         # the maximum number of new tokens for this data set specifically
         self.max_new_tokens = None
         
+        self.max_token_length = None
+        
         # the token IDs that represent the entire conversation with the LLM, including system prompt/messages
         self.llm_generation_token_ids = None
         # the token IDs that represent just the LLM's response to the input
@@ -1818,19 +1822,19 @@ class AttackResultInfo(JSONSerializableObject):
         return result
     
     @staticmethod
+    def apply_dict(existing_object, property_dict):
+        super(AttackResultInfo, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.result_data_sets is not None:
+            deserialized_content = {}
+            for k in existing_object.result_data_sets.keys():
+                deserialized_content[k] = (AttackResultInfoData.from_dict(existing_object.result_data_sets[k]))
+            existing_object.result_data_sets = deserialized_content
+        return existing_object
+    
+    @staticmethod
     def from_dict(property_dict):
-        result = AttackResultInfo()
-        super(AttackResultInfo, result).set_properties_from_dict(result, property_dict)
-        result_data_set_keys = []
-        for rds_key in result.result_data_sets.keys():
-            result_data_set_keys.append(rds_key)
-        if len(result_data_set_keys) > 0:
-            deserialized_result_data_sets = {}
-            for i in range(0, len(result_data_set_keys)):
-                current_key = result_data_set_keys[i]
-                deserialized_result_data_sets[current_key] = AttackResultInfoData.from_dict(result.result_data_sets[current_key])
-            result.result.result_data_sets = deserialized_result_data_sets
-        return result
+        result = AttackResultInfo()        
+        return AttackResultInfo.apply_dict(result, property_dict)
     
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
@@ -2190,6 +2194,9 @@ class ResourceUtilizationSnapshot(JSONSerializableObject):
 class ResourceUtilizationStatistics(JSONSerializableObject):
     def __init__(self):
         self.cpu = StatisticsCube()
+        self.cpu.cube_name = "CPU"
+        self.performance = StatisticsCube()
+        self.performance.cube_name = "Performance"
         self.cuda_devices = []
 
     def add_empty_cuda_device_cubes(self, cuda_device_count):
@@ -2207,7 +2214,9 @@ class ResourceUtilizationStatistics(JSONSerializableObject):
             raise JSONSerializationException(f"Cannot apply properties for the ResourceUtilizationStatistics class to an instance of the class '{existing_object.__class__.__name__}'")
         super(ResourceUtilizationStatistics, existing_object).set_properties_from_dict(existing_object, property_dict)
         if existing_object.cpu is not None:
-            existing_object.cpu = StatisticsCube.from_dict(existing_object.average_values)
+            existing_object.cpu = StatisticsCube.from_dict(existing_object.cpu)
+        if existing_object.performance is not None:
+            existing_object.performance = StatisticsCube.from_dict(existing_object.performance)
         if existing_object.cuda_devices is not None:
             if len(existing_object.cuda_devices) > 0:
                 deserialized_content = []
@@ -2301,19 +2310,12 @@ class ResourceUtilizationData(JSONSerializableObject):
             if len(cuda_device_counts) == 0:
                 cuda_device_counts.append(num_cuda_devices)
             else:
-                previous_cuda_device_count = cuda_device_counts[-1:]
+                previous_cuda_device_count = cuda_device_counts[(len(cuda_device_counts) - 1)]
                 if previous_cuda_device_count != num_cuda_devices:
                     cuda_device_counts.append(num_cuda_devices)
             
             if num_cuda_devices > max_num_cuda_devices:
                 max_num_cuda_devices = num_cuda_devices
-            
-            if cuda_device_count_changed_count is None:
-                cuda_device_count_changed_count = 1                
-            else:
-                if previous_cuda_device_count != num_cuda_devices:
-                    cuda_device_count_changed_count += 1
-                    previous_cuda_device_count = num_cuda_devices
 
         if len(cuda_device_counts) > 1:
             times_changed = len(cuda_device_counts) - 1
@@ -2323,9 +2325,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         # collect per-CUDA-device data into arrays using this hack/misuse of a non-strongly-typed language:
         
         for cuda_device_num in range(0, max_num_cuda_devices):
-            all_values_cuda_device = CUDADeviceUtilizationData()
-            all_values_cuda_device.device_name = snap.cuda_device_data[cuda_device_num].device_name
-            all_values_cuda_device.device_display_name = snap.cuda_device_data[cuda_device_num].device_display_name
+            all_values_cuda_device = CUDADeviceUtilizationData()            
             all_values_cuda_device.total_memory = []
             all_values_cuda_device.gpu_used_memory = []
             all_values_cuda_device.available_memory = []
@@ -2345,41 +2345,47 @@ class ResourceUtilizationData(JSONSerializableObject):
             #cpu_system_physical_memory.append(float(snap.system_physical_memory))
             cpu_system_available_memory.append(float(snap.system_available_memory))
             cpu_system_in_use_memory.append(float(snap.system_in_use_memory))
-            cpu_system_memory_util_percent.append(float(snap.system_memory_util_percent))
+            cpu_system_memory_util_percent.append(float(snap.system_memory_util_percent) * 100.0)
             #cpu_system_swap_total.append(float(snap.system_swap_total))
             cpu_system_swap_in_use.append(float(snap.system_swap_in_use))
             cpu_system_swap_free.append(float(snap.system_swap_free))
-            cpu_system_swap_percent.append(float(snap.system_swap_percent))
+            cpu_system_swap_percent.append(float(snap.system_swap_percent) * 100.0)
             
             num_cuda_devices = len(snap.cuda_device_data)
             
             for cuda_device_num in range(0, num_cuda_devices):
-                all_values_cuda_device = cuda_device_values[cuda_device_num]                
+                all_values_cuda_device = cuda_device_values[cuda_device_num]
+                if all_values_cuda_device.device_name is None:
+                    all_values_cuda_device.device_name = snap.cuda_device_data[cuda_device_num].device_name
+                if all_values_cuda_device.device_display_name is None:
+                    all_values_cuda_device.device_display_name = snap.cuda_device_data[cuda_device_num].device_display_name
                 #all_values_cuda_device.total_memory.append(float(snap.cuda_device_data[cuda_device_num].total_memory)))
                 all_values_cuda_device.gpu_used_memory.append(float(snap.cuda_device_data[cuda_device_num].gpu_used_memory))
                 all_values_cuda_device.available_memory.append(float(snap.cuda_device_data[cuda_device_num].available_memory))
-                all_values_cuda_device.total_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].total_memory_utilization))
+                all_values_cuda_device.total_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].total_memory_utilization) * 100.0)
                 all_values_cuda_device.process_reserved_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_memory))
-                all_values_cuda_device.process_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_memory_utilization))
+                all_values_cuda_device.process_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_memory_utilization) * 100.0)
                 all_values_cuda_device.process_reserved_allocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_allocated_memory))
                 all_values_cuda_device.process_reserved_unallocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory))
-                all_values_cuda_device.process_reserved_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_utilization))
+                all_values_cuda_device.process_reserved_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_utilization) * 100.0)
                 cuda_device_values[cuda_device_num] = all_values_cuda_device
         
         # Use the arrays to generate the data        
         self.statistics.cpu.add_or_update_dataset("process_physical_memory", cpu_process_physical_memory)
         self.statistics.cpu.add_or_update_dataset("process_virtual_memory", cpu_process_virtual_memory)
         self.statistics.cpu.add_or_update_dataset("process_swap", cpu_process_swap)
-        self.statistics.cpu.add_or_update_dataset("system_physical_memory", cpu_system_physical_memory)
+        #self.statistics.cpu.add_or_update_dataset("system_physical_memory", cpu_system_physical_memory)
         self.statistics.cpu.add_or_update_dataset("system_available_memory", cpu_system_available_memory)
         self.statistics.cpu.add_or_update_dataset("system_in_use_memory", cpu_system_in_use_memory)
         self.statistics.cpu.add_or_update_dataset("system_memory_util_percent", cpu_system_memory_util_percent)
-        self.statistics.cpu.add_or_update_dataset("system_swap_total", cpu_system_swap_total)
+        #self.statistics.cpu.add_or_update_dataset("system_swap_total", cpu_system_swap_total)
         self.statistics.cpu.add_or_update_dataset("system_swap_in_use", cpu_system_swap_in_use)
         self.statistics.cpu.add_or_update_dataset("system_swap_free", cpu_system_swap_free)
         self.statistics.cpu.add_or_update_dataset("system_swap_percent", cpu_system_swap_percent)
 
         for i in range(0, max_num_cuda_devices):
+            if self.statistics.cuda_devices[i].cube_name is None:
+                self.statistics.cuda_devices[i].cube_name = f"{cuda_device_values[i].device_display_name} ({cuda_device_values[i].device_name})"
             #self.statistics.cuda_devices[i].add_or_update_dataset("total_memory", cuda_device_values[i].total_memory)
             self.statistics.cuda_devices[i].add_or_update_dataset("gpu_used_memory", cuda_device_values[i].gpu_used_memory)
             self.statistics.cuda_devices[i].add_or_update_dataset("available_memory", cuda_device_values[i].available_memory)
@@ -2389,6 +2395,18 @@ class ResourceUtilizationData(JSONSerializableObject):
             self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_allocated_memory", cuda_device_values[i].process_reserved_allocated_memory)
             self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_unallocated_memory", cuda_device_values[i].process_reserved_unallocated_memory)
             self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_utilization", cuda_device_values[i].process_reserved_utilization)
+    
+    def populate_performance_statistics(self, attack_state):
+        if attack_state.persistable.overall_result_data.attack_results is None:
+            return
+        num_iterations = len(attack_state.persistable.overall_result_data.attack_results)
+        if num_iterations < 2:
+            return
+        processing_time = []
+        for i in range(1, num_iterations):
+            processing_time.append(attack_state.persistable.overall_result_data.attack_results[i].total_processing_time_seconds)
+            
+        self.statistics.performance.add_or_update_dataset("total_processing_time_seconds", processing_time)
 
     def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '    '):
         new_message = message
@@ -2430,26 +2448,29 @@ class ResourceUtilizationData(JSONSerializableObject):
         found_cpu_data = False        
         cpu_message = f"{message}\n\n  CPU:"
         pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process virtual memory", pvm, "{0:.0f}")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process virtual memory", pvm, "{0:.0f} byte(s)")
         if verbose:
             ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process physical memory", ppm, "{0:.0f}")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process physical memory", ppm, "{0:.0f} byte(s)")        
         pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process swap memory", pswap, "{0:.0f}")
+        if verbose or pswap.maximum > 0:
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process swap memory", pswap, "{0:.0f} byte(s)")
         sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory in use", sys_inuse, "{0:.0f}")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory in use", sys_inuse, "{0:.0f} byte(s)")
         if verbose:
             sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory available", sys_avail, "{0:.0f}")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory available", sys_avail, "{0:.0f} byte(s)")
         sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory utilization", sys_memory_util, "{0:.2f}")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory utilization", sys_memory_util, "{0:.2f}%")
         sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory in use", sys_swap_inuse, "{0:.0f}")
+        if verbose or sys_swap_inuse.maximum > 0:
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory in use", sys_swap_inuse, "{0:.0f} byte(s)")
         if verbose:
             sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:.0f}")
-        sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:.0f} byte(s)")
+        if verbose or sys_swap_inuse.maximum > 0:
+            sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}%")
         if found_cpu_data:
             found_data = True
             message = cpu_message
@@ -2457,30 +2478,30 @@ class ResourceUtilizationData(JSONSerializableObject):
         found_cuda_data = False
         cuda_message = f"{message}\n\n  CUDA devices:"
         cuda_padding = '        '
-        for cuda_device_num in range(0, self.statistics.cuda_devices):
+        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
             found_cuda_device_data = False
-            cd = cuda_devices[cuda_device_num]
-            cuda_device_message = f"\n    Device {cuda_device_num}: {device_display_name} ({device_name})"
+            cd = self.statistics.cuda_devices[cuda_device_num]
+            cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
             cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
-            cp_used = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:.0f}", padding = cuda_padding)
-            cp_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}", padding = cuda_padding)
+            cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:.0f} byte(s)", padding = cuda_padding)
+            cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
             if verbose:
-                cp_allocated = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:.0f}", padding = cuda_padding)
-                cp_unallocated = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:.0f}", padding = cuda_padding)
-                cpr_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("process_reserved_utilization", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}", padding = cuda_padding)
+                cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:.0f} byte(s)", padding = cuda_padding)
+                cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:.0f} byte(s)", padding = cuda_padding)
+                cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
             cuda_device_message = f"{cuda_device_message}\n      System-wide:"
-            cd_used = self.statistics.cuda_devices[cuda_device_num].get_dataset("gpu_used_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:.0f}", padding = cuda_padding)
+            cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:.0f} byte(s)", padding = cuda_padding)
             if verbose:
-                cd_avail = self.statistics.cuda_devices[cuda_device_num].get_dataset("available_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:.0f}", padding = cuda_padding)
-            cd_util = self.statistics.cuda_devices[cuda_device_num].get_dataset("total_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}", padding = cuda_padding)
+                cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:.0f} byte(s)", padding = cuda_padding)
+            cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
             
             if found_cuda_device_data:
                 found_cuda_data = True
@@ -2491,6 +2512,15 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = cuda_message
         
         # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+        
+        found_perf_data = False
+        perf_message = f"{message}\n\n  Processing performance:"
+        tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
+    
+        if found_perf_data:
+            found_data = True
+            message = perf_message
     
         if found_data:
             print(message)
