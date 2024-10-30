@@ -968,9 +968,11 @@ def main(attack_params):
 
     if not user_aborted and not abnormal_termination:
         print(f"Main loop complete")
+    
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"after main loop completion")
 
     if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+        print(f"Writing PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
         try:
             torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
             print(f"Wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
@@ -984,11 +986,17 @@ def main(attack_params):
     attack_state.persistable.overall_result_data.end_date_time = end_ts
     attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
     # collect the stats now so that they're in the files that are written
+    print(f"Processing resource-utilization data.")
     attack_state.persistable.performance_data.populate_statistics()
+    print(f"Processing performance data.")
     attack_state.persistable.performance_data.populate_performance_statistics(attack_state)
     #if attack_state.persistable.attack_params.json_output_file is not None:
     #    safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
+    if attack_state.persistable.attack_params.json_output_file is not None:
+        print(f"Writing final version of result data to '{attack_state.persistable.attack_params.json_output_file}'.")
     attack_state.write_output_files()
+    if attack_state.persistable.attack_params.save_state:
+        print(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
     attack_state.write_persistent_state()
     attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
     

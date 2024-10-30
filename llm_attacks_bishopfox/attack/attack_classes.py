@@ -1206,7 +1206,7 @@ class VolatileAttackState():
         if fp_stem_new == fp_stem:
             fp_stem_new = f"{fp_stem}{file_number_string}"
         result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
-        print(f"[add_or_replace_file_number] Debug: input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
+        #print(f"[add_or_replace_file_number] Debug: input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
         return result
     
     def add_file_name_suffix(self, file_path, suffix):
@@ -1217,25 +1217,16 @@ class VolatileAttackState():
         fp_stem = fp_split[0]
         fp_extension = fp_split[1]
         # if the suffix is a simple one, and it's already there, don't re-add it
-        handled_suffix = False
-        if suffix == "-resumed":
-            if len(fp_stem) > len(suffix):
-                comparison_suffix = fp_stem[-len(suffix):]
-                print(f"[add_file_name_suffix] Debug: comparison_suffix: '{comparison_suffix}', suffix: {suffix}.")
-                if comparison_suffix == suffix:
-                    # use the unchanged file_path
-                    handled_suffix = True
-        # if the stem ends with an iteration count, and the suffix is also an iteration count, remove the old one so it will be replaced with the new one
-        continued_regex = re.compile("-continued-[0-9]{6}_iterations$")
-        if continued_regex.search(suffix):
-            print(f"[add_file_name_suffix] Debug: continued_regex matches suffix '{suffix}'.")
-            if continued_regex.search(fp_stem):
-                print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
-                fp_stem = continued_regex.sub("", fp_stem)
-                print(f"[add_file_name_suffix] Debug: fp_stem is now '{fp_stem}'.")
+        handled_suffix = False        
+        continued_regex = re.compile("-(resumed|continued)-[0-9]{6}_iterations-[0-9]{4}$")
+        if continued_regex.search(fp_stem):
+            #print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
+            #print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
+            fp_stem = continued_regex.sub("", fp_stem)
+            #print(f"[add_file_name_suffix] Debug: fp_stem is now '{fp_stem}'.")
         if not handled_suffix:
             result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
-        print(f"[add_file_name_suffix] Debug: input: '{file_path}', suffix: {suffix}, result: '{result}'.")
+        #print(f"[add_file_name_suffix] Debug: input: '{file_path}', suffix: {suffix}, result: '{result}'.")
         return result
     
     def get_continuation_command(self, state_file_path, completed_all_iterations):
@@ -1283,9 +1274,9 @@ class VolatileAttackState():
             output_file_parameters.append("--torch-cuda-memory-history-file")
         
         next_file_number = 1
-        existing_file_number = self.get_existing_file_number(written_files_list)
-        if existing_file_number is not None:
-            next_file_number = existing_file_number + 1
+        #existing_file_number = self.get_existing_file_number(written_files_list)
+        #if existing_file_number is not None:
+        #    next_file_number = existing_file_number + 1
         
         if completed_all_iterations:
             next_iteration_count = self.persistable.attack_params.max_iterations * 2
