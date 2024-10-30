@@ -109,14 +109,9 @@ def main(test_params):
                 if not test_params.perform_cpu_tests:
                     skip_message = "skipping this test because it would require CPU processing by PyTorch."
                     skip_model = True
-                #model_test_params.device = "cpu"
-                # Hacky testing
-                model_test_params.custom_options.append("--model-device")
-                model_test_params.custom_options.append("cpu")
-                model_test_params.custom_options.append("--gradient-device")
-                model_test_params.custom_options.append("cuda")
-                model_test_params.custom_options.append("--forward-device")
-                model_test_params.custom_options.append("cuda")
+                model_test_params.model_device = "cpu"
+                model_test_params.gradient_device = "cuda"
+                model_test_params.forward_device = "cpu"
                 model_test_params.custom_options.append("--batch-size-get-logits")
                 model_test_params.custom_options.append("512")
             else:
@@ -199,7 +194,9 @@ def main(test_params):
                     print(f"!!! Error !!!: command returned code {process_return_code}")
                     failed_tests.append(model_info.model_name)
             print(f"Console output writen to '{model_test_params.get_console_output_path()}'")
-            print(f"JSON result data writen to '{model_test_params.get_json_output_path()}'")
+            print(f"JSON result data writen to '{model_test_params.get_result_json_output_path()}'")
+            print(f"JSON performance data writen to '{model_test_params.get_performance_json_output_path()}'")
+            print(f"PyTorch CUDA profiling pickle writen to '{model_test_params.get_torch_cuda_output_path()}'")
             if process_standard_output is not None:
                 #standard_output = process_standard_output.read()
                 if process_standard_output.decode("utf-8").strip() != "":

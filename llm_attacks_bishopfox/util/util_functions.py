@@ -603,14 +603,22 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
 # Convert a nice array of command elements to a terrible single value which can be used with bash -c.
 # Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
 # Or, alternatively, log a reproducible (properly quoted) string that represents the command that launched a Python script, so the user can re-run it later
-def command_array_to_string(command_array):
+def command_array_to_string(command_array, add_line_breaks = False):
     inner_command = None
     for i in range(0, len(command_array)):
         current_element = shlex.quote(command_array[i])
         if inner_command is None:
             inner_command = current_element
         else:
-            inner_command = f"{inner_command} {current_element}"
+            handled = False
+            if add_line_breaks:
+                if len(current_element) > 0:
+                    if current_element[0] == "-":
+                        inner_command = f"{inner_command} \\\n\t{current_element}"
+                        handled = True
+            if not handled:
+                inner_command = f"{inner_command} {current_element}"
+                handled = True
     #result = shlex.quote(inner_command)
     result = inner_command
     #print(f"[command_array_to_string] Debug: input = {command_array}, output = {result}")

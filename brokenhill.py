@@ -230,6 +230,21 @@ def main(attack_params):
     attack_state.persistable.attack_params = attack_params
     attack_state.persistable.broken_hill_version = script_version
     
+    # Saving the options is done here instead of earlier so that they're the merged result of all possible option sources
+    if attack_state.persistable.attack_params.operating_mode == BrokenHillMode.SAVE_OPTIONS:
+        try:
+            options_data = attack_state.persistable.attack_params.to_dict()
+            json_options_data = json.dumps(options_data, indent=4)
+            safely_write_text_output_file(attack_state.persistable.attack_params.save_options_path, json_options_data)
+            print(f"The current Broken Hill configuration has been written to '{attack_state.persistable.attack_params.save_options_path}'.")
+        except Exception as e:
+            print(f"Error: Could not write the current Broken Hill configuration to '{attack_state.persistable.attack_params.save_options_path}': {e}.")
+            sys.exit(1)
+        sys.exit(0)
+    
+    if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+        torch.cuda.memory._record_memory_history()
+    
     if not attack_params.load_state_from_file:
         attack_state.initialize_devices()
         attack_state.initialize_random_number_generators()        
@@ -241,7 +256,7 @@ def main(attack_params):
         # if there is not an existing state file, create a new one in the specified directory
         create_new_state_file = True
         if attack_state.persistable.attack_params.state_file is not None:
-            if attack_state.persistable.attack_params.overwrite_output:
+            if attack_state.persistable.attack_params.overwrite_output and attack_state.persistable.attack_params.overwrite_existing_state:
                 create_new_state_file = False
         if create_new_state_file:
             attack_state.persistable.attack_params.state_file = os.path.join(attack_state.persistable.attack_params.state_directory, get_broken_hill_state_file_name(attack_state))
@@ -955,6 +970,13 @@ def main(attack_params):
         print(f"Main loop complete")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"after main loop completion")
 
+    if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+        try:
+            torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
+            print(f"Wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
+        except Exception as e:
+            print(f"Error: couldn't wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}': {e}")
+
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
     total_elapsed_string = get_elapsed_time_string(start_dt, end_dt)
@@ -969,28 +991,17 @@ def main(attack_params):
     attack_state.write_output_files()
     attack_state.write_persistent_state()
     attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
-        
-    if attack_state.persistable.attack_params.save_state:
-        handled_state_message = False
-        if attack_state.persistable.attack_params.delete_state_on_completion:
-            if not abnormal_termination and not user_aborted:
-                delete_message = "This attack completed successfully, and the operator specified the option to delete the save state on successful completion."
-                try:
-                    delete_file(attack_state.persistable.attack_params.state_file)
-                    delete_message = f"{delete_message} The file '{attack_state.persistable.attack_params.state_file}' was deleted successfully."
-                except Exception as e:
-                    delete_message = f"{delete_message} However, the file '{attack_state.persistable.attack_params.state_file}' could not be deleted: {e}"
-                print(delete_message)
-                handled_state_message = True
-        if not handled_state_message:
-            state_message = f"State information for this attack has been stored in '{attack_state.persistable.attack_params.state_file}'."
-            if attack_state.persistable.attack_params.delete_state_on_completion:
-                state_message = f"The operator specified the option to delete the save state on successful completion, but this attack did not complete successfully. {state_message}"
-            if user_aborted or abnormal_termination or attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
-                state_message = f"{state_message} You can resume the attack where it was interrupted by running Broken Hill with the option --load-state '{attack_state.persistable.attack_params.state_file}'."
-            else:
-                state_message = f"{state_message} You can continue the attack with additional iterations by running Broken Hill with the options --load-state '{attack_state.persistable.attack_params.state_file}' and --max-iterations <number greater than {attack_state.persistable.attack_params.max_iterations}>. For example, to test as many additional iterations as were already tested in this attack, use the options --load-state '{attack_state.persistable.attack_params.state_file}' --max-iterations {attack_state.persistable.attack_params.max_iterations * 2}"
-            print(state_message)
+    
+    completed_all_iterations = True
+    if user_aborted:
+        completed_all_iterations = False
+    if abnormal_termination:
+        completed_all_iterations = False
+    if attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
+        completed_all_iterations = False
+
+    slm = attack_state.get_state_loading_message(completed_all_iterations)
+    print(slm)
     
 
 if __name__=='__main__':
@@ -1467,6 +1478,8 @@ if __name__=='__main__':
         help=f"Write detailed result data in JSON format to the specified file.")
     parser.add_argument("--performance-output-file", type = str,
         help=f"Write detailed performance/resource-utilization data in JSON format to the specified file.")
+    parser.add_argument("--torch-cuda-memory-history-file", type = str,
+        help=f"Use PyTorch's built-in CUDA profiling feature to generate a pickled blob of data that can be used to visualize CUDA memory use during the entire Broken Hill run. See https://pytorch.org/docs/stable/torch_cuda_memory.html for more details on the file and how to use it.")
     parser.add_argument("--state-directory", type = str,
         help=f"Back up attack state data to a file in the specified directory at every iteration instead of the default location. If this option is not specified, Broken Hill will store its state files in a subdirectory of the current user's home directory named '{attack_params.default_state_directory}'.")
     parser.add_argument("--state-file", type = str,
@@ -1847,7 +1860,6 @@ if __name__=='__main__':
     
     attack_params.load_options_ignore_mismatched_sizes = args.ignore_mismatched_sizes
     
-
     # jailbreak detection and related
 
     if args.jailbreak_detection_rules_file:
@@ -1999,10 +2011,6 @@ if __name__=='__main__':
                 print(f"Error: {peft_message}")
                 sys.exit(1)
 
-    # any remaining options-related options
-    if args.save_options:
-        attack_params.operating_mode = BrokenHillMode.SAVE_OPTIONS
-
     # set up state-saving parameters
     # TKTK: one resuming from a state file is implemented, wrap this entire section a few check:
     # If a state file is specified using --load-state set attack_params.state_directory using the basename of that path *unless* --state-directory is also specified, in which case that takes precedence
@@ -2046,19 +2054,27 @@ if __name__=='__main__':
             print(f"Warning: the option to load an existing attack state from '{attack_params.load_state_from_file}' was specified. Ordinarily, Broken Hill would create a new state file in the directory '{existing_state_directory}'. However, the operator has explicitly specified the --state-directory option, so the new state file will be created in the directory '{attack_params.state_directory}' instead.")
 
     if args.overwrite_existing_state:
+        attack_params.overwrite_existing_state = True
         if not args.state_file:
             attack_params.state_file = attack_params.load_state_from_file
         print("Warning: the option to overwrite the existing attack state backup has been enabled. Using this option is strongly discouraged because of the potential to accidentally delete useful data.")
 
     if args.state_file:
-        attack_params.state_file = os.path.abspath(args.state_file)    
-    if attack_params.state_file is not None:
+        attack_params.state_file = os.path.abspath(args.state_file)
+    # only perform this check if the operator is not loading the state from a file - otherwise it will be overwritten before being loaded
+    if attack_params.load_state_from_file is None and attack_params.state_file is not None:
         overwrite_existing = False
-        if attack_params.overwrite_output and args.overwrite_existing_state:
+        if attack_params.overwrite_output and attack_params.overwrite_existing_state:
             overwrite_existing = True
         verify_output_file_capability(attack_params.state_file, overwrite_existing, is_state_file = True)
 
     # verify ability to write to any remaining output files that have been specified
+
+    if args.save_options:
+        attack_params.operating_mode = BrokenHillMode.SAVE_OPTIONS
+        attack_params.save_options_path = os.path.abspath(args.save_options)
+    if attack_params.save_options_path is not None:
+        verify_output_file_capability(attack_params.save_options_path, attack_params.overwrite_output)
 
     if args.json_output_file:
         attack_params.json_output_file = os.path.abspath(args.json_output_file)
@@ -2069,6 +2085,11 @@ if __name__=='__main__':
         attack_params.performance_stats_output_file = args.performance_output_file
     if attack_params.performance_stats_output_file is not None:
         verify_output_file_capability(attack_params.performance_stats_output_file, attack_params.overwrite_output)
+
+    if args.torch_cuda_memory_history_file:
+        attack_params.torch_cuda_memory_history_file = args.torch_cuda_memory_history_file
+    if attack_params.torch_cuda_memory_history_file is not None:
+        verify_output_file_capability(attack_params.torch_cuda_memory_history_file, attack_params.overwrite_output)
     
     main(attack_params)
 

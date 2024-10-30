@@ -7,6 +7,7 @@ import fastchat.conversation as fschat_conversation
 import json
 import numpy
 import os
+import pathlib
 import psutil
 import re
 import statistics
@@ -52,6 +53,7 @@ from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguag
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
@@ -826,8 +828,12 @@ class AttackParams(JSONSerializableObject):
 
         # output options
         self.overwrite_output = False
+        # If this value is not None, write detailed result data to the specified JSON file
         self.json_output_file = None
+        # If this value is not None, write performance statistics collected during the attack to the specified JSON file
         self.performance_stats_output_file = None
+        # If this value is not None, use PyTorch's CUDA memory history feature (https://pytorch.org/docs/stable/torch_cuda_memory.html) to save a pickled blob of profiling data
+        self.torch_cuda_memory_history_file = None
        
         # parameter save/load options
         self.save_options_path = None
@@ -837,6 +843,7 @@ class AttackParams(JSONSerializableObject):
         # state backup/restore options
         self.save_state = True
         self.delete_state_on_completion = False
+        self.overwrite_existing_state = False
         # Default directory name (in user's home directory) to store state files if a location is not explicitly specified
         self.default_state_directory = '.broken_hill'
         self.state_directory = None
@@ -1165,6 +1172,149 @@ class VolatileAttackState():
         self.update_persistable_data()
         if self.persistable.attack_params.save_state:
             safely_write_text_output_file(self.persistable.attack_params.state_file, self.persistable.to_json())
+    
+    def get_existing_file_number(self, file_name_list):
+        file_number = None
+        file_number_regex = re.compile("-[0-9]+$")     
+        found_file_numbers = []      
+        for i in range(0, len(file_name_list)):
+            current_fn = file_name_list[i]
+            cfn_stem = pathlib.Path(current_fn).stem
+            pattern_match = file_number_regex.search(cfn_stem)
+            if pattern_match:
+                try:
+                    num_str = pattern_match.group(0).replace("-", "")
+                    found_file_numbers.append(int(num_str))
+                except Exception as e:
+                    print(f"[get_existing_file_number] Error: couldn't convert {pattern_match.group(0)} into a number: {e}")
+        if len(found_file_numbers) > 0:
+            found_file_numbers.sort()
+            file_number = found_file_numbers[(len(found_file_numbers) - 1)]        
+        return file_number
+    
+    def add_or_replace_file_number(self, file_path, new_file_number):
+        fp_directory = os.path.dirname(file_path)
+        fp_file_name = os.path.basename(file_path)
+        fp_split = os.path.splitext(fp_file_name)
+        fp_stem = fp_split[0]
+        fp_extension = fp_split[1]
+        file_number_regex = re.compile("-[0-9]+$")
+        fp_stem_new = file_number_regex.sub(fp_stem, f"-{new_file_number:04}")        
+        result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
+        print(f"[add_or_replace_file_number] Debug: input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
+        return result
+    
+    def add_file_name_suffix(self, file_path, suffix):
+        fp_directory = os.path.dirname(file_path)
+        fp_file_name = os.path.basename(file_path)
+        fp_split = os.path.splitext(fp_file_name)
+        fp_stem = fp_split[0]
+        fp_extension = fp_split[1]        
+        result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
+        print(f"[add_file_name_suffix] Debug: input: '{file_path}', suffix: {suffix}, result: '{result}'.")
+        return result
+    
+    def get_continuation_command(self, state_file_path, completed_all_iterations):
+        result_array = []
+        # pre-populate the recommended Python command
+        result_array.append("bin/python")
+        result_array.append("-u")
+        # find the index of the Broken Hill script in the original command
+        script_name = "brokenhill.py"
+        len_script_name = len(script_name)
+        script_index = None
+        for i in range(0, len(self.persistable.attack_params.original_command_line_array)):
+            element_lower = self.persistable.attack_params.original_command_line_array[i].lower()
+            if len(element_lower) >= len_script_name:
+                comparison_string = element_lower[-len_script_name:]
+                if comparison_string == script_name:
+                    script_index = i
+                    break
+                else:
+                    print(f"[get_continuation_command] Debug: no match between '{comparison_string}' and '{script_name}'")
+
+        if script_index is None:
+            raise Exception(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
+        for i in range(0, script_index + 1):
+            result_array.append(self.persistable.attack_params.original_command_line_array[i])
+        result_array.append("--load-state")
+        result_array.append(state_file_path)
+        file_name_suffix = ""
+        new_state_file_path = state_file_path
+        new_json_output_file = self.persistable.attack_params.json_output_file
+        new_performance_stats_output_file = self.persistable.attack_params.performance_stats_output_file
+        new_torch_cuda_memory_history_file = self.persistable.attack_params.torch_cuda_memory_history_file
+
+        written_files_list = []
+        written_files_list.append(state_file_path)
+        if self.persistable.attack_params.json_output_file is not None:
+            written_files_list.append(self.persistable.attack_params.json_output_file)
+        if self.persistable.attack_params.performance_stats_output_file is not None:
+            written_files_list.append(self.persistable.attack_params.performance_stats_output_file)
+        if self.persistable.attack_params.torch_cuda_memory_history_file is not None:
+            written_files_list.append(self.persistable.attack_params.torch_cuda_memory_history_file)
+        
+        next_file_number = 1
+        existing_file_number = self.get_existing_file_number(written_files_list)
+        if existing_file_number is not None:
+            next_file_number = existing_file_number + 1
+        
+        if completed_all_iterations:
+            next_iteration_count = self.persistable.attack_params.max_iterations * 2
+            result_array.append("--max-iterations")
+            result_array.append(f"{next_iteration_count}")
+            file_name_suffix = f"-continued-{next_iteration_count:06}_iterations"
+        else:
+            file_name_suffix = "-resumed"
+        
+        new_state_file_path = self.add_or_replace_file_number(self.add_file_name_suffix(new_state_file_path, file_name_suffix), next_file_number)
+        result_array.append("--state-file")
+        result_array.append(new_state_file_path)
+        
+        if new_json_output_file is not None:
+            new_json_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_json_output_file, file_name_suffix), next_file_number)
+            result_array.append("--json-output-file")
+            result_array.append(new_json_output_file)
+        
+        if new_performance_stats_output_file is not None:
+            new_performance_stats_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_performance_stats_output_file, file_name_suffix), next_file_number)
+            result_array.append("--performance-output-file")
+            result_array.append(new_performance_stats_output_file)
+
+        if new_torch_cuda_memory_history_file is not None:
+            new_torch_cuda_memory_history_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_torch_cuda_memory_history_file, file_name_suffix), next_file_number)
+            result_array.append("--torch-cuda-memory-history-file")
+            result_array.append(new_torch_cuda_memory_history_file)
+            
+        self.persistable.attack_params.original_command_line_array
+        
+        return command_array_to_string(result_array, add_line_breaks = True)
+    
+    def get_state_loading_message(self, completed_all_iterations):
+        if not self.persistable.attack_params.save_state:
+            return None
+
+        handled_state_message = False
+        if self.persistable.attack_params.delete_state_on_completion:
+            if completed_all_iterations:
+                delete_message = "This attack completed successfully, and the operator specified the option to delete the save state on successful completion."
+                try:
+                    delete_file(self.persistable.attack_params.state_file)
+                    delete_message = f"{delete_message} The file '{self.persistable.attack_params.state_file}' was deleted successfully."
+                except Exception as e:
+                    delete_message = f"{delete_message} However, the file '{self.persistable.attack_params.state_file}' could not be deleted: {e}"
+                print(delete_message)
+                handled_state_message = True
+        if not handled_state_message:
+            state_message = f"State information for this attack has been stored in '{self.persistable.attack_params.state_file}'."
+            command_message = self.get_continuation_command(self.persistable.attack_params.state_file, completed_all_iterations)
+            if self.persistable.attack_params.delete_state_on_completion:
+                state_message = f"The operator specified the option to delete the save state on successful completion, but this attack did not complete successfully. {state_message}"
+            if not completed_all_iterations:
+                state_message = f"{state_message} You can resume the attack where it was interrupted by running Broken Hill with the option --load-state '{self.persistable.attack_params.state_file}'. For example:\n\n{command_message}"
+            else:
+                state_message = f"{state_message} You can continue the attack with additional iterations by running Broken Hill with the options --load-state '{self.persistable.attack_params.state_file}' and --max-iterations <number greater than {self.persistable.attack_params.max_iterations}>. For example, to double the number of iterations:\n\n{command_message}"            
+        return state_message
     
     def write_output_files(self):
         if self.persistable.attack_params.json_output_file is not None:
@@ -2490,10 +2640,10 @@ class ResourceUtilizationData(JSONSerializableObject):
             found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
         if verbose:
             sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:n} byte(s)")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:n} byte(s)")        
         if verbose or sys_swap_inuse.maximum > 0:
             sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}%")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}%")
         if found_cpu_data:
             found_data = True
             message = cpu_message

@@ -57,9 +57,10 @@ This is the most significant update to Broken Hill since its public release in S
   * `vikhr`
 * System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.
   * Use `--verbose-resource-info` to display the data every time it's collected. This is probably only useful when debugging Broken Hill.
-* The resource utilization information is used to compile and display statistical information at the end of a test.
-  * By default, a relatively short list of statistics are displayed.
-  * Use `--verbose-stats` to output the complete list instead.
+  * The resource utilization information is used to compile and display statistical information at the end of a test.
+    * By default, a relatively short list of statistics are displayed.
+    * Use `--verbose-stats` to output the complete list instead.
+  * Additionally, a `--torch-cuda-memory-history-file` option has been added that uses [PyTorch's built-in CUDA profiling feature to generate a pickled blob of information that you can use to visualize details of data in memory on your CUDA device(s)](https://pytorch.org/docs/stable/torch_cuda_memory.html) during a Broken Hill run
 * Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.

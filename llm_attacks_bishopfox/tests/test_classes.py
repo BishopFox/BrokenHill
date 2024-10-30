@@ -29,7 +29,9 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.python_path = "bin/python"
         self.python_params = [ '-u' ]
         self.broken_hill_path = "./BrokenHill/brokenhill.py"
-        self.device = None
+        self.model_device = None
+        self.gradient_device = None
+        self.forward_device = None
         self.enable_cuda_blocking_mode = True
         self.output_file_directory = None
         self.output_file_base_name = None
@@ -47,6 +49,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.perform_cpu_tests = True
         self.perform_cuda_tests = True
         self.ignore_jailbreak_test_results = False
+        self.verbose_stats = True
+        self.verbose_resource_info = True
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
         # default: ten hours, necessary for some models tested on CPU, e.g. 20B parameter models
         self.process_timeout = 36000
@@ -80,8 +84,16 @@ class BrokenHillTestParams(JSONSerializableObject):
         result = os.path.join(self.base_llm_path, self.model_path)
         return result
         
-    def get_json_output_path(self):
+    def get_result_json_output_path(self):
         result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-results.json")
+        return result
+        
+    def get_performance_json_output_path(self):
+        result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-performance.json")
+        return result
+        
+    def get_torch_cuda_output_path(self):
+        result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-torch_cuda_profile.pickle")
         return result
         
     def get_console_output_path(self):
@@ -94,9 +106,15 @@ class BrokenHillTestParams(JSONSerializableObject):
         for i in range(0, len(self.python_params)):
             result.append(self.python_params[i])
         result.append(self.broken_hill_path)
-        if self.device is not None and self.device.strip() != "":
-            result.append('--device')
-            result.append(self.device)
+        if self.model_device is not None and self.model_device.strip() != "":
+            result.append('--model-device')
+            result.append(self.model_device)
+        if self.gradient_device is not None and self.gradient_device.strip() != "":
+            result.append('--gradient-device')
+            result.append(self.gradient_device)
+        if self.forward_device is not None and self.forward_device.strip() != "":
+            result.append('--forward-device')
+            result.append(self.forward_device)
         if self.model_path is not None and self.model_path.strip() != "":
             result.append('--model')
             result.append(self.get_model_path())
@@ -128,12 +146,19 @@ class BrokenHillTestParams(JSONSerializableObject):
             if '--max-new-tokens-final' not in self.custom_options:
                 result.append('--max-new-tokens-final')
                 result.append(f"{self.max_new_tokens_final}")
-        if self.ignore_jailbreak_test_results:
-            if "--ignore-jailbreak-self-tests" not in self.custom_options:
-                result.append("--ignore-jailbreak-self-tests")
+        if self.verbose_stats:
+            if "--verbose-stats" not in self.custom_options:
+                result.append("--verbose-stats")
+        if self.verbose_resource_info:
+            if "--verbose-resource-info" not in self.custom_options:
+                result.append("--verbose-resource-info")
         if self.output_file_directory is not None and self.output_file_base_name is not None and self.output_file_directory.strip() != "" and self.output_file_base_name.strip() != "":
             result.append('--json-output-file')
-            result.append(self.get_json_output_path())        
+            result.append(self.get_result_json_output_path())        
+            result.append('--performance-output-file')
+            result.append(self.get_performance_json_output_path())        
+            result.append('--torch-cuda-memory-history-file')
+            result.append(self.get_torch_cuda_output_path())        
         
         for i in range(0, len(self.custom_options)):
             result.append(self.custom_options[i])

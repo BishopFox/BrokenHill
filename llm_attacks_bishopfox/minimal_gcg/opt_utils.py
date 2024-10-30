@@ -480,7 +480,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
         
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating top_indices")
         
-        current_adversarial_content_token_ids_gradient_device = torch.tensor(attack_state.persistable.current_adversarial_content.token_ids).to(coordinate_gradient.device)
+        current_adversarial_content_token_ids_gradient_device = torch.tensor(attack_state.persistable.current_adversarial_content.token_ids, device = coordinate_gradient.device)
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating current_adversarial_content_token_ids_gradient_device")
 
         original_adversarial_content_token_ids_gradient_device = current_adversarial_content_token_ids_gradient_device.repeat(attack_state.persistable.attack_params.new_adversarial_value_candidate_count, 1)

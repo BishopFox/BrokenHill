@@ -177,6 +177,10 @@ If specified, causes Broken Hill to write result information in JSON format to t
 
 If specified, Broken Hill will record performance/resource-utilization information in JSON format to the specified file. This is generally used for determining device memory requirements for testing models, and debugging code related to memory use optimization.
 
+### --torch-cuda-memory-history-file
+
+Use [PyTorch's built-in CUDA profiling feature](https://pytorch.org/docs/stable/torch_cuda_memory.html) to generate a pickled blob of data that can be used to visualize CUDA memory use during the entire Broken Hill run. [Please refer to the linked PyTorch documentation for more details on the file and how to use it](https://pytorch.org/docs/stable/torch_cuda_memory.html).
+
 ### --overwrite-output
 
 If an existing output file of any type already exists, overwrite it. If this option is not specified, Broken Hill will exit instead of overwriting the file.
