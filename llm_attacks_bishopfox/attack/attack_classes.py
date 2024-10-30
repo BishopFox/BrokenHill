@@ -749,8 +749,10 @@ class AttackParams(JSONSerializableObject):
         # the maximum the adversarial token generation batch size is allowed to grow to when no candidates are found
         self.max_new_adversarial_value_candidate_count = 1024
         
-        # try to avoid out-of-memory errors during the most memory-intensive part of the work
-        self.batch_size_get_logits = 1
+        # try to avoid out-of-memory errors during the most memory-intensive part of the work.
+        # This used to be set to 1, but after analyzing CUDA profiling data, it seems that that typically results in *greater* memory use than with a value of 512.
+        # In the best-case data, using 1 might sometimes result in a few hundred MiB less CUDA memory use.
+        self.batch_size_get_logits = 512
 
         # Output detailed token and token ID information when self tests fail
         self.verbose_self_test_output = False

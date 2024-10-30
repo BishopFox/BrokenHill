@@ -391,7 +391,7 @@ If an iteration occurs where all candidate values are filtered out, Broken Hill 
 
 ### --batch-size-get-logits <positive integer>
 
-The PyTorch batch size to use when calling the `get_logits` function, which is the most memory-intensive operation other than loading the model itself. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with this value set to 1 and `--new-adversarial-token-candidate-count` set to 16, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance. (default: 1)
+The PyTorch batch size to use when calling the `get_logits` function, which is the most memory-intensive operation other than loading the model itself. If you are running out of memory and this value is greater than 1, try reducing it. If it still happens with this value set to 1 and `--new-adversarial-token-candidate-count` set to 16, you're probably out of luck without more VRAM. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance. The default value is 512 because it significantly improves performance, and (in most cases) seems to either result in slightly less VRAM use, or at most a few hundred MiB more.
 
 ## Limiting candidate adversarial content during the generation stage
 

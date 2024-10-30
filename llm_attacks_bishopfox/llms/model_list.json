@@ -104,7 +104,7 @@
 			"template": "zero_shot",
 			"size": 24207819307,
 			"safe_tensors": false,
-			"custom_options": [],
+			"custom_options": [ "--missing-pad-token-replacement", "unk" ],
 			"comment": "This model seems to hang during the second iteration - doesn't finish even at ten hours."
 		},
 		{

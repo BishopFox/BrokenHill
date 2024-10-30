@@ -75,6 +75,9 @@ This is the most significant update to Broken Hill since its public release in S
   * *Experimental* `--model-device`, `--gradient-device`, and `--forward-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
   * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
+* Changed the default value for `--batch-size-get-logits` from 1 to 512, based on analysis of CUDA memory profile information.
+  * This significantly improves performance in some cases, and seems to use approximately the same amount of memory as a value of 1.
+  * If you are trying to minimize CUDA device memory utilization as much as possible, you can still try reducing this value to 1 manually.
 * A few additions to the default jailbreak detection rules.
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
