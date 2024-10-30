@@ -109,7 +109,16 @@ def main(test_params):
                 if not test_params.perform_cpu_tests:
                     skip_message = "skipping this test because it would require CPU processing by PyTorch."
                     skip_model = True
-                model_test_params.device = "cpu"
+                #model_test_params.device = "cpu"
+                # Hacky testing
+                model_test_params.custom_options.append("--model-device")
+                model_test_params.custom_options.append("cpu")
+                model_test_params.custom_options.append("--gradient-device")
+                model_test_params.custom_options.append("cuda")
+                model_test_params.custom_options.append("--forward-device")
+                model_test_params.custom_options.append("cuda")
+                model_test_params.custom_options.append("--batch-size-get-logits")
+                model_test_params.custom_options.append("512")
             else:
                 if not test_params.perform_cuda_tests:
                     skip_message = "skipping this test because it would be processed on a CUDA device."
@@ -251,14 +260,6 @@ def main(test_params):
 
 if __name__=='__main__':
     smoke_test_params = BrokenHillTestParams()
-    
-    ##### FOR HACKY TESTING ONLY
-    smoke_test_params.custom_options.append("--gradient-device")
-    smoke_test_params.custom_options.append("cuda")
-    smoke_test_params.custom_options.append("--forward-device")
-    smoke_test_params.custom_options.append("cuda")
-    smoke_test_params.custom_options.append("--batch-size-get-logits")
-    smoke_test_params.custom_options.append("512")
     
     parser = argparse.ArgumentParser(description="Perform basic 'does it crash?' testing for all supported LLMs/families",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
