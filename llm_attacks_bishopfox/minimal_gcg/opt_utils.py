@@ -907,8 +907,7 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
     #
     # Doing the aggregation logits.append(model_result_logits) and result = torch.cat(logits, dim=0) on the CPU saves about 1 GiB of GPU memory, at a cost of about 10% slower performance per iteration for a 500M parameter model
     # For Phi-3 (3,821,079,552 parameters), it only saves about 300 MiB of GPU memory.
-    # For Gemma 2 (2,614,341,888 parameters),
-    
+    # For Gemma 2 (2,614,341,888 parameters), it only saves about 100 MiB of GPU memory.    
     
     for i in range(0, input_ids.shape[0], batch_size):
         

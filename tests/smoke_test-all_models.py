@@ -252,6 +252,14 @@ def main(test_params):
 if __name__=='__main__':
     smoke_test_params = BrokenHillTestParams()
     
+    ##### FOR HACKY TESTING ONLY
+    smoke_test_params.custom_options.append("--gradient-device")
+    smoke_test_params.custom_options.append("cuda")
+    smoke_test_params.custom_options.append("--forward-device")
+    smoke_test_params.custom_options.append("cuda")
+    smoke_test_params.custom_options.append("--batch-size-get-logits")
+    smoke_test_params.custom_options.append("512")
+    
     parser = argparse.ArgumentParser(description="Perform basic 'does it crash?' testing for all supported LLMs/families",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     parser.add_argument("--base-output-directory", type = str, 
