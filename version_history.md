@@ -82,6 +82,9 @@ This is the most significant update to Broken Hill since its public release in S
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
   * Fixed incorrect prompt parsing logic for fast tokenizer output that would output invalid information if the base prompt, target output, or adversarial content appeared more than once in the prompt (e.g. if the target output was a specific message from the system prompt).
+  * Corrected the default behaviour for tokenizers without a padding token defined to default to the "end of string" token, and to pad from the left.
+    * The new `--missing-pad-token-padding-side` option can be used to override this, e.g. `--missing-pad-token-padding-side right`, but you probably don't want to do that.
+	* If you want to default to whatever token Torch would pick (which is usually "end of string" anyway), use `--missing-pad-token-replacement default`.
   * Fixed a bug that could cause a crash instead of displaying a warning during jailbreak self-testing.
   * Fixed a bug that would cause a crash when testing for jailbreaks if the LLM output was an empty string or consisted only of whitespace.
   * Fixed a bug that caused `--adversarial-candidate-filter-regex` to not be applied correctly.

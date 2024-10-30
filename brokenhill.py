@@ -1482,6 +1482,10 @@ if __name__=='__main__':
     padding_token_values = get_missing_pad_token_names()
     parser.add_argument("--missing-pad-token-replacement", type = str,
         help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
+    parser.add_argument("--missing-pad-token-padding-side", type = str,
+        default = attack_params.missing_pad_token_padding_side,
+        choices = [ "left", "right" ],
+        help=f"If the tokenizer is missing a padding token definition, use the specified padding side for the replacement. Must be one of 'left' or 'right'. Default: left.")
     parser.add_argument("--json-output-file", type = str,
         help=f"Write detailed result data in JSON format to the specified file.")
     parser.add_argument("--performance-output-file", type = str,
@@ -1956,7 +1960,12 @@ if __name__=='__main__':
         if args.missing_pad_token_replacement not in padding_token_values:
             print(f"The value for --missing-pad-token-replacement must be one of: {padding_token_values}")
             sys.exit(1)
-        attack_params.missing_pad_token_replacement = args.missing_pad_token_replacement
+        if args.missing_pad_token_replacement == "default":
+            attack_params.missing_pad_token_replacement = None
+        else:
+            attack_params.missing_pad_token_replacement = args.missing_pad_token_replacement
+
+    attack_params.missing_pad_token_padding_side = args.missing_pad_token_padding_side
 
     if args.exclude_whitespace_tokens:
         attack_params.exclude_whitespace_tokens = True

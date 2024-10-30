@@ -127,7 +127,8 @@ class ModelDataFormatHandling(StrEnum):
 def get_missing_pad_token_names():
     result = [  "unk", 
                 "bos",
-                "eos" ]
+                "eos",
+                "default" ]
     return result
 
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
@@ -141,6 +142,9 @@ def get_missing_pad_token_replacement(tokenizer, replacement_name):
         result = tokenizer.eos_token_id, tokenizer.eos_token
     if replacement_name == "unk":
         result = tokenizer.unk_token_id, tokenizer.unk_token
+    if replacement_name == "default":
+        result = None, None
+    
     return result
 
 # not currently implemented
@@ -573,7 +577,11 @@ class AttackParams(JSONSerializableObject):
         self.enable_hardcoded_tokenizer_workarounds = False
 
         # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
-        self.missing_pad_token_replacement = None
+        self.missing_pad_token_replacement = "eos"
+
+        # If the tokenizer does not have a padding token defined, pad from the following side.
+        # default is 'left' because the most common / default replacement padding token is EOS, and padding with that on the right will cause the model to not generate any text at all.
+        self.missing_pad_token_padding_side = "left"
 
         # Options that control detection of a successful jailbreak
         #
@@ -1525,11 +1533,17 @@ class VolatileAttackState():
                 tokenizer.padding_side = 'left'
                 
         if not tokenizer.pad_token:
+            # pad from the left side by default, because the default / most common replacement (EOS) will cause the model to not generate anything at all if the data is padded from the right
+            tokenizer.padding_side = self.persistable.attack_params.missing_pad_token_padding_side
+            side_message = f" The padding side has been set to '{self.persistable.attack_params.missing_pad_token_padding_side}'. If you encounter errors or unexpected results, try using the other padding side mode."
             if self.persistable.attack_params.missing_pad_token_replacement is not None:
-                tokenizer.pad_token_id, tokenizer.pad_token = get_missing_pad_token_replacement(tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
-                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}' specified by the operator. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
+                pad_token_id, pad_token = get_missing_pad_token_replacement(tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
+                if pad_token_id is not None and pad_token is not None:
+                    tokenizer.pad_token_id = pad_token_id
+                    tokenizer.pad_token = pad_token
+                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.{side_message}")
             else:
-                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value on the command line.")
+                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
         
         return model, tokenizer
 
