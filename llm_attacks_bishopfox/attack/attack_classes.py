@@ -1175,7 +1175,7 @@ class VolatileAttackState():
     
     def get_existing_file_number(self, file_name_list):
         file_number = None
-        file_number_regex = re.compile("-[0-9]+$")     
+        file_number_regex = re.compile("-[0-9]{4}$")
         found_file_numbers = []      
         for i in range(0, len(file_name_list)):
             current_fn = file_name_list[i]
@@ -1198,24 +1198,49 @@ class VolatileAttackState():
         fp_split = os.path.splitext(fp_file_name)
         fp_stem = fp_split[0]
         fp_extension = fp_split[1]
-        file_number_regex = re.compile("-[0-9]+$")
-        fp_stem_new = file_number_regex.sub(fp_stem, f"-{new_file_number:04}")        
+        file_number_regex = re.compile("-[0-9]{4}$")
+        file_number_string = f"-{new_file_number:04}"
+        # try replacing an existing number first
+        fp_stem_new = file_number_regex.sub(file_number_string, fp_stem)
+        # if nothing has changed, there was no number to update
+        if fp_stem_new == fp_stem:
+            fp_stem_new = f"{fp_stem}{file_number_string}"
         result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
         print(f"[add_or_replace_file_number] Debug: input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
         return result
     
     def add_file_name_suffix(self, file_path, suffix):
+        result = file_path
         fp_directory = os.path.dirname(file_path)
         fp_file_name = os.path.basename(file_path)
         fp_split = os.path.splitext(fp_file_name)
         fp_stem = fp_split[0]
-        fp_extension = fp_split[1]        
-        result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
+        fp_extension = fp_split[1]
+        # if the suffix is a simple one, and it's already there, don't re-add it
+        handled_suffix = False
+        if suffix == "-resumed":
+            if len(fp_stem) > len(suffix):
+                comparison_suffix = fp_stem[-len(suffix):]
+                print(f"[add_file_name_suffix] Debug: comparison_suffix: '{comparison_suffix}', suffix: {suffix}.")
+                if comparison_suffix == suffix:
+                    # use the unchanged file_path
+                    handled_suffix = True
+        # if the stem ends with an iteration count, and the suffix is also an iteration count, remove the old one so it will be replaced with the new one
+        continued_regex = re.compile("-continued-[0-9]{6}_iterations$")
+        if continued_regex.search(suffix):
+            print(f"[add_file_name_suffix] Debug: continued_regex matches suffix '{suffix}'.")
+            if continued_regex.search(fp_stem):
+                print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
+                fp_stem = continued_regex.sub("", fp_stem)
+                print(f"[add_file_name_suffix] Debug: fp_stem is now '{fp_stem}'.")
+        if not handled_suffix:
+            result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
         print(f"[add_file_name_suffix] Debug: input: '{file_path}', suffix: {suffix}, result: '{result}'.")
         return result
     
     def get_continuation_command(self, state_file_path, completed_all_iterations):
         result_array = []
+        output_file_parameters = []
         # pre-populate the recommended Python command
         result_array.append("bin/python")
         result_array.append("-u")
@@ -1249,10 +1274,13 @@ class VolatileAttackState():
         written_files_list.append(state_file_path)
         if self.persistable.attack_params.json_output_file is not None:
             written_files_list.append(self.persistable.attack_params.json_output_file)
+            output_file_parameters.append("--json-output-file")
         if self.persistable.attack_params.performance_stats_output_file is not None:
             written_files_list.append(self.persistable.attack_params.performance_stats_output_file)
+            output_file_parameters.append("--performance-output-file")
         if self.persistable.attack_params.torch_cuda_memory_history_file is not None:
             written_files_list.append(self.persistable.attack_params.torch_cuda_memory_history_file)
+            output_file_parameters.append("--torch-cuda-memory-history-file")
         
         next_file_number = 1
         existing_file_number = self.get_existing_file_number(written_files_list)
@@ -1267,24 +1295,64 @@ class VolatileAttackState():
         else:
             file_name_suffix = "-resumed"
         
-        new_state_file_path = self.add_or_replace_file_number(self.add_file_name_suffix(new_state_file_path, file_name_suffix), next_file_number)
-        result_array.append("--state-file")
-        result_array.append(new_state_file_path)
-        
-        if new_json_output_file is not None:
-            new_json_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_json_output_file, file_name_suffix), next_file_number)
-            result_array.append("--json-output-file")
-            result_array.append(new_json_output_file)
-        
-        if new_performance_stats_output_file is not None:
-            new_performance_stats_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_performance_stats_output_file, file_name_suffix), next_file_number)
-            result_array.append("--performance-output-file")
-            result_array.append(new_performance_stats_output_file)
+        finished_determining_filenames = False
+        got_automatic_filenames = False
+        # 999,999 automatically named variations should be enough for anybody.
+        # And, not coincidentally, that is the limit of a six-digit zero-padded number.
+        max_attempts = 999999
+        attempt_num = 0
+        # Make sure the suggested filenames won't overwrite any existing files
+        while not finished_determining_filenames:
+            existing_file = False
+            
+            new_state_file_path = self.add_or_replace_file_number(self.add_file_name_suffix(new_state_file_path, file_name_suffix), next_file_number)
+            if os.path.isfile(new_state_file_path):
+                existing_file = True
+            
+            if not existing_file and new_json_output_file is not None:
+                new_json_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_json_output_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_json_output_file):
+                    existing_file = True
+            
+            if not existing_file and new_performance_stats_output_file is not None:
+                new_performance_stats_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_performance_stats_output_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_performance_stats_output_file):
+                    existing_file = True
 
-        if new_torch_cuda_memory_history_file is not None:
-            new_torch_cuda_memory_history_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_torch_cuda_memory_history_file, file_name_suffix), next_file_number)
-            result_array.append("--torch-cuda-memory-history-file")
-            result_array.append(new_torch_cuda_memory_history_file)
+            if not existing_file and new_torch_cuda_memory_history_file is not None:
+                new_torch_cuda_memory_history_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_torch_cuda_memory_history_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_torch_cuda_memory_history_file):
+                    existing_file = True
+        
+            if not existing_file:
+                finished_determining_filenames = True
+                got_automatic_filenames = True
+            else:
+                attempt_num += 1
+                next_file_number += 1
+                if attempt_num > max_attempts:
+                    finished_determining_filenames = True
+        
+        if got_automatic_filenames:
+            result_array.append("--state-file")
+            result_array.append(new_state_file_path)
+            
+            if new_json_output_file is not None:
+                result_array.append("--json-output-file")
+                result_array.append(new_json_output_file)
+            
+            if new_performance_stats_output_file is not None:
+                result_array.append("--performance-output-file")
+                result_array.append(new_performance_stats_output_file)
+
+            if new_torch_cuda_memory_history_file is not None:
+                result_array.append("--torch-cuda-memory-history-file")
+                result_array.append(new_torch_cuda_memory_history_file)
+        else:
+            if len(output_file_parameters) > 0:
+                result_array.append(";")
+                result_array.append("# Warning: Broken Hill was unable to automatically generate new file names for the output files that would be generated by this command that do not overwrite existing files.")
+                result_array.append(f"# You should manually determine values for the following parameters: {output_file_parameters}.")
             
         self.persistable.attack_params.original_command_line_array
         
