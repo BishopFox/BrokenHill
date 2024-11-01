@@ -1,6 +1,7 @@
 #!/bin/env python
 
 import json
+import logging
 
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 import fastchat as fschat
@@ -16,6 +17,8 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_
 from llm_attacks_bishopfox.util.util_functions import find_first_occurrence_of_array_in_array
 from llm_attacks_bishopfox.util.util_functions import find_index_of_first_nonmatching_element
 from llm_attacks_bishopfox.util.util_functions import remove_whitespace_and_nonprintable_characters
+
+logger = logging.getLogger(__name__)
 
 class SeparatorStyleConversionException(Exception):
     pass
@@ -469,10 +472,10 @@ class ConversationTemplateTester:
             
             # temporary workaround for minor issue with Llama-2 template that can't be easily corrected without fschat code changes
             if result.existing_fschat_template.name in get_stop_string_or_equivalent_is_different_template_names():
-                #print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is in the list of template names with known non-identical endings that are currently displayed as minor warnings. Workaround logic may apply.")
+                logger.debug(f"template name '{result.existing_fschat_template.name}' is in the list of template names with known non-identical endings that are currently displayed as minor warnings. Workaround logic may apply.")
                 if not result.template_comparison_result.strings_match_exactly:
                     if len(ef_template_prompt_string) > len(tokenizer_prompt_string):
-                        #print("[ConversationTemplateTester.test_templates] Debug: len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
+                        logger.debug(f"len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
                         truncated_ef_template_prompt_string = ef_template_prompt_string[:len(tokenizer_prompt_string)]
                         if truncated_ef_template_prompt_string == tokenizer_prompt_string:                            
                             result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
@@ -485,12 +488,12 @@ class ConversationTemplateTester:
                                 tokenizer_prompt_string, 
                                 tokenizer_prompt_token_ids, 
                                 tokenizer_prompt_with_decoded_tokens)
-                        #else:
-                        #    print("[ConversationTemplateTester.test_templates] Debug: truncated_ef_template_prompt_string != tokenizer_prompt_string")
-                    #else:
-                    #    print("[ConversationTemplateTester.test_templates] Debug: len(ef_template_prompt_string) <= len(tokenizer_prompt_string)")
-            #else:
-            #    print("[ConversationTemplateTester.test_templates] Debug: template name '{result.existing_fschat_template.name}' is not in the list of Llama-2 template names.")
+                        else:
+                            logger.debug(f"truncated_ef_template_prompt_string != tokenizer_prompt_string")
+                    else:
+                        logger.debug(f"len(ef_template_prompt_string) <= len(tokenizer_prompt_string)")
+            else:
+                logger.debug(f"template name '{result.existing_fschat_template.name}' is not in the list of Llama-2 template names.")
             
             # Test whether the generated prompts are character-for-character identical
             if not result.template_comparison_result.strings_match_exactly:

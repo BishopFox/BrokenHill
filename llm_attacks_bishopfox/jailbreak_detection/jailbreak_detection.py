@@ -1,7 +1,10 @@
 #!/bin/env python
 
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from copy import deepcopy
 from enum import StrEnum
@@ -309,11 +312,11 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
     
     def process_rule(self, candidate_jailbreak_string, current_result):
         if self.match_type == PatternMatchingRuleType.ALWAYS_PROCESS:
-            #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because this rule's type is '{self.match_type}'")
+            logger.debug(f"returning '{self.rule_result}' because this rule's type is '{self.match_type}'")
             return self.rule_result
         # if the result of matching the rule wouldn't change anything, just return the existing result
         if current_result == self.rule_result:
-            #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning current result '{current_result}' because it is identical to the potential outcome of this rule ('{self.rule_result}')")
+            logger.debug(f"returning current result '{current_result}' because it is identical to the potential outcome of this rule ('{self.rule_result}')")
             return current_result
             
         # if the string matches the rule, return the rule's result
@@ -329,11 +332,11 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
         
         if self.match_type == PatternMatchingRuleType.STRING_CONTAINS:
             if pattern_string_for_matching in candidate_string_for_matching:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' contains at least one instance of the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' contains at least one instance of the string '{self.pattern}'")
                 return self.rule_result
         if self.match_type == PatternMatchingRuleType.STRING_DOES_NOT_CONTAIN:
             if self.pattern not in candidate_string_for_matching:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not contain any instances of the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not contain any instances of the string '{self.pattern}'")
                 return self.rule_result
 
         # regular expressions - arguably more likely to be used in the long run
@@ -341,11 +344,11 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
             pattern_matches = self.regex_object.search(candidate_jailbreak_string)
             if self.match_type == PatternMatchingRuleType.REGEX_MATCHES_PATTERN:
                 if pattern_matches is not None:
-                    #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' contains at least one match for the regular expression '{self.pattern}'")
+                    logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' contains at least one match for the regular expression '{self.pattern}'")
                     return self.rule_result
             if self.match_type == PatternMatchingRuleType.REGEX_DOES_NOT_MATCH_PATTERN:
                 if pattern_matches is None:
-                    #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not contain any matches for the regular expression '{self.pattern}'")
+                    logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not contain any matches for the regular expression '{self.pattern}'")
                     return self.rule_result
  
         # these go last because they're the least likely to be used
@@ -355,40 +358,40 @@ class LLMJailbreakDetectorRule(JSONSerializableObject):
             return current_result
         if self.match_type == PatternMatchingRuleType.STRING_BEGINS_WITH:
             if self.pattern == candidate_string_for_matching[0:len_pattern]:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' begins with the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' begins with the string '{self.pattern}'")
                 return self.rule_result
         if self.match_type == PatternMatchingRuleType.STRING_DOES_NOT_BEGIN_WITH:
             if self.pattern != candidate_string_for_matching[0:len_pattern]:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not begin with the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not begin with the string '{self.pattern}'")
                 return self.rule_result
         if self.match_type == PatternMatchingRuleType.STRING_ENDS_WITH:
             if self.pattern == candidate_string_for_matching[-len_pattern:]:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' ends with the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' ends with the string '{self.pattern}'")
                 return self.rule_result
         if self.match_type == PatternMatchingRuleType.STRING_DOES_NOT_END_WITH:
             if self.pattern != candidate_string_for_matching[-len_pattern:]:
-                #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not end with the string '{self.pattern}'")
+                logger.debug(f"returning '{self.rule_result}' because the string '{candidate_jailbreak_string}' does not end with the string '{self.pattern}'")
                 return self.rule_result
 
         # otherwise, leave the current state unchanged
-        #print(f"[LLMJailbreakDetectorRule.process_rule] Debug: returning existing result '{current_result}' because the string '{candidate_jailbreak_string}' did not match the current rule ('{self.get_rule_description()}')")
+        logger.debug(f"returning existing result '{current_result}' because the string '{candidate_jailbreak_string}' did not match the current rule ('{self.get_rule_description()}')")
         return current_result
 
     def to_dict(self):
         result = super(LLMJailbreakDetectorRule, self).properties_to_dict(self)
         result["regex_flags"] = regex_flags_to_list(self.regex_flags)
-        #print(f"[LLMJailbreakDetectorRule.to_dict] Debug: result = {result}")
+        logger.debug(f"result = {result}")
         return result
     
     @staticmethod
     def from_dict(property_dict):
         result = LLMJailbreakDetectorRule()
-        #print(f"[LLMJailbreakDetectorRule.from_dict] Debug: property_dict = {property_dict}")
+        logger.debug(f"property_dict = {property_dict}")
         super(LLMJailbreakDetectorRule, result).set_properties_from_dict(result, property_dict)
-        #print(f"[LLMJailbreakDetectorRule.from_dict] Debug: result.regex_flags = {result.regex_flags}")
+        logger.debug(f"result.regex_flags = {result.regex_flags}")
         if result.regex_flags is not None and isinstance(result.regex_flags, list):
             result.regex_flags = regex_flags_from_list(result.regex_flags)            
-        #print(f"[LLMJailbreakDetectorRule.from_dict] Debug: result.regex_flags (after conversion) = {result.regex_flags}")
+        logger.debug(f"result.regex_flags (after conversion) = {result.regex_flags}")
         result.set_regex()
         return result
 

@@ -3,7 +3,9 @@
 import enum
 import logging
 import sys
-    
+
+logger = logging.getLogger(__name__)
+
 class ANSIFormatter():
     def __init__(self):
         self.ansi_map = ANSIFormatter.get_ansi_font_format_code_map()
@@ -103,14 +105,20 @@ class BrokenHillLogFormatter(logging.Formatter):
         self.use_ansi = use_ansi
         # create these once at the beginning to avoid constant calls to regenerate them
         self.ac_reset = self.ansi_formatter.get_ansi_format_code("reset") + self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_debug = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
-        self.ac_info = self.ansi_formatter.get_ansi_format_code("fg_light_green")
-        self.ac_warning = self.ansi_formatter.get_ansi_format_code("fg_yellow")
-        self.ac_error = self.ansi_formatter.get_ansi_format_code("fg_red")
-        self.ac_critical = self.ansi_formatter.get_ansi_format_code("fg_red") + self.ansi_formatter.get_ansi_format_code("blink_fast")
+        # self.ac_debug = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
+        # self.ac_info = self.ansi_formatter.get_ansi_format_code("fg_light_green")
+        # self.ac_warning = self.ansi_formatter.get_ansi_format_code("fg_yellow")
+        # self.ac_error = self.ansi_formatter.get_ansi_format_code("fg_red")
+        # self.ac_critical = self.ansi_formatter.get_ansi_format_code("fg_red") + self.ansi_formatter.get_ansi_format_code("blink_fast")
+        self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_info = self.ansi_formatter.get_ansi_format_code("bg_green") + self.ansi_formatter.get_ansi_format_code("fg_black")
+        self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_error = self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_critical = self.ansi_formatter.get_ansi_format_code("blink_fast") + self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
         self.ac_separators = self.ansi_formatter.get_ansi_format_code("fg_light_grey") + self.ansi_formatter.get_ansi_format_code("faint")
         self.ac_debug_text = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
         self.ac_normal_text = self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_critical_text = self.ansi_formatter.get_ansi_format_code("fg_light_red")
         self.ac_timestamp = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
     
     @staticmethod
@@ -124,7 +132,7 @@ class BrokenHillLogFormatter(logging.Formatter):
         if levelno == logging.ERROR:
             return "E"
         if levelno == logging.CRITICAL:
-            return "C"
+            return "X"
         return "?"
     
     def get_level_ansi_code(self, levelno):
@@ -144,7 +152,7 @@ class BrokenHillLogFormatter(logging.Formatter):
         return True
     
     def format(self, record):
-        #print(f"[BrokenHillLogFormatter.format] Debug: record = {record}")
+        #logger.debug(f"record = {record}")
         short_level_name = BrokenHillLogFormatter.get_short_level_name(record.levelno)
         levelname = record.levelname
         record.message = record.getMessage()
@@ -161,9 +169,14 @@ class BrokenHillLogFormatter(logging.Formatter):
             sr = f"{self.ac_separators}{sr}{self.ac_reset}"
             short_level_name = f"{self.get_level_ansi_code(record.levelno)}{short_level_name}{self.ac_reset}"
             levelname = f"{self.get_level_ansi_code(record.levelno)}{levelname}{self.ac_reset}"
+            handled_text_formatting = False
             if record.levelno <= logging.DEBUG:
                 message = f"{self.ac_debug_text}{message}{self.ac_reset}"
-            else:
+                handled_text_formatting = True
+            if record.levelno >= logging.CRITICAL:
+                message = f"{self.ac_critical_text}{message}{self.ac_reset}"
+                handled_text_formatting = True
+            if not handled_text_formatting:
                 message = f"{self.ac_normal_text}{message}{self.ac_reset}"
             asctime = f"{self.ac_timestamp}{asctime}{self.ac_reset}"
         
@@ -197,7 +210,7 @@ class BrokenHillLogFormatter(logging.Formatter):
             if result[-1:] != "\n":
                 result = result + "\n"
             result = result + self.formatStack(record.stack_info)
-        #print(f"[BrokenHillLogFormatter.format] Debug: result = {result}")
+        #logger.debug(f"result = {result}")
         return result
 
 class BrokenHillLogManager:
@@ -211,7 +224,7 @@ class BrokenHillLogManager:
     
     def get_console_formatter(self):
         result = BrokenHillLogFormatter(
-            "{sl}{asctime}{sr} {sl}{short_level_name}{sr} {message}",
+            "{sl}{asctime}{sr}{sl}{short_level_name}{sr} {message}",
             datefmt = "%Y-%m-%d@%H:%M:%S",
             attack_params = self.attack_params,
             use_ansi = self.attack_params.console_ansi_format
@@ -220,7 +233,7 @@ class BrokenHillLogManager:
         
     def get_log_file_formatter(self):
         result = BrokenHillLogFormatter(
-            "{sl}{asctime}{sr} {sl}{pathname}:{lineno}{sr} {sl}{funcName}{sr} {sl}{levelname}{sr} {message}",
+            "{sl}{asctime}{sr} {sl}{funcName}{sr} {sl}{pathname}:{lineno}{sr} {sl}{levelname}{sr} {message}",
             datefmt = "%Y-%m-%d@%H:%M:%S:uuu%z",
             attack_params = self.attack_params,
             use_ansi = self.attack_params.log_file_ansi_format
@@ -248,21 +261,45 @@ class BrokenHillLogManager:
     
     def attach_handlers(self, module_name):
         self.module_names.append(module_name)
-        logger = logging.getLogger(module_name)
+        module_logger = logging.getLogger(module_name)
         if self.console_handler is not None:
-            logger.addHandler(self.console_handler)
+            module_logger.addHandler(self.console_handler)
         if self.file_handler is not None:
-            logger.addHandler(self.file_handler)
+            module_logger.addHandler(self.file_handler)
+        
+        is_third_party_module = True
+        module_name_lower = module_name.lower()
+        if "bishopfox" in module_name_lower:
+            is_third_party_module = False
+        if "brokenhill" in module_name_lower:
+            is_third_party_module = False
+        
+        module_level = self.get_lowest_log_level()
+        
+        if is_third_party_module:
+            module_level = self.attack_params.third_party_module_output_level
+
+        #print(f"[attach_handlers] Debug: setting log level for module '{module_name}' to {module_level}")
+
+        module_logger.setLevel(module_level)
 
     def attach_handlers_to_all_modules(self):
+        top_level_module_names = []
         for name in logging.root.manager.loggerDict:
+            name_prefix = name.split(".")[0]
+            if name_prefix not in top_level_module_names:
+                top_level_module_names.append(name_prefix)
+        
+        #for name in logging.root.manager.loggerDict:
+        for name in top_level_module_names:
             self.attach_handlers(name)
     
     def remove_all_existing_handlers(self):
         for name in logging.root.manager.loggerDict:
-            logger = logging.getLogger(name)
-            for handler in logger.handlers[:]:
-                logger.removeHandler(handler)
+            module_logger = logging.getLogger(name)
+            module_logger.setLevel(self.attack_params.third_party_module_output_level)
+            for handler in module_logger.handlers[:]:
+                module_logger.removeHandler(handler)
 
     def get_all_module_names(self):
         result = []

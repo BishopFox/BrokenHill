@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 import json
+import logging
 import os
 import torch
 
@@ -12,6 +13,8 @@ from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_a
 from llm_attacks_bishopfox.util.util_functions import load_json_from_file
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_to_bit_count
+
+logger = logging.getLogger(__name__)
 
 BUNDLED_LLM_LIST_FILE_NAME = "model_list.json"
 
@@ -116,7 +119,7 @@ def print_model_parameter_info(attack_state):
     else:
         model_parameter_info_string = f"{model_parameter_info_string}{current_memory_parameter_info_string}"
     
-    print(model_parameter_info_string)
+    logger.info(model_parameter_info_string)
 
 class LargeLanguageModelParameterException(Exception):
     pass

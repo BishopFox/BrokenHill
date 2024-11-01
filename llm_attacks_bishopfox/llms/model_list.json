@@ -134,7 +134,7 @@
 			"size": 41293763742,
 			"data_type": "float16",
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "unk" ],
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "eos" ],
 			"comment": "Takes about 9.5 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement."
 		},
 		{

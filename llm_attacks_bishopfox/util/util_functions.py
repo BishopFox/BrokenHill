@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import numpy
 import pathlib
 import psutil
 import re
@@ -14,11 +15,12 @@ import sys
 import tempfile
 import time
 import torch
+import traceback
 import uuid
 
-import numpy
-
 from enum import StrEnum
+
+logger = logging.getLogger(__name__)
 
 class RequiredValueIsNoneException(Exception):
     pass
@@ -71,7 +73,7 @@ class PyTorchDevice():
         else:
             result.process_reserved_utilization = 0.0        
         if result.total_memory != result.gpu_total_memory:
-            print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
+            logger.warning(f"the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
         return result
     
     @staticmethod
@@ -93,7 +95,7 @@ def get_broken_hill_state_file_name(attack_state):
     return get_broken_hill_file_name(attack_state, "state", ".json")
 
 def get_escaped_string(input_string):
-    #print(f"[get_escaped_string] Debug: escaping string '{input_string}'")
+    logger.debug(f"escaping string '{input_string}'")
     if input_string is None:
         return None
     result = input_string.replace("\n", "\\n")
@@ -104,7 +106,7 @@ def get_escaped_string(input_string):
         replaced_chars.append(i)
     for i in range(0, len(replaced_chars)):
         result = result.replace(chr(replaced_chars[i]), f"\\x{i:02x}")
-    #print(f"[get_escaped_string] Debug: escaped string '{input_string}' to '{result}'")
+    logger.debug(f"escaped string '{input_string}' to '{result}'")
     return result
 
 # For getting string options (e.g. --load-state somefile.json) from sys.argv prior to using argparse
@@ -152,9 +154,12 @@ def load_json_from_file(file_path, failure_is_critical = True):
     try:
         result = json.loads(file_content)
     except Exception as e:
-        print(f"Couldn't deserialize JSON data in the file '{file_path}': {e}")
+        error_message = f"Couldn't deserialize JSON data in the file '{file_path}': {e}\n{traceback.format_exc()}"
         if failure_is_critical:
+            logger.critical(error_message)
+            # TKTK: replace with raise
             sys.exit(1)
+        logger.error(error_message)
         result = None
     return result
 
@@ -233,7 +238,7 @@ def update_elapsed_time_string(time_string, new_element_name, count):
 
 def get_elapsed_time_string(start_time, end_time):
     delta_value = end_time - start_time
-    #print(f"{delta_value}, {delta_value.days}, {delta_value.seconds}, {delta_value.microseconds}")
+    logger.debug(f"{delta_value}, {delta_value.days}, {delta_value.seconds}, {delta_value.microseconds}")
     result = f"{delta_value}"
     num_days = delta_value.days
     if num_days > 0:
@@ -261,10 +266,10 @@ def get_elapsed_time_string(start_time, end_time):
 
 def get_model_size(mdl):
     tempfile_path = tempfile.mktemp()
-    #print(f"Debug: writing model to '{tempfile_path}'")
+    logger.debug(f"Writing model to '{tempfile_path}'")
     torch.save(mdl.state_dict(), tempfile_path)
     model_size = os.path.getsize(tempfile_path)
-    #print(f"Debug: model size: {model_size}")
+    logger.debug(f"Model size: {model_size}")
     #result = "%.2f" %(model_size)
     result = model_size
     os.remove(tempfile_path)
@@ -360,25 +365,26 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
 def verify_output_file_capability(output_file_path, overwrite_existing, is_state_file = False):
     if os.path.isfile(output_file_path):
         if overwrite_existing:
-            print(f"Warning: overwriting output file '{output_file_path}'")
+            logger.warning(f"Overwriting output file '{output_file_path}'")
         else:
             if is_state_file:
-                print(f"Error: the state file '{output_file_path}' already exists. THE SPECIFIED CONFIGURATION WILL DELETE THE EXISTING FILE and replace it with a new file. If you really want to do that, specify both --overwrite-output and --overwrite-existing-state are required.")
+                logger.critical(f"The state file '{output_file_path}' already exists. THE SPECIFIED CONFIGURATION WILL DELETE THE EXISTING FILE and replace it with a new file. If you really want to do that, specify both --overwrite-output and --overwrite-existing-state are required.")
                 sys.exit(1)            
-            print(f"Error: the output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
+            logger.critical(f"The output file '{output_file_path}' already exists. Specify --overwrite-output to replace it.")
             sys.exit(1)
     try:
         safely_write_text_output_file(output_file_path, "")
     #except Exception as e:
     except Exception as e:
-        print(f"Could not validate the ability to write to the file '{output_file_path}': {e}")
+        logger.critical(f"Could not validate the ability to write to the file '{output_file_path}': {e}\n{traceback.format_exc()}")
         sys.exit(1)
     # remove the file for now to avoid annoying errors for empty files if nothing is actually written to it later
     fpo = pathlib.Path(output_file_path)
     try:
         fpo.unlink() 
     except Exception as e:
-        err_message = f"Couldn't delete the file '{output_file_path}' after creating it to validate Broken Hill's ability to write to the file: {e}."
+        err_message = f"Couldn't delete the file '{output_file_path}' after creating it to validate Broken Hill's ability to write to the file: {e}\n{traceback.format_exc()}"
+        logger.critical(err_message)
         sys.exit(1)
 
 def add_value_to_list_if_not_already_present(existing_list, new_value, ignore_none = False):
@@ -487,7 +493,7 @@ def tensor_to_dict(t):
     return result
 
 def tensor_from_dict(d):
-    #print(f"[tensor_from_dict] Debug: d = {d}")
+    logger.debug(f"d = {d}")
     dtype = torch_dtype_from_string(d["dtype"])
     device = None
     if d["device"] is not None:
@@ -496,7 +502,7 @@ def tensor_from_dict(d):
     return result
 
 def find_index_of_first_nonmatching_element(list1, list2):
-    #print(f"[find_index_of_first_nonmatching_element] Debug: list1 = {list1}, list2 = {list2}")
+    logger.debug(f"list1 = {list1}, list2 = {list2}")
     len_list1 = len(list1)
     len_list2 = len(list2)
     last_index = len_list1
@@ -508,12 +514,12 @@ def find_index_of_first_nonmatching_element(list1, list2):
     i = 0
     while i < last_index:
         if list1[i] != list2[i]:
-            #print(f"[find_index_of_first_nonmatching_element] Debug: result = {i}")
+            logger.debug(f"result = {i}")
             return i
         i += 1
     
     if len_list1 != len_list2:
-        #print(f"[find_index_of_first_nonmatching_element] Debug: len_list1 != len_list2, result = {i}")
+        logger.debug(f"len_list1 != len_list2, result = {i}")
         return i
     
     return None
@@ -547,37 +553,37 @@ def append_single_or_list_members(existing_list, value_or_list_to_add, ignore_if
  
 def find_first_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
     result = None
-    #print(f"[find_first_occurrence_of_array_in_array] Debug: Searching for '{inner_array}' in '{outer_array}'")
+    logger.debug(f"Searching for '{inner_array}' in '{outer_array}'")
     len_inner = len(inner_array)
     len_outer = len(outer_array)
     range_end = len_outer
     if not isinstance(stop_index, type(None)):
         range_end = stop_index
-    #print(f"[find_first_occurrence_of_array_in_array] Debug: searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
+    logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
     for i in range(start_index, range_end):
         if (i + len_inner) >=  len_outer:
             break
         if outer_array[i] == inner_array[0]:
             is_match = True
-            #print(f"[find_first_occurrence_of_array_in_array] Debug: found potential match beginning at index {i}'")
+            logger.debug(f"found potential match beginning at index {i}'")
             for j in range(1, len_inner):
                 if outer_array[i + j] != inner_array[j]:
                     is_match = False
-                    #print(f"[find_first_occurrence_of_array_in_array] Debug: '{outer_array[i + j]}' != '{inner_array[j]}'")
+                    logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
                     break
             if is_match:
-                #print(f"[find_first_occurrence_of_array_in_array] Debug: found match at index {i}")
+                logger.debug(f"found match at index {i}")
                 return i
-    #print(f"[find_first_occurrence_of_array_in_array] Debug: no match found")
+    logger.debug(f"no match found")
     return result
 
 def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
     result = None
-    #print(f"[find_last_occurrence_of_array_in_array] Debug: Searching for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index}")
+    logger.debug(f"Searching for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index}")
     len_inner = len(inner_array)
     len_outer = len(outer_array)
     if len_inner > len_outer or len_inner == 0 or len_outer == 0:
-        print(f"[find_last_occurrence_of_array_in_array] Warning: cannot search for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index} - returning {result}")
+        logger.warning(f"cannot search for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index} - returning {result}")
         return result
     range_start = len_outer - len_inner
     if not isinstance(stop_index, type(None)):
@@ -585,20 +591,20 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
     range_end = start_index - 1
     if range_end < -1 or range_end > len_outer or range_start > len_outer or range_start < -1:
         raise TrashFireTokenException(f"[find_last_occurrence_of_array_in_array] Error: cannot search for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}' with start_index = {start_index} and stop_index = {stop_index}")
-    #print(f"[find_last_occurrence_of_array_in_array] Debug: searching for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}'")
+    logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}'")
     for i in range(range_start, range_end, -1):
         if outer_array[i] == inner_array[0]:
             is_match = True
-            #print(f"[find_last_occurrence_of_array_in_array] Debug: found potential match beginning at index {i}'")
+            logger.debug(f"found potential match beginning at index {i}'")
             for j in range(1, len_inner):
                 if outer_array[i + j] != inner_array[j]:
                     is_match = False
-                    #print(f"[find_last_occurrence_of_array_in_array] Debug: '{outer_array[i + j]}' != '{inner_array[j]}'")
+                    logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
                     break
             if is_match:
-                #print(f"[find_last_occurrence_of_array_in_array] Debug: found match at index {i}")
+                logger.debug(f"found match at index {i}")
                 return i
-    #print(f"[find_last_occurrence_of_array_in_array] Debug: no match found")
+    logger.debug(f"no match found")
     return result
 
 # Convert a nice array of command elements to a terrible single value which can be used with bash -c.
@@ -634,7 +640,7 @@ def command_array_to_string(command_array, add_line_breaks = False):
         previous_element = current_element
     #result = shlex.quote(inner_command)
     result = inner_command
-    #print(f"[command_array_to_string] Debug: input = {command_array}, output = {result}")
+    logger.debug(f"input = {command_array}, output = {result}")
     return result
 
 # return a slice that begins with the lower of two other slices start values, and ends with the greater of their stop values.
@@ -667,7 +673,7 @@ def get_widened_slice(slice1, slice2):
             if set_stop:
                 slice_stop = slice2.stop
     result = slice(slice_start, slice_stop)
-    #print(f"[get_widened_slice] slice1 = {slice1}, slice2 = {slice2}, result = {result}")
+    logger.debug(f"slice1 = {slice1}, slice2 = {slice2}, result = {result}")
     return result
 
 def torch_dtype_from_string(string):

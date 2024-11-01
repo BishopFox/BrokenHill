@@ -1,8 +1,11 @@
 #!/bin/env python
 
+import logging
 import statistics
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+
+logger = logging.getLogger(__name__)
 
 class StatisticsException(Exception):
     pass
@@ -34,7 +37,7 @@ class StatisticsDataSet(JSONSerializableObject):
             if self.maximum is not None and self.minimum is not None:
                 self.value_range = self.maximum - self.minimum
         else:
-            print(f"[populate_dataset] Warning: got an empty source data array for dataset '{dataset_name}'")
+            logger.warning(f"Got an empty source data array for dataset '{dataset_name}'")
 
     def to_dict(self):
         result = super(StatisticsDataSet, self).properties_to_dict(self)

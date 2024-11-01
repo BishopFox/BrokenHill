@@ -1,9 +1,12 @@
 #!/bin/env python
 
+import logging
+
 from enum import auto
 from enum import IntFlag
-
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+
+logger = logging.getLogger(__name__)
 
 class RadiationGardenTriggerType(IntFlag):
     # Trigger based on the current jailbreak count

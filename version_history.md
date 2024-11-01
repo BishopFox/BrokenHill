@@ -9,16 +9,21 @@ This is the most significant update to Broken Hill since its public release in S
   * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
   * However, it *is* a brand new feature, so please let us know if you find any discrepancies.
   * If you really want to disable this feature, there is also a `--disable-state-backup` option.
-* Added support for the following models and families:
+* [Greatly improved console output and built-in log-generation capabilities](docs/all_command-line_options.md#output-options), so no more need to pipe to `tee`.
+  * The default console output uses ANSI formatting for colour. You can disable this with `--no-ansi`.
+  * Log to a file using `--log <path>`.
+  * Set the message level to include in console output using `--console-level` (default: `info`).
+  * Set the message level to include in log file output using `--log-level` (default: `info`).
+* Added support for the following models and families. The linked models are specific versions tested, but other models from the same series or family should also work just fine. We'll be testing more of them over time.
   * [Azurro's APT family](https://huggingface.co/Azurro)
-    * APT
       * [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
       * [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
       * [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
       * [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)  
   * GPT-NeoX
     * [gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b)
-	* [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
+  * Mamba
+    * [mamba-1.4b-hf](https://huggingface.co/state-spaces/mamba-1.4b-hf)
   * Mistral
     * [Mistral-7B-Instruct-v0.3](https://huggingface.co/MistralAI/Mistral-7B-Instruct-v0.3)
     * [Mistral-Nemo-Instruct-2407](https://huggingface.co/MistralAI/Mistral-Nemo-Instruct-2407)
@@ -31,6 +36,7 @@ This is the most significant update to Broken Hill since its public release in S
     * [RedPajama-INCITE-7B-Chat](https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Chat)
     * [RedPajama-INCITE-Chat-3B-v1](https://huggingface.co/togethercomputer/RedPajama-INCITE-Chat-3B-v1)
   * Snowflake Arctic
+    * [snowflake-arctic-embed-s](https://huggingface.co/Snowflake/snowflake-arctic-embed-s)
   * SOLAR
     * [SOLAR-10.7B-Instruct-v1.0](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0)
     * [TinySolar-248m-4k-code-instruct](https://huggingface.co/upstage/TinySolar-248m-4k-code-instruct)
@@ -46,8 +52,7 @@ This is the most significant update to Broken Hill since its public release in S
     * [llama-3-youko-8b-instruct](https://huggingface.co/rinna/llama-3-youko-8b-instruct) (derived from Llama-3)
   * OpenAssistant (and derived) fine-tuned variations of [Eleuther AI's Pythia model family](https://github.com/EleutherAI/pythia)
     * [huge-roadrunner-pythia-1b-deduped-oasst](https://huggingface.co/csimokat/huge-roadrunner-pythia-1b-deduped-oasst)
-  * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF) (derived from Vicuna and therefore from Llama as well)
-  
+  * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF) (derived from Vicuna and therefore from Llama as well)  
 * Added the following custom chat templates:
   * `daredevil`
   * `felladrin-llama-chat`

@@ -3,6 +3,7 @@
 import copy
 import datetime
 import json
+import logging
 import os
 import re
 import shlex
@@ -12,6 +13,8 @@ from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelI
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_time_string
+
+logger = logging.getLogger(__name__)
 
 # placeholder to use in generated command strings for things like > log.txt 2>&1
 # must not contain characters that shlex.quote() will escape or wrap in quotes
@@ -52,8 +55,12 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.verbose_stats = True
         self.verbose_resource_info = True
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
-        # default: ten hours, necessary for some models tested on CPU, e.g. 20B parameter models
-        self.process_timeout = 36000
+        # ten minute default for CUDA devices
+        self.cuda_process_timeout = 600
+        # default: fifteen hours, necessary for some models tested on CPU, e.g that take 2-3 hours for initial iteration, then 10 hours for each additional iteration
+        self.cpu_process_timeout = 54000
+        # ten hours
+        #self.process_timeout = 36000
         # one hour
         #self.process_timeout = 3600
         # two hours
@@ -64,6 +71,11 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.model_name_regexes_to_test = None
         self.specific_model_names_to_skip = None
         self.model_name_regexes_to_skip = None
+    
+    def get_process_timeout(self):
+        if self.model_device == "cpu":
+            return self.cpu_process_timeout
+        return self.cuda_process_timeout
     
     def set_from_model_info(self, model_info):
         self.model_path = model_info.model_path
@@ -146,6 +158,9 @@ class BrokenHillTestParams(JSONSerializableObject):
             if '--max-new-tokens-final' not in self.custom_options:
                 result.append('--max-new-tokens-final')
                 result.append(f"{self.max_new_tokens_final}")
+        if self.ignore_jailbreak_test_results:
+            if "--ignore-jailbreak-self-tests" not in self.custom_options:
+                result.append("--ignore-jailbreak-self-tests")
         if self.verbose_stats:
             if "--verbose-stats" not in self.custom_options:
                 result.append("--verbose-stats")

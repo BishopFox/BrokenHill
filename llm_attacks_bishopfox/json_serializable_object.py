@@ -2,10 +2,13 @@
 
 import copy
 import json
+import logging
 import re
 import torch
 
 from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
+
+logger = logging.getLogger(__name__)
 
 class JSONSerializationException(Exception):
     pass

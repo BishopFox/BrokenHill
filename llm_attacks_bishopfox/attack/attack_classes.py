@@ -16,6 +16,7 @@ import sys
 import time
 import torch
 import torch.nn
+import traceback
 import uuid
 
 from transformers import AutoModelForCausalLM
@@ -66,6 +67,8 @@ from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 
 from transformers.generation import GenerationConfig
+
+logger = logging.getLogger(__name__)
 
 class DecodingException(Exception):
     pass
@@ -238,7 +241,7 @@ class AdversarialContent(JSONSerializableObject):
     def token_list_contains_invalid_tokens(tokenizer, token_ids):
         for token_num in range(0, len(token_ids)):
             if token_ids[token_num] < 0 or token_ids[token_num] >= tokenizer.vocab_size: 
-                #print(f"[AdversarialContent.token_list_contains_invalid_tokens] Warning: adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                logger.debug(f"adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
                 return True
         return False
     
@@ -254,7 +257,7 @@ class AdversarialContent(JSONSerializableObject):
         except Exception as e:
             try:
                 result.as_string = get_decoded_tokens(tokenizer, result.token_ids)
-                #print(f"[AdversarialContent.from_token_ids] Debug: couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                logger.debug(f"couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
                 raise DecodingException(f"[AdversarialContent.from_token_ids] couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
             except Exception as e2:
                 raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}")
@@ -847,10 +850,9 @@ class AttackParams(JSONSerializableObject):
         self.log_file_output_level = logging.INFO
         self.console_ansi_format = True
         self.log_file_ansi_format = False
-        
-         
-        # Workaround for overly-chatty-by-default PyTorch code
-        self.torch_logger_output_level = logging.WARN
+
+        # Workaround for overly-chatty-by-default PyTorch (and other) code
+        self.third_party_module_output_level = logging.WARNING
 
         # output options
         self.overwrite_output = False
@@ -976,9 +978,9 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
     #   dtype=torch.uint8), self.numpy_rng_state = {'bit_generator': 'PCG64', 'state': {'state': 3383365900161324816698418978122629783, 'inc': 72763549156770659863042999813056722643}, 'has_uint32': 0, 'uinteger': 0}
 
     def to_dict(self):
-        #print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
+        #logger.debug(f"self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
         result = super(RandomNumberGeneratorStateCollection, self).properties_to_dict(self)
-        #print(f"[RandomNumberGeneratorStateCollection.to_dict] Debug: result = {result}.")
+        #logger.debug(f"result = {result}.")
         return result
 
     def to_json(self):
@@ -1087,16 +1089,16 @@ class PersistableAttackState(JSONSerializableObject):
         
         # TKTK: add a localization option for these
         if self.attack_params.exclude_slur_tokens:
-            #print(f"[main] Debug: adding slurs to the list that will be used to build the token denylist.")
+            logger.debug(f"adding slurs to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_slurs())
         if self.attack_params.exclude_profanity_tokens:
-            #print(f"[main] Debug: adding profanity to the list that will be used to build the token denylist.")
+            logger.debug(f"adding profanity to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_profanity())
         if self.attack_params.exclude_other_offensive_tokens:
-            #print(f"[main] Debug: adding other highly-problematic content to the list that will be used to build the token denylist.")
+            logger.debug(f"adding other highly-problematic content to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
-        print(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
+        logger.info(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
         self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
             self.not_allowed_token_list, 
             device = attack_state.model_device, 
@@ -1115,7 +1117,7 @@ class PersistableAttackState(JSONSerializableObject):
 
     def to_json(self):
         self_dict = self.to_dict()
-        #print(f"[PersistableAttackState.to_json] Debug: self_dict = {self_dict}")
+        #logger.debug(f"self_dict = {self_dict}")
         return JSONSerializableObject.json_dumps(self_dict, use_indent = False)
     
     def copy(self):
@@ -1213,7 +1215,7 @@ class VolatileAttackState():
                     num_str = pattern_match.group(0).replace("-", "")
                     found_file_numbers.append(int(num_str))
                 except Exception as e:
-                    print(f"[get_existing_file_number] Error: couldn't convert {pattern_match.group(0)} into a number: {e}")
+                    logger.error(f"Couldn't convert {pattern_match.group(0)} into a number: {e}")
         if len(found_file_numbers) > 0:
             found_file_numbers.sort()
             file_number = found_file_numbers[(len(found_file_numbers) - 1)]        
@@ -1233,7 +1235,7 @@ class VolatileAttackState():
         if fp_stem_new == fp_stem:
             fp_stem_new = f"{fp_stem}{file_number_string}"
         result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
-        #print(f"[add_or_replace_file_number] Debug: input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
+        logger.debug(f"input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
         return result
     
     def add_file_name_suffix(self, file_path, suffix):
@@ -1247,13 +1249,12 @@ class VolatileAttackState():
         handled_suffix = False        
         continued_regex = re.compile("-(resumed|continued)-[0-9]{6}_iterations-[0-9]{4}$")
         if continued_regex.search(fp_stem):
-            #print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
-            #print(f"[add_file_name_suffix] Debug: continued_regex matches fp_stem '{fp_stem}'.")
+            logger.debug(f"continued_regex matches fp_stem '{fp_stem}'.")
             fp_stem = continued_regex.sub("", fp_stem)
-            #print(f"[add_file_name_suffix] Debug: fp_stem is now '{fp_stem}'.")
+            logger.debug(f"fp_stem is now '{fp_stem}'.")
         if not handled_suffix:
             result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
-        #print(f"[add_file_name_suffix] Debug: input: '{file_path}', suffix: {suffix}, result: '{result}'.")
+        logger.debug(f"input: '{file_path}', suffix: {suffix}, result: '{result}'.")
         return result
     
     def get_continuation_command(self, state_file_path, completed_all_iterations):
@@ -1274,7 +1275,7 @@ class VolatileAttackState():
                     script_index = i
                     break
                 else:
-                    print(f"[get_continuation_command] Debug: no match between '{comparison_string}' and '{script_name}'")
+                    logger.debug(f"no match between '{comparison_string}' and '{script_name}'")
 
         if script_index is None:
             raise Exception(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
@@ -1387,9 +1388,10 @@ class VolatileAttackState():
                 try:
                     delete_file(self.persistable.attack_params.state_file)
                     delete_message = f"{delete_message} The file '{self.persistable.attack_params.state_file}' was deleted successfully."
+                    logger.info(delete_message)
                 except Exception as e:
                     delete_message = f"{delete_message} However, the file '{self.persistable.attack_params.state_file}' could not be deleted: {e}"
-                print(delete_message)
+                    logger.error(delete_message)
                 handled_state_message = True
         if not handled_state_message:
             state_message = f"State information for this attack has been stored in '{self.persistable.attack_params.state_file}'."
@@ -1431,7 +1433,7 @@ class VolatileAttackState():
         if self.persistable.random_number_generator_states is not None:
             self.random_number_generators.set_states(self.persistable.random_number_generator_states)
         else:
-            print(f"[restore_random_number_generator_states] Warning: no previous random number generator state to restore")
+            logger.warning(f"No previous random number generator state to restore")
 
     # Restore any state data for objects in this class that require explicitly referring to persistable data
     def restore_from_persistable_data(self):
@@ -1443,13 +1445,15 @@ class VolatileAttackState():
         self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
 
     def load_model_and_tokenizer(self):
-        #print(f"[load_model_and_tokenizer] Debug: attack_state.persistable.attack_params.model_path = '{attack_state.persistable.attack_params.model_path}', attack_state.persistable.attack_params.tokenizer_path = '{attack_state.persistable.attack_params.tokenizer_path}', device = '{device}', dtype = {dtype}, trust_remote_code = {trust_remote_code}, ignore_mismatched_sizes = {ignore_mismatched_sizes}")
+        logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
 
         #if ignore_mismatched_sizes:
         #    kwargs["ignore_mismatched_sizes"] = True
 
         model = None
         handled_model_load = False
+
+        # TKTK: try adding a fallback to other AutoModel types, like AutoModelForSeq2SeqLM for T5.
 
         if self.model_weight_type is None:
             model = AutoModelForCausalLM.from_pretrained(
@@ -1476,7 +1480,7 @@ class VolatileAttackState():
                     charlie_prince_fp16 = True
                 if self.model_weight_type == torch.float32:
                     charlie_prince_fp32= True
-                #print(f"[load_model_and_tokenizer] Debug: self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+                logger.debug(f"self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
                 try:
                     model = AutoModelForCausalLM.from_pretrained(
                             self.persistable.attack_params.model_path,
@@ -1491,7 +1495,7 @@ class VolatileAttackState():
                         ).to(self.model_device).eval()
                     handled_model_load = True
                 except Exception as e:
-                    #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+                    logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
                     handled_model_load = False
         if not handled_model_load:
             model = AutoModelForCausalLM.from_pretrained(
@@ -1507,13 +1511,13 @@ class VolatileAttackState():
             try:
                 model = torch.nn.DataParallel(model)
             except Exception as e:
-                print(f"Error: unable to load the model using torch.nn.DataParallel: {e}")
+                logger.error(f"Unable to load the model using torch.nn.DataParallel: {e}")
         
         tokenizer_path_to_load = self.persistable.attack_params.model_path
         if self.persistable.attack_params.tokenizer_path is not None:
             tokenizer_path_to_load = self.persistable.attack_params.tokenizer_path
         
-        #print(f"[load_model_and_tokenizer] Debug: self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
+        logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
 
         tokenizer = None
         
@@ -1532,7 +1536,7 @@ class VolatileAttackState():
             handled = False
             #if isinstance(e, ValueError):
             if 2 > 1:
-                print(f"[load_model_and_tokenizer] Warning: unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
+                logger.warning(f"Unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
                 try:
                     tokenizer = AutoTokenizer.from_pretrained(
                         tokenizer_path_to_load,
@@ -1541,10 +1545,10 @@ class VolatileAttackState():
                     )
                     handled = True
                 except Exception as e2:
-                    print(f"[load_model_and_tokenizer] Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'")
+                    logger.error(f"Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'")
                     raise e        
             if not handled:
-                print(f"[load_model_and_tokenizer] Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
+                logger.error(f"Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
                 raise e
         
         if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
@@ -1573,9 +1577,9 @@ class VolatileAttackState():
                 if pad_token_id is not None and pad_token is not None:
                     tokenizer.pad_token_id = pad_token_id
                     tokenizer.pad_token = pad_token
-                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.{side_message}")
+                logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.{side_message}")
             else:
-                print(f"[load_model_and_tokenizer] Warning: the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
+                logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
         
         return model, tokenizer
 
@@ -1585,9 +1589,9 @@ class VolatileAttackState():
             model_load_message = f"Loading model and tokenizer from '{self.persistable.attack_params.model_path}'."
             if self.persistable.attack_params.tokenizer_path is not None:
                 model_load_message = f"Loading model from '{self.persistable.attack_params.model_path}' and tokenizer from {self.persistable.attack_params.tokenizer_path}."
-            print(model_load_message)
+            logger.info(model_load_message)
             self.model_weight_type = self.persistable.attack_params.get_model_data_type()
-            #print(f"Debug: model_weight_type = {self.model_weight_type}")
+            logger.debug(f"model_weight_type = {self.model_weight_type}")
             model_config_path = None
             model_config_dict = None
             try:
@@ -1595,7 +1599,7 @@ class VolatileAttackState():
                 model_config_data = get_file_content(model_config_path, failure_is_critical = False)
                 model_config_dict = json.loads(model_config_data)
             except Exception as e:
-                print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
+                logger.warning(f"Couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
             self.model_weight_storage_string = ""
             if model_config_dict is not None:            
                 if "torch_dtype" in model_config_dict.keys():
@@ -1603,30 +1607,32 @@ class VolatileAttackState():
                     if model_torch_dtype is not None:
                         self.model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
                         self.model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
-                        print(self.model_weight_storage_string)
+                        logger.info(self.model_weight_storage_string)
             try:
                 self.model, self.tokenizer = self.load_model_and_tokenizer()
             except Exception as e:
                 tokenizer_message = ""
                 if self.persistable.attack_params.tokenizer_path is not None and self.persistable.attack_params.tokenizer_path != "":
                     tokenizer_message = ", with tokenizer path '{self.persistable.attack_params.tokenizer_path}'"
-                print(f"Error: exception thrown while loading model from '{self.persistable.attack_params.model_path}'{tokenizer_message}: {e}.")
+                logger.critical(f"Exception thrown while loading model from '{self.persistable.attack_params.model_path}'{tokenizer_message}: {e}\n{traceback.format_exc()}")
+                # TKTK: replace this with raising an exception so any cleanup can happen
                 sys.exit(1)
             self.persistable.performance_data.collect_torch_stats(self, is_key_snapshot_event = True, location_description = "after loading model and tokenizer")
-            #print(f"[main] Debug: model loaded.")
+            logger.debug(f"Model loaded.")
             model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
             if self.model_weight_storage_string != "":            
                 model_data_type_message = f"{self.model_weight_storage_string}, and was loaded as {self.model.dtype}"
-            print(f"Model and tokenizer loaded. {model_data_type_message}")
+            logger.info(f"Model and tokenizer loaded. {model_data_type_message}")
             if self.persistable.attack_params.peft_adapter_path is not None:
-                f"Loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}'."
+                logger.info(f"Loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}'.")
                 try:
                     self.model = PeftModel.from_pretrained(self.model, self.persistable.attack_params.peft_adapter_path)
                 except Exception as e:
-                    print(f"Error: exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}.")
+                    logger.critical(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
+                    # TKTK: replace this with raising an exception so any cleanup can happen
                     sys.exit(1)
                 self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading PEFT adapter")
-                #print(f"[main] Debug: PEFT adapter loaded.")
+                logger.info(f"PEFT adapter loaded.")
             
             self.persistable.overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(self.model)
             
@@ -1634,15 +1640,17 @@ class VolatileAttackState():
             
             if isinstance(self.tokenizer.pad_token_id, type(None)):
                 if self.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
-                    print("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
+                    logger.critical("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
+                    # TKTK: replace this with raising an exception so any cleanup can happen
                     sys.exit(1)
             
-            #print(f"[main] Debug: getting max effective token value for model and tokenizer.")
+            logger.debug(f"getting max effective token value for model and tokenizer.")
         
             self.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", self.model, self.tokenizer, self.persistable.attack_params.generation_max_new_tokens)
             self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.model, self.tokenizer, self.persistable.attack_params.full_decoding_max_new_tokens)
         except Exception as e:
-            print(f"Error loading model: {e}")
+            logger.critical(f"Error loading model: {e}\n{traceback.format_exc()}")
+            # TKTK: replace this with raising an exception so any cleanup can happen
             sys.exit(1)
 
     def build_token_allow_and_denylists(self):
@@ -1660,17 +1668,18 @@ class VolatileAttackState():
     def apply_model_quantization(self):
         if self.persistable.attack_params.quantization_dtype:
             if self.persistable.attack_params.enable_static_quantization:
-                print("Broken Hill only supports quantizing using static or dynamic approaches, not both at once")
+                logger.critical("Broken Hill only supports quantizing using static or dynamic approaches, not both at once")
+                # TKTK: replace with raise
                 sys.exit(1)
             self.persistable.performance_data.collect_torch_stats(self, location_description = "before quantizing model")
-            print(f"Quantizing model to '{self.persistable.attack_params.quantization_dtype}'")    
+            logger.info(f"Quantizing model to '{self.persistable.attack_params.quantization_dtype}'")    
             #self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = quantization_dtype, inplace = False)
             self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = self.persistable.attack_params.quantization_dtype, inplace = True)
             self.persistable.performance_data.collect_torch_stats(self, location_description = "after quantizing model")
 
         if self.persistable.attack_params.enable_static_quantization:
             backend = "qnnpack"
-            print(f"Quantizing model using static backend {backend}") 
+            logger.info(f"Quantizing model using static backend {backend}") 
             torch.backends.quantized.engine = backend
             self.model.qconfig = tq.get_default_qconfig(backend)
             #model.qconfig = float_qparams_weight_only_qconfig
@@ -1682,32 +1691,32 @@ class VolatileAttackState():
     
     def apply_model_dtype_conversion(self):
         if self.persistable.attack_params.conversion_dtype:
-            #print(f"[main] Debug: converting model dtype to {self.persistable.attack_params.conversion_dtype}.")
+            logger.debug(f"converting model dtype to {self.persistable.attack_params.conversion_dtype}.")
             self.model = self.model.to(self.persistable.attack_params.conversion_dtype)
 
     def load_conversation_template(self):
-        #print(f"[main] Debug: registering conversation templates.")
+        logger.debug(f"registering conversation templates.")
         self.persistable.performance_data.collect_torch_stats(self, location_description = "before loading conversation template")
         
-        #print(f"[load_conversation_template] Debug: loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
+        logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
         self.conversation_template = None
         
         if self.persistable.attack_params.template_name is not None:
             if self.persistable.attack_params.template_name not in fschat_conversation.conv_templates.keys():
-                print(f"[load_conversation_template] Warning: chat template '{self.persistable.attack_params.template_name}' was not found in fschat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
+                logger.warning(f"chat template '{self.persistable.attack_params.template_name}' was not found in fschat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
                 self.persistable.attack_params.template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
-            #print(f"[load_conversation_template] Debug: loading chat template '{self.persistable.attack_params.template_name}'")
+            logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'")
             self.conversation_template = fschat_conversation.get_conv_template(self.persistable.attack_params.template_name)
         else:
-            #print(f"[load_conversation_template] Debug: determining chat template based on content in '{self.persistable.attack_params.model_path}'")
+            logger.debug(f"determining chat template based on content in '{self.persistable.attack_params.model_path}'")
             self.conversation_template = fschat.model.get_conversation_template(self.persistable.attack_params.model_path)
         # make sure fschat doesn't sneak the one_shot messages in when zero_shot was requested
         if self.persistable.attack_params.clear_existing_template_conversation:
             if hasattr(self.conversation_template, "messages"):
-                #print(f"[load_conversation_template] Debug: resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
+                logger.debug(f"resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
                 self.conversation_template.messages = []
             else:
-                print("[load_conversation_template] Warning: the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
+                logger.warning(f"the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
                 self.conversation_template.messages = []
         generic_role_template = get_default_generic_role_indicator_template()
         if self.persistable.attack_params.generic_role_indicator_template is not None:
@@ -1732,13 +1741,13 @@ class VolatileAttackState():
             if hasattr(self.conversation_template, "system_message"):
                 original_system_message = self.conversation_template.system_message
                 self.conversation_template.system_message = self.persistable.attack_params.custom_system_prompt
-                #print(f"[load_conversation_template] Debug: replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
+                logger.debug(f"Replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
             else:
-                print("[load_conversation_template] Warning: the option to set the conversation template's system message was enabled, but the template does not include a system message.")
+                logger.warning(f"The option to set the conversation template's system message was enabled, but the template does not include a system message.")
         if self.persistable.attack_params.conversation_template_messages is not None:
             if not hasattr(self.conversation_template, "messages"):
                 self.conversation_template.messages = []
-            #print(f"[load_conversation_template] Debug: existing conversation template messages '{self.conversation_template.messages}'.")
+            logger.debug(f"Existing conversation template messages '{self.conversation_template.messages}'.")
             for i in range(0, len(self.persistable.attack_params.conversation_template_messages)):
                 role_id_or_name = self.persistable.attack_params.conversation_template_messages[i][0]
                 message = self.persistable.attack_params.conversation_template_messages[i][1]
@@ -1749,29 +1758,30 @@ class VolatileAttackState():
                     except Exception as e:
                         raise Exception("Could not convert the role ID '{}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
                 self.conversation_template.messages.append((role_id_or_name, message))
-            #print(f"[load_conversation_template] Debug: customized conversation template messages: '{self.conversation_template.messages}'.")
+            logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
         
         if self.persistable.attack_params.template_name is not None:
             if self.conversation_template.name != self.persistable.attack_params.template_name:
-                print(f"Warning: the template '{self.persistable.attack_params.template_name}' was specified, but fschat returned the template '{self.conversation_template.name}' in response to that value.")
+                logger.warning(f"The template '{self.persistable.attack_params.template_name}' was specified, but fschat returned the template '{self.conversation_template.name}' in response to that value.")
         if self.conversation_template is None:
-            print(f"Error: got a null conversation template when trying to load '{self.persistable.attack_params.template_name}'. This should never happen.")
+            logger.critical(f"Got a null conversation template when trying to load '{self.persistable.attack_params.template_name}'. This should never happen.")
+            # TKTK: replace this with raising an exception
             sys.exit(1)
-        #print(f"Conversation template: '{self.conversation_template.name}'")
-        #print(f"Conversation template sep: '{self.conversation_template.sep}'")
-        #print(f"Conversation template sep2: '{self.conversation_template.sep2}'")
-        #print(f"Conversation template roles: '{self.conversation_template.roles}'")
-        #print(f"Conversation template system message: '{self.conversation_template.system_message}'")
-        #messages = json.dumps(self.conversation_template.messages, indent=4)
-        #print(f"Conversation template messages: '{messages}'")
+        logger.debug(f"Conversation template: '{self.conversation_template.name}'")
+        logger.debug(f"Conversation template sep: '{self.conversation_template.sep}'")
+        logger.debug(f"Conversation template sep2: '{self.conversation_template.sep2}'")
+        logger.debug(f"Conversation template roles: '{self.conversation_template.roles}'")
+        logger.debug(f"Conversation template system message: '{self.conversation_template.system_message}'")
+        messages = json.dumps(self.conversation_template.messages, indent=4)
+        logger.debug(f"Conversation template messages: '{messages}'")
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading conversation template")
 
     def ignite_trash_fire_token_treasury(self):
-        print(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with large numbers of tokens.")
+        logger.info(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with large numbers of tokens.")
         self.trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self.tokenizer, self.conversation_template)
 
     def create_initial_adversarial_content(self):
-        # print(f"[create_initial_adversarial_content] Debug: setting initial adversarial content.")
+        logger.debug(f"setting initial adversarial content.")
         self.persistable.initial_adversarial_content = None
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
             self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
@@ -1781,16 +1791,18 @@ class VolatileAttackState():
             try:
                 single_token_id = get_encoded_token(self.tokenizer, self.persistable.attack_params.initial_adversarial_token_string)
             except Exception as e:
-                print(f"Error: encoding string '{self.persistable.attack_params.initial_adversarial_token_string}' to token: {e}.")
+                logger.critical(f"Error encoding string '{self.persistable.attack_params.initial_adversarial_token_string}' to token: {e}\n{traceback.format_exc()}")
+                # TKTK: replace this with raising an exception
                 sys.exit(1)
             if isinstance(single_token_id, type(None)):
-                    print(f"Error: the selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
+                    logger.critical(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
+                    # TKTK: replace this with raising an exception
                     sys.exit(1)
             if isinstance(single_token_id, list):
                 decoded_tokens = get_decoded_tokens(self.tokenizer, single_token_id)
                 single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(self.trash_fire_token_treasury, single_token_id, decoded_tokens)
                 if len(single_token_id) > 1:
-                    print(f"Error: the selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
+                    logger.critical(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
                     sys.exit(1)
                 else:
                     single_token_id = single_token_id[0]
@@ -1814,11 +1826,12 @@ class VolatileAttackState():
         
         # This should never actually happen, but just in case
         if self.persistable.initial_adversarial_content is None:
-            print("Error: no initial adversarial content was specified.")
+            logger.critical(f"No initial adversarial content was specified.")
+            # TKTK: replace this with raising an exception
             sys.exit(1)
 
     def check_for_adversarial_content_token_problems(self):
-        #print(f"[main] Debug: determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
+        logger.debug(f"Determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
         tokens_in_denylist = []
         tokens_not_in_tokenizer = []
         for i in range(0, len(self.persistable.initial_adversarial_content.token_ids)):
@@ -1840,7 +1853,7 @@ class VolatileAttackState():
                     token_list_string = formatted_token
                 else:
                     token_list_string += ", {formatted_token}"
-            print(f"Warning: the following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
+            logger.warning(f"The following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
             new_denylist = []
             for existing_denylist_index in range(0, len(self.persistable.token_allow_and_deny_lists.denylist)):
                 if self.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
@@ -1849,18 +1862,17 @@ class VolatileAttackState():
                     new_denylist.append(self.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index])
             self.persistable.token_allow_and_deny_lists.denylist = new_denylist
         if len(tokens_not_in_tokenizer) > 0:
-            print(f"Warning: the following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
+            logger.warning(f"The following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
 
     def test_conversation_template(self):
-        #print(f"[test_conversation_template] Debug: testing conversation template")
-        print(f"Testing conversation template '{self.conversation_template.name}'")
+        logger.info(f"Testing conversation template '{self.conversation_template.name}'")
         conversation_template_tester = ConversationTemplateTester(self.adversarial_content_manager, self.model)
         conversation_template_test_results = conversation_template_tester.test_templates(verbose = self.persistable.attack_params.verbose_self_test_output)
         if len(conversation_template_test_results.result_messages) > 0:
             for i in range(0, len(conversation_template_test_results.result_messages)):
-                print(conversation_template_test_results.result_messages[i])
+                logger.warning(conversation_template_test_results.result_messages[i])
         else:
-            print(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
+            logger.info(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
 
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after testing conversation template")
         
@@ -1871,7 +1883,7 @@ class VolatileAttackState():
 
     def perform_jailbreak_tests(self):
         empty_output_during_jailbreak_self_tests = False
-        #print(f"Debug: testing for jailbreak with no adversarial content")
+        logger.debug(f"Testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
@@ -1887,14 +1899,14 @@ class VolatileAttackState():
         nac_jailbreak_check_llm_output_stripped = nac_jailbreak_check_data.decoded_llm_output_string.strip()        
         if nac_jailbreak_check_llm_output_stripped == "":
             empty_output_during_jailbreak_self_tests = True
-            print(f"Error: Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
+            logger.error(f"Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
         else:
             if nac_jailbreak_result:
-                print(f"Error: Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
+                logger.error(f"Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
             else:
-                print(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+                logger.info(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
-        #print(f"Debug: testing for jailbreak when the LLM is prompted with the target string")
+        logger.debug(f"Testing for jailbreak when the LLM is prompted with the target string")
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
             1.0,
             do_sample = False,
@@ -1908,19 +1920,20 @@ class VolatileAttackState():
         target_jailbreak_check_llm_output_stripped = target_jailbreak_check_data.decoded_llm_output_string.strip() 
         if target_jailbreak_check_llm_output_stripped == "":
             empty_output_during_jailbreak_self_tests = True
-            print(f"Error: When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{target_jailbreak_check_llm_output_stripped}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
+            logger.critical(f"When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{target_jailbreak_check_llm_output_stripped}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
         else:
             if target_jailbreak_result:
-                print(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+                logger.info(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
             else:            
-                print(f"Error: Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
+                logger.critical(f"Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
 
         # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
         
         if self.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
             if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
                 if not self.persistable.attack_params.ignore_jailbreak_self_tests:
-                    print(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+                    logger.critical(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+                    # TKTK: replace with raise
                     sys.exit(1)
 
     def generate(self, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
@@ -1964,7 +1977,7 @@ class VolatileAttackState():
         
         result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
         
-        #print(f"[generate] Debug: result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+        logger.debug(f"result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
         
         return result
         
@@ -1978,8 +1991,8 @@ class VolatileAttackState():
         result_ar_info_data = AttackResultInfoData()
         result_ar_info_data.set_values(self.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
         
-        #print(f"[check_for_attack_success] Debug: result_ar_info_data = {result_ar_info_data.to_json()}")
-        #print(f"[check_for_attack_success] Debug: result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+        logger.debug(f"result_ar_info_data = {result_ar_info_data.to_json()}")
+        #logger.debug(f"result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
         
         jailbroken = False
         
@@ -1990,7 +2003,7 @@ class VolatileAttackState():
 
         if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
             jailbroken = True
-        #print(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
+        logger.debug(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
         
         return jailbroken, result_ar_info_data, generation_results
 
@@ -2580,7 +2593,7 @@ class ResourceUtilizationData(JSONSerializableObject):
 
         if len(cuda_device_counts) > 1:
             times_changed = len(cuda_device_counts) - 1
-            print(f"[get_overall_statistics] Warning: the number of detected CUDA devices changed {times_changed} time(s) when Broken Hill analyzed the collected performance data. This strongly implies that testing was performed on more than one system, with non-identical hardware. You should treat any overall statistics (maximum memory use, etc.) with skepticism, as it is likely inaccurate.")
+            logger.warning(f"The number of detected CUDA devices changed {times_changed} time(s) when Broken Hill analyzed the collected performance data. This strongly implies that testing was performed on more than one system, with non-identical hardware. You should treat any overall statistics (maximum memory use, etc.) with skepticism, as it is likely inaccurate.")
         
         self.statistics.add_empty_cuda_device_cubes(max_num_cuda_devices)
         # collect per-CUDA-device data into arrays using this hack/misuse of a non-strongly-typed language:
@@ -2804,7 +2817,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = perf_message
     
         if found_data:
-            print(message)
+            logger.info(message)
 
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
@@ -2816,11 +2829,11 @@ class ResourceUtilizationData(JSONSerializableObject):
             if not is_key_snapshot_event:
                 return
         
-        display_string = "---\n"
+        display_string = ""
         if location_description is None:
-            print(f"System resource statistics")
+            display_string = f"System resource statistics\n"
         else:
-            print(f"System resource statistics ({location_description})")
+            display_string = f"System resource statistics ({location_description})\n"
         
         if attack_state.persistable.attack_params.using_cpu():
             display_string += f"CPU:\n"
@@ -2859,8 +2872,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         if current_snapshot.process_swap is not None:
             if current_snapshot.process_swap > 0:
                 display_string += f"Warning: this process has {current_snapshot.process_swap:n} byte(s) swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM to handle the current Broken Hill configuration.\n"
-        display_string += "---\n"
-        print(display_string)
+        logger.info(display_string)
                 
 
 class FailureCounterBehaviour(IntFlag):

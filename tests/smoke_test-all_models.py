@@ -3,14 +3,17 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import re
 import selectors
 import subprocess
 import sys
 
+from llm_attacks_bishopfox.attack.attack_classes import AttackParams
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfoList
+from llm_attacks_bishopfox.logging import BrokenHillLogManager
 from llm_attacks_bishopfox.tests.test_classes import BrokenHillTestParams
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
@@ -20,6 +23,8 @@ from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import str2bool
 from subprocess import TimeoutExpired
+
+logger = logging.getLogger(__name__)
 
 # 24 GiB of device memory == 25390809088
 # Largest model successfully tested so far with 24 GiB: 7642181880 (Microsoft Phi-3 / 3.5 Mini 128k)
@@ -33,7 +38,7 @@ def main(test_params):
     exit_test = False
     start_time = get_now()
     start_time_string = get_time_string(dt = start_time)
-    print(f"[{start_time_string}] Starting test sequence")
+    logger.info(f"[{start_time_string}] Starting test sequence")
     len_model_info_list_entries = len(model_info_list.entries)
     failed_tests = []
     skipped_tests = []
@@ -52,7 +57,7 @@ def main(test_params):
             model_config_data = get_file_content(model_config_path, failure_is_critical = False)
             model_config_dict = json.loads(model_config_data)
         except Exception as e:            
-            print(f"Warning: couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
+            logger.warning(f"Couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
         model_data_type = None
         if model_config_dict is not None:            
             if "torch_dtype" in model_config_dict.keys():
@@ -121,10 +126,10 @@ def main(test_params):
         
         if skip_model:
             skipped_tests.append(model_info.model_name)
-            print(f"[{model_start_time_string}] Model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries}) - {skip_message}\n\n")
+            logger.info(f"[{model_start_time_string}] Model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries}) - {skip_message}\n\n")
             continue
         
-        print(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
+        logger.info(f"[{model_start_time_string}] Testing model {model_info.model_name} ({model_info_num + 1} / {len_model_info_list_entries})")
         
         model_test_params.set_output_file_base_name()
         
@@ -135,7 +140,7 @@ def main(test_params):
         # Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
         model_command_array = model_test_params.get_popen_command_parameter()
         
-        print(f"Executing command: {model_command_array}")
+        logger.info(f"Executing command: {model_command_array}")
         try:
             #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
             #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
@@ -161,8 +166,9 @@ def main(test_params):
                     # else:
                         # process_standard_output = f"{process_standard_output}{data}"
             # # END: based on https://stackoverflow.com/questions/31833897/python-read-from-subprocess-stdout-and-stderr-separately-while-preserving-order
+            process_timeout = model_test_params.get_process_timeout()
             try:
-                process_standard_output, process_error_output = proc.communicate(timeout = model_test_params.process_timeout)
+                process_standard_output, process_error_output = proc.communicate(timeout = process_timeout)
             except KeyboardInterrupt:
                 exit_test = True
                 break
@@ -176,7 +182,7 @@ def main(test_params):
                     process_group_id = os.getpgid(proc.pid)
                     os.killpg(process_group_id, signal.SIGTERM)
                 except Exception as e:
-                    print(f"Error: unable to kill process group ID {process_group_id} for parent process {process_id}. Falling back to killing the process instead of the process group. The exception thrown was: {e}")
+                    logger.critical(f"Unable to kill process group ID {process_group_id} for parent process {process_id}. Falling back to killing the process instead of the process group. The exception thrown was: {e}\n{traceback.format_exc()}")
                     proc.kill()
                 process_standard_output, process_error_output =  proc.communicate()
                 timed_out = True
@@ -184,33 +190,33 @@ def main(test_params):
             #proc.communicate()
             process_return_code = proc.returncode
             if timed_out:
-                print(f"!!! Error !!!: command timed out after {model_test_params.process_timeout} seconds")
+                logger.error(f"!!! Error !!!: command timed out after {process_timeout} seconds")
                 failed_tests.append(model_info.model_name)
             else:
                 if process_return_code == 0:
-                    print(f"Test executed successfully")
+                    logger.info(f"Test executed successfully")
                     succeeded_tests.append(model_info.model_name)
                 else:
-                    print(f"!!! Error !!!: command returned code {process_return_code}")
+                    logger.error(f"!!! Error !!!: command returned code {process_return_code}")
                     failed_tests.append(model_info.model_name)
-            print(f"Console output writen to '{model_test_params.get_console_output_path()}'")
-            print(f"JSON result data writen to '{model_test_params.get_result_json_output_path()}'")
-            print(f"JSON performance data writen to '{model_test_params.get_performance_json_output_path()}'")
-            print(f"PyTorch CUDA profiling pickle writen to '{model_test_params.get_torch_cuda_output_path()}'")
+            logger.info(f"Console output writen to '{model_test_params.get_console_output_path()}'")
+            logger.info(f"JSON result data writen to '{model_test_params.get_result_json_output_path()}'")
+            logger.info(f"JSON performance data writen to '{model_test_params.get_performance_json_output_path()}'")
+            logger.info(f"PyTorch CUDA profiling pickle writen to '{model_test_params.get_torch_cuda_output_path()}'")
             if process_standard_output is not None:
                 #standard_output = process_standard_output.read()
                 if process_standard_output.decode("utf-8").strip() != "":
                     #safely_write_text_output_file(standard_output_log_file, standard_output)
                     #safely_write_text_output_file(standard_output_log_file, process_standard_output, file_mode = "wb")
                     safely_write_text_output_file(standard_output_log_file, process_standard_output)
-                    print(f"Standard output written to '{standard_output_log_file}'")
+                    logger.info(f"Standard output written to '{standard_output_log_file}'")
             if process_error_output is not None:
                 #error_output = process_error_output.read()
                 if process_error_output.decode("utf-8").strip() != "":
                     #safely_write_text_output_file(error_output_log_file, error_output)
                     #safely_write_text_output_file(error_output_log_file, process_error_output, file_mode = "wb")
                     safely_write_text_output_file(error_output_log_file, process_error_output)
-                    print(f"Error output written to '{error_output_log_file}'")
+                    logger.info(f"Error output written to '{error_output_log_file}'")
         
         except KeyboardInterrupt:
             #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -218,13 +224,13 @@ def main(test_params):
             break
         
         except Exception as e:
-            print(f"Exception thrown while executing the specified command: {e}")
+            logger.error(f"Exception thrown while executing the specified command: {e}")
 
         model_end_time = get_now()
         model_elapsed_time = get_elapsed_time_string(model_start_time, model_end_time)
         total_elapsed_time = get_elapsed_time_string(start_time, model_end_time)
         model_end_time_string = get_time_string(dt = model_end_time)
-        print(f"[{model_end_time_string}] Finished testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries}). Elapsed time for this model: {model_elapsed_time}. Total elapsed time for the test sequence: {total_elapsed_time}.\n\n")
+        logger.info(f"[{model_end_time_string}] Finished testing model {model_info.model_name} ({model_info_num} / {len_model_info_list_entries}). Elapsed time for this model: {model_elapsed_time}. Total elapsed time for the test sequence: {total_elapsed_time}.\n\n")
 
     if exit_test:
         exit_message = "Exiting early by request."    
@@ -233,25 +239,25 @@ def main(test_params):
         message = "Tests of the following models succeeded:\n"
         for i in range(0, len(succeeded_tests)):
             message = f"{message}\t{succeeded_tests[i]}\n"
-        print(message)
+        logger.info(message)
 
     if len(skipped_tests) > 0:
         message = "Tests of the following models were skipped due to the specified configuration:\n"
         for i in range(0, len(skipped_tests)):
             message = f"{message}\t{skipped_tests[i]}\n"
-        print(message)
+        logger.info(message)
 
     if len(failed_tests) > 0:
         message = "Tests of the following models did not complete successfully:\n"
         for i in range(0, len(failed_tests)):
             message = f"{message}\t{failed_tests[i]}\n"
-        print(message)
+        logger.info(message)
 
     end_time = get_now()
     total_elapsed_time = get_elapsed_time_string(start_time, end_time)
     end_time_string = get_time_string(dt = end_time)
     exit_message = "Finished test sequence."
-    print(f"[{end_time_string}] {exit_message} Total elapsed time: {total_elapsed_time}.")    
+    logger.info(f"[{end_time_string}] {exit_message} Total elapsed time: {total_elapsed_time}.")    
     
     sys.exit(0)
 
@@ -282,9 +288,18 @@ if __name__=='__main__':
         help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
     parser.add_argument("--skip-model", action='append', nargs='*', required=False,
         help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
-    
-    
     args = parser.parse_args()
+
+    faux_attack_params = AttackParams()
+
+    log_manager = BrokenHillLogManager(faux_attack_params)
+    log_manager.initialize_handlers()
+    log_manager.remove_all_existing_handlers()
+    log_manager.attach_handlers_to_all_modules()
+    log_manager.attach_handlers(__name__)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_manager.get_lowest_log_level())
+    logger.info(f"Log handlers are attached")
     
     smoke_test_params.output_file_directory = os.path.abspath(args.base_output_directory)
     smoke_test_params.base_llm_path = os.path.abspath(args.base_model_directory)

@@ -1,5 +1,6 @@
 #!/bin/env python
 
+import logging
 import re
 import sys
 import torch
@@ -15,6 +16,8 @@ from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import remove_whitespace_and_nonprintable_characters
 
 from tokenizers import AddedToken
+
+logger = logging.getLogger(__name__)
 
 # methods and classes related to wrangling the planet-sized inferno of garbage that is "special" LLM tokens
 
@@ -64,9 +67,9 @@ class TrashFireTokenException(Exception):
 
 def get_decoded_token(tokenizer, token):
     result = None
-    #print(f"[get_decoded_token] Debug: decoding token '{token}'")
+    logger.debug(f"decoding token '{token}'")
     if isinstance(token, type(None)):
-        print(f"[get_decoded_token] Warning: a null token ID was passed to this function. This usually indicates a bug.")
+        logger.warning(f"a null token ID was passed to this function. This usually indicates a bug.")
         return None
     token_to_decode = token
     # workaround for models like Gemma that need all tokens to be in the form of a list
@@ -75,19 +78,19 @@ def get_decoded_token(tokenizer, token):
         wrap_in_list = True
     if wrap_in_list:
         token_to_decode = [ token ]
-        #print(f"[get_decoded_token] Debug: converted '{token}' to '{token_to_decode}'")
+        logger.debug(f"converted '{token}' to '{token_to_decode}'")
     #result = tokenizer.decode(token_to_decode, skip_special_tokens=False)
     try:
         #result = tokenizer.decode(token_to_decode, skip_special_tokens=True)
         result = tokenizer.decode(token_to_decode, skip_special_tokens=False)
     except Exception as e:
-        print(f"[get_decoded_token] Error decoding token {token_to_decode}: {e}")
+        logger.error(f"Error decoding token {token_to_decode}: {e}")
         result = None
-    #print(f"[get_decoded_token] Debug: decoded token '{token}' to '{result}'")
+    logger.debug(f"decoded token '{token}' to '{result}'")
     return result
 
 def get_decoded_tokens(tokenizer, tokens, recursively_process_arrays = False):
-    #print(f"[get_decoded_tokens] Debug: decoding tokens '{tokens}'")
+    logger.debug(f"decoding tokens '{tokens}'")
     decoded_tokens = []
     token_list = tokens
     if isinstance(tokens, torch.Tensor):
@@ -102,23 +105,25 @@ def get_decoded_tokens(tokenizer, tokens, recursively_process_arrays = False):
     else:
         dt = get_decoded_token(tokenizer, tokens)
         decoded_tokens.append(dt)
-    #print(f"[get_decoded_tokens] Debug: decoded tokens '{tokens}' to '{decoded_tokens}'")
+    logger.debug(f"decoded tokens '{tokens}' to '{decoded_tokens}'")
     return decoded_tokens
 
 def get_encoded_token(tokenizer, token, exterminate_all_cowboy_nonsense = False):
-    #print(f"[get_encoded_token] Debug: encoding token '{token}'")
+    logger.debug(f"encoding token '{token}'")
     result = None
     try:
-        #result = tokenizer.encode(token, skip_special_tokens=True)
+        # If skip_special_tokens=True is enabled here, some(? all?) tokenizers will log a warning message about it
+        result = tokenizer.encode(token, skip_special_tokens=True)
+        #result = tokenizer.encode(token)
         result = None
         if exterminate_all_cowboy_nonsense:
             result = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, token)
         else:
             result = tokenizer.encode(token)
         if isinstance(result, type(None)):
-            print(f"[get_encoded_token] Warning: the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
+            logger.warning(f"the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
     except Exception as e:
-        print(f"[get_encoded_token] Error encoding token {token}: {e}")
+        logger.error(f"Error encoding token {token}: {e}")
     return result
 
 def get_encoded_tokens(tokenizer, tokens, exterminate_all_cowboy_nonsense = False):
@@ -135,23 +140,23 @@ def encode_string_for_real_without_any_cowboy_funny_business(tokenizer, string):
     if string == "":
         return []
     string_encoded = tokenizer.encode(string)
-    #print(f"[encode_string_for_real_without_any_cowboy_funny_business] string_encoded = {string_encoded}")
+    logger.debug("string_encoded = {string_encoded}")
     # First, strip any leading dumpster inferno content
     # make a single-character string that definitely does not start with the same character as the input string
     not_the_same_string_at_all = "A"
     if string[0] == "A":
         not_the_same_string_at_all = "B"
     not_the_same_string_at_all_encoded = tokenizer.encode(not_the_same_string_at_all)
-    #print(f"[encode_string_for_real_without_any_cowboy_funny_business] not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
+    logger.debug("not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
     start_index = find_index_of_first_nonmatching_element(string_encoded, not_the_same_string_at_all_encoded)
     # Second, check for any ever-burning beacons of waste at the end of the result
     # make a string that is the same as the input, but has more characters at the end
     string_with_chaff = f"{string} 1987"
     string_with_chaff_encoded = tokenizer.encode(string_with_chaff)
-    #print(f"[encode_string_for_real_without_any_cowboy_funny_business] string_with_chaff_encoded = {string_with_chaff_encoded}")
+    logger.debug("string_with_chaff_encoded = {string_with_chaff_encoded}")
     stop_index = find_index_of_first_nonmatching_element(string_encoded, string_with_chaff_encoded)
     result = string_encoded[start_index:stop_index]
-    #print(f"[encode_string_for_real_without_any_cowboy_funny_business] input = '{string}', result = {result}")
+    logger.debug("input = '{string}', result = {result}")
     return result
 
 # # Gets the decoded string version of a set of token IDs, *without* any extra refuse conflagration tokens included, FOR REAL
@@ -185,17 +190,17 @@ def is_conversation_role_token(conversation_template, token):
     if not isinstance(token, type(None)):
         if token.strip() != "":
             for c_role in conversation_template.roles:
-                #print(f"[is_conversation_role_token] Debug: searching for '{token}' in conversation role '{c_role}'")
+                logger.debug(f"searching for '{token}' in conversation role '{c_role}'")
                 if token in c_role:
-                    #print(f"[is_conversation_role_token] Debug: '{token}' is in conversation role '{c_role}'")
+                    logger.debug(f"'{token}' is in conversation role '{c_role}'")
                     return True
                 token_minus_whitespace = remove_whitespace_and_nonprintable_characters(token)
                 c_role_minus_whitespace = remove_whitespace_and_nonprintable_characters(c_role)
                 if token in c_role:
-                    #print(f"[is_conversation_role_token] Debug: '{token_minus_whitespace}' is in conversation role '{c_role_minus_whitespace}'")
+                    logger.debug(f"'{token_minus_whitespace}' is in conversation role '{c_role_minus_whitespace}'")
                     return True
                 if c_role in token:
-                    #print(f"[is_conversation_role_token] Debug: conversation role '{c_role_minus_whitespace}' is in token '{token_minus_whitespace}'")
+                    logger.debug(f"conversation role '{c_role_minus_whitespace}' is in token '{token_minus_whitespace}'")
                     return True
     return False
         
@@ -203,24 +208,24 @@ def is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, 
     token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
     escaped_token = get_escaped_string(decoded_token)
     if token in trash_fire_tokens.token_ids:
-        #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token ID was in the list of trash fire tokens.")
+        logger.debug(f"marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token ID was in the list of trash fire tokens.")
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
     if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
         if decoded_token in trash_fire_tokens.input_strings:
-            #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token was in the list of input strings that generated the list of trash fire tokens.")
+            logger.debug(f"marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the token was in the list of input strings that generated the list of trash fire tokens.")
             token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
     if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
         for ctv in [decoded_token, decoded_token.strip()]:
             if ctv == "":
-                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because it was empty or contained only whitespace.")
+                logger.debug(f"marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because it was empty or contained only whitespace.")
                 token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
                 break
             if ctv in trash_fire_tokens.decoded_tokens:
-                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the decoded token was in the list of decoded trash fire tokens.")
+                logger.debug(f"marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the decoded token was in the list of decoded trash fire tokens.")
                 token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
                 break
             if ctv in trash_fire_tokens.input_strings:
-                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the decoded token was in the list of input strings used to generate the list of trash fire tokens.")
+                logger.debug(f"marked token '{escaped_token}' (id {token}) as a flaming dumpster floating down the river because the decoded token was in the list of input strings used to generate the list of trash fire tokens.")
                 token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = True
                 break
     
@@ -228,11 +233,11 @@ def is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, 
     if conversation_template is not None:
         if token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             if is_conversation_role_token(conversation_template, decoded_token.strip()):
-                #print(f"[is_disastrous_dumpster_fire_token] Debug: marked token '{escaped_token}' (id {token}) as not being a flaming dumpster floating down the river because the decoded token was in the list of tokens that indicate conversation role changes for the current conversation template, even though it is still a flaming dumpster floating down the river.")
+                logger.debug(f"marked token '{escaped_token}' (id {token}) as not being a flaming dumpster floating down the river because the decoded token was in the list of tokens that indicate conversation role changes for the current conversation template, even though it is still a flaming dumpster floating down the river.")
                 token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = False
     
-    #if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
-        #print(f"[is_disastrous_dumpster_fire_token] Debug: token '{escaped_token}' (id {token}) does not appear to be a garbage inferno.")
+    if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
+        logger.debug(f"token '{escaped_token}' (id {token}) does not appear to be a garbage inferno.")
     
     return token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys
 
@@ -244,7 +249,7 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens,
         remove_empty_leading_and_trailing_tokens = True, 
         remove_leading_and_trailing_trash_fire_tokens = True,
         check_whitespace_tokens_for_trash_fire = False):
-    #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token_array = {token_array}, decoded_token_array = {decoded_token_array}")
+    logger.debug(f"token_array = {token_array}, decoded_token_array = {decoded_token_array}")
     len_token_array = len(token_array)
     len_decoded_token_array = len(decoded_token_array)
     if len_token_array != len_decoded_token_array:
@@ -259,19 +264,19 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens,
             decoded_token_temp = decoded_token_temp.strip()
             decoded_token_array[i] = decoded_token_temp
         is_skippable_token = False
-        #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens - leading] Debug: checking token '{decoded_token_array[i]}', id {token_array[i]}")
+        logger.debug(f"checking token '{decoded_token_array[i]}', id {token_array[i]}")
         if remove_empty_leading_and_trailing_tokens:
             if decoded_token_temp == "":
-                #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is whitespace or empty")
+                logger.debug(f"token '{decoded_token_array[i]}' is whitespace or empty")
                 is_skippable_token = True
         if not is_skippable_token:
             if remove_leading_and_trailing_trash_fire_tokens:
                 if check_whitespace_tokens_for_trash_fire or decoded_token_array[i].strip() != "":
                     if is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, token_array[i], decoded_token_array[i]):
-                        #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is a blazing trash bin bringing light to the darkness of the running waters as they make their way to the sea.")
+                        logger.debug(f"token '{decoded_token_array[i]}' is a blazing trash bin bringing light to the darkness of the running waters as they make their way to the sea.")
                         is_skippable_token = True
         if not is_skippable_token:
-            #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is not skippable")
+            logger.debug(f"token '{decoded_token_array[i]}' is not skippable")
             break
         first_non_empty_token += 1
     
@@ -281,19 +286,19 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens,
             decoded_token_temp = decoded_token_temp.strip()
             decoded_token_array[i] = decoded_token_temp
         is_skippable_token = False
-        #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens - trailing] Debug: checking token '{decoded_token_array[i]}', id {token_array[i]}")
+        logger.debug(f"checking token '{decoded_token_array[i]}', id {token_array[i]}")
         if remove_empty_leading_and_trailing_tokens:
             if decoded_token_temp == "":
-                #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is whitespace or empty")
+                logger.debug(f"token '{decoded_token_array[i]}' is whitespace or empty")
                 is_skippable_token = True
         if not is_skippable_token:
             if remove_leading_and_trailing_trash_fire_tokens:
                 if check_whitespace_tokens_for_trash_fire or decoded_token_array[i].strip() != "":
                     if is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, token_array[i], decoded_token_array[i]):
-                        #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is a blazing trash bin bringing light to the darkness of the running waters as they make their way to the sea.")
+                        logger.debug(f"token '{decoded_token_array[i]}' is a blazing trash bin bringing light to the darkness of the running waters as they make their way to the sea.")
                         is_skippable_token = True
         if not is_skippable_token:
-            #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token '{decoded_token_array[i]}' is not skippable")
+            logger.debug(f"token '{decoded_token_array[i]}' is not skippable")
             break
         last_non_empty_token -= 1
     
@@ -301,7 +306,7 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens,
     result_token_array = token_array[first_non_empty_token:actual_last_non_empty_token]
     result_decoded_token_array = decoded_token_array[first_non_empty_token:actual_last_non_empty_token]
     
-    #print(f"[remove_empty_and_trash_fire_leading_and_trailing_tokens] Debug: token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
+    logger.debug(f"token_array = '{token_array}', result_token_array = '{result_token_array}', decoded_token_array = '{decoded_token_array}', result_decoded_token_array = '{result_decoded_token_array}'")
     return result_token_array, result_decoded_token_array
 
 # Third, walk step-by-step through the two sets of decoded tokens.
@@ -341,7 +346,7 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
     for i in range(0, len(decoded_token_list_to_search_for)):
         search_string += regex_whitespace.sub('', decoded_token_list_to_search_for[i])
 
-    #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: searching for '{search_string}' in {decoded_token_list_to_search_within}, from index {range_start} to index {range_end}, step {step_size}")
+    logger.debug(f"searching for '{search_string}' in {decoded_token_list_to_search_within}, from index {range_start} to index {range_end}, step {step_size}")
     for i in range(range_start, range_end, step_size):
         within_string = ""
         result_start_index = i
@@ -350,12 +355,12 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
             within_string += regex_whitespace.sub('', decoded_token_list_to_search_within[j])
             result_stop_index = j + 1
             if len(within_string) >= len(search_string):
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: stopping concatenation at '{within_string}' because its length was greater than or equal to the length of '{search_string}'.")
+                logger.debug(f"stopping concatenation at '{within_string}' because its length was greater than or equal to the length of '{search_string}'.")
                 break
             current_substring = search_string[0:len(within_string)]
             # skip checking the rest of the current subsection if the material collected so far doesn't match
             if current_substring != within_string:
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: ending comparison of i = {i}, j = {j} early because '{current_substring}' != '{within_string}'")
+                logger.debug(f"ending comparison of i = {i}, j = {j} early because '{current_substring}' != '{within_string}'")
                 do_continue = True
                 break
         compared_strings.append(within_string)
@@ -366,10 +371,10 @@ def get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry(de
             current_substring = within_string[0:len(search_string)]
             if current_substring == search_string:
                 result = slice(result_start_index, result_stop_index)
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: result = '{result}'")
+                logger.debug(f"result = '{result}'")
                 return result
-            #else:
-                #print(f"[get_slice_for_token_array_within_token_array_avoid_robot_beachball_sentry] Debug: Compared '{within_string}' subset, '{current_substring}' != '{search_string}'.")
+            else:
+                logger.debug(f"Compared '{within_string}' subset, '{current_substring}' != '{search_string}'.")
     
     raise TrashFireTokenException(f"Could not find {decoded_token_list_to_search_for} (represented as '{search_string}') in {decoded_token_list_to_search_within} (represented as a single string with no whitespace). Compared the search string against the following strings: {compared_strings}.")
 
@@ -388,7 +393,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
     # decoded_tokens = get_decoded_tokens(tokenizer, tokens)
     # if len(decoded_tokens) < 1:
         # raise TrashFireTokenException(f"[find_index_of_token] Error: got zero-length array '{decoded_tokens}' for tokens = '{tokens}'")
-    #print(f"[find_index_of_token] Debug: decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
+    #logger.debug(f"decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
     #string_tokens = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, string_to_search_for)
     string_token_variations = []
     # did you know!
@@ -414,7 +419,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         if len(string_tokens) < 1:
             raise TrashFireTokenException(f"[find_index_of_token] Error: got zero-length array '{string_tokens}' when re-encoding tokens '{tokens}'")
         
-        #print(f"[find_index_of_token] Debug: string_tokens = '{string_tokens}' for string '{string_to_search_for}'")        
+        logger.debug(f"string_tokens = '{string_tokens}' for string '{string_to_search_for}'")        
         #string_to_search_for_array = string_to_search_for.split(" ")
         current_string_to_search_for = string_variations[string_token_set_num]
         string_to_search_for_array = current_string_to_search_for.split(" ")
@@ -445,7 +450,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
         
         # First, look for the encoded version of the string in the encoded version of the prompt.
         # One would think this is all one would need to do for this function, but one would be wrong.
-        #print(f"[find_index_of_token] Debug: searching for '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}' from index {start_index} to {stop_index}")
+        logger.debug(f"searching for '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}' from index {start_index} to {stop_index}")
         result_start = None
         if find_last:
             result_start = find_last_occurrence_of_array_in_array(string_tokens, tokens, start_index = start_index, stop_index = stop_index)
@@ -486,7 +491,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
                 #result_stop = result_start + len(string_to_search_for_array)
                 result_stop = result_start + len(string_tokens)
                 # This issue is so frequent that enabling this error is too noisy
-                #print(f"[find_index_of_token] Warning: could not find '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
+                logger.debug(f"could not find '{current_string_to_search_for}' (tokenized as '{decoded_string_tokens}') in '{decoded_tokens}', but found the close approximation '{string_to_search_for_array}' in '{decoded_tokens_processed_1}' or '{decoded_tokens_processed_2}' and will use that position instead. This may be due to using a buggy LLM that considers e.g. 'Human' and ' Human' different tokens, but uses both values for similar purposes internally.")
         else:
             result_stop = result_start + len(string_tokens)
         if isinstance(result_start, type(None)):
@@ -502,7 +507,7 @@ def find_index_of_token(tokenizer, trash_fire_tokens, string_to_search_for, toke
                 failure_messages.append(f"{tfte}")        
         if not is_failure:
             result = slice(result_start, result_stop)
-            #print(f"[find_index_of_token] Debug: result = '{result}'")
+            logger.debug(f"result = '{result}'")
             return result
     exception_message = ""
     for i in range(0, len(failure_messages)):
@@ -523,7 +528,7 @@ def find_last_non_garbage_token(conversation_template, tokens, decoded_tokens, t
             result = i
     if isinstance(result, type(None)):
         raise Exception(f"[find_last_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
-    print(f"[find_last_non_garbage_token] Debug: last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
+    logger.debug(f"last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
     return result
 
 def find_first_non_garbage_token(conversation_template, tokens, decoded_tokens, trash_fire_tokens, start_index = 0, stop_index = None):
@@ -534,7 +539,7 @@ def find_first_non_garbage_token(conversation_template, tokens, decoded_tokens, 
     for i in range(start_index, range_end):
         token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys = is_disastrous_dumpster_fire_token(trash_fire_tokens, conversation_template, tokens[i], decoded_tokens[i])
         if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
-            print(f"[find_first_non_garbage_token] Debug: first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
+            logger.debug(f"first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
             return i
     if isinstance(result, type(None)):
         raise Exception(f"[find_first_non_garbage_token] Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
@@ -610,7 +615,7 @@ class TrashFireTokenCollection:
         result.token_ids = allow_and_denylists.denylist
         
         result.decoded_tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        #print(f"[get_meticulously_curated_trash_fire_token_collection] Debug: result.input_strings = '{result.input_strings}', result.token_ids = '{result.token_ids}', result.decoded_tokens = '{result.decoded_tokens}'")
+        logger.debug(f"result.input_strings = '{result.input_strings}', result.token_ids = '{result.token_ids}', result.decoded_tokens = '{result.decoded_tokens}'")
         return result
 
 def get_nonascii_token_list(tokenizer, tokenizer_vocabulary_decoded):
@@ -652,12 +657,12 @@ def get_nonmatching_token_list(tokenizer, tokenizer_vocabulary_decoded, filter_r
         if not isinstance(dt, type(None)):
             if not filter_regex.search(dt):
                 nonmatching_tokens.append(i)
-                #print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
+                logger.debug(f"excluding '{dt}' because it did not match the specified regular expression.")
                 #if "#" in dt:
-                #    print(f"[get_nonmatching_token_list] Debug: excluding '{dt}' because it did not match the specified regular expression.")
+                #    logger.debug(f"excluding '{dt}' because it did not match the specified regular expression.")
             #else:
             #    if "#" in dt:
-            #        print(f"[get_nonmatching_token_list] Debug: not excluding '{dt}' because it matched the specified regular expression.")
+            #        logger.debug(f"not excluding '{dt}' because it matched the specified regular expression.")
     
     return nonmatching_tokens
 
@@ -694,24 +699,24 @@ def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, tokenizer_vo
     for i in range(0, len(string_list)):
         current_string = string_list[i]
 
-        #current_string_escaped = get_escaped_string(current_string)
+        current_string_escaped = get_escaped_string(current_string)
         denied_toks_original = get_encoded_token(tokenizer, current_string)
-        #print(f"[get_token_denylist] Debug: got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
+        logger.debug(f"got token(s) '{denied_toks_original}' from string '{current_string_escaped}'")
         # If a given string was transformed into more than one token, ignore it
         
         if denied_toks_original is not None:
             if isinstance(denied_toks_original, list):
                 if len(denied_toks_original) == 1:
-                    #print(f"[get_token_denylist] Debug: converting token '{denied_toks_original}' to a single value")
+                    logger.debug(f"converting token '{denied_toks_original}' to a single value")
                     denied_toks_original = denied_toks_original[0]
                 else:
-                    #print(f"[get_token_denylist] Debug: did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
+                    logger.debug(f"did not add tokens '{denied_toks_original}' to the denylist because a single string became multiple tokens")
                     denied_toks_original = None
         if denied_toks_original is not None:
-            #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
+            logger.debug(f"added token {denied_toks_original} to the denylist")
             token_allow_and_denylist.denylist = add_value_to_list_if_not_already_present(token_allow_and_denylist.denylist, denied_toks_original)
             # if denied_toks_original not in token_allow_and_denylist.denylist:
-                # #print(f"[get_token_denylist] Debug: added token {denied_toks_original} to the denylist")
+                # #logger.debug(f"added token {denied_toks_original} to the denylist")
                 # token_allow_and_denylist.denylist.append(denied_toks_original)
         # also check to see if any tokens are equivalent to the string value when decoded, 
         # even if the encoder didn't return them
@@ -728,13 +733,13 @@ def add_token_ids_from_strings(token_allow_and_denylist, tokenizer, tokenizer_vo
                 if candidate_token_comparison == current_string_comparison:
                     token_allow_and_denylist.denylist = add_value_to_list_if_not_already_present(token_allow_and_denylist.denylist, j)
                     # if j not in token_allow_and_denylist.denylist:
-                        # #print(f"[get_token_denylist] Debug: added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
+                        # #logger.debug(f"added token {j} ('{candidate_token_escaped}') to the denylist because it is equivalent to a string on the denylist ('{current_string_escaped}') even though the tokenizer converts that string to a different token")
                         # token_allow_and_denylist.denylist.append(j)
     return token_allow_and_denylist
 
 # TKTK: Maybe refactor the trash fire function that calls this so the method signature can be simplified
 def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additional_token_strings_case_sensitive = [], additional_token_strings_case_insensitive = [], additional_token_ids = None, filter_nonascii_tokens = False, filter_nonprintable_tokens = False, filter_special_tokens = False,filter_additional_special_tokens = False, filter_whitespace_tokens = False, token_regex = None):
-    #print(f"[get_token_denylist] Debug: building token allowlist and denylist from string list '{string_list}'")
+    logger.debug(f"building token allowlist and denylist from string list '{string_list}'")
     result = TokenAllowAndDenyList()
     
     tokenizer_vocabulary_decoded = []
@@ -782,11 +787,11 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                                     if hasattr(added_token_data, "content"):
                                         added_token_data_content = atd[added_token_id].content
                                         additional_token_strings_case_sensitive = add_value_to_list_if_not_already_present(additional_token_strings_case_sensitive, added_token_data_content)
-                                    #print(f"[get_token_denylist] Debug: adding tokenizer special token ID {added_token_id} ('{added_token_data_content}') to the denylist")
+                                    logger.debug(f"adding tokenizer special token ID {added_token_id} ('{added_token_data_content}') to the denylist")
                         else:
-                            print(f"[get_token_denylist] Warning: the added_tokens_decoder property for the current tokenizer was in the expected format, but items within that property were not. Expected a hashtable/dictionary, got {type(added_token_data)} '{added_token_data}'")
+                            logger.warning(f"the added_tokens_decoder property for the current tokenizer was in the expected format, but items within that property were not. Expected a hashtable/dictionary, got {type(added_token_data)} '{added_token_data}'")
                 else:
-                    print(f"[get_token_denylist] Warning: the added_tokens_decoder property for the current tokenizer was not in the expected format. Expected a hashtable/dictionary, got {type(atd)} '{atd}'")
+                    logger.warning(f"the added_tokens_decoder property for the current tokenizer was not in the expected format. Expected a hashtable/dictionary, got {type(atd)} '{atd}'")
             
         for special_token_id in special_token_ids:
             if special_token_id is not None:
@@ -805,7 +810,7 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                 # don't filter out tokens that are already empty strings, because some models (like Phi 3) use them to represent things like word breaks
                 if candidate_token == "":
                     dummy = 1
-                    #print(f"[get_token_denylist] Debug: did not add token {j} ('{candidate_token_escaped}') to the denylist because it was already an empty string.")
+                    logger.debug(f"did not add token {j} ('{candidate_token_escaped}') to the denylist because it was already an empty string.")
                 else:
                     if candidate_token.strip() == "":
                         result.denylist = add_value_to_list_if_not_already_present(result.denylist, j)

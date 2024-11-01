@@ -43,18 +43,6 @@ This document describes high-level results of testing the GCG attack using vario
 
 ## Model families with publicly-available versions capable of handling chat interaction
 
-### APT
-
-* Conversation template name: `llama2`
-* [Azurro APT3 collection at Hugging Face](https://huggingface.co/collections/Azurro/apt3-66fa965b5eea43a116b1c545)
-
-#### Specific models tested using Broken Hill:
-
-* [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
-* [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
-* [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
-* [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
-
 ### Falcon
 
 * Conversation template name: `falcon`
@@ -618,6 +606,18 @@ These model families can be used in the tool, but publicly-available versions ar
 
 * [snowflake-arctic-embed-s](https://huggingface.co/Snowflake/snowflake-arctic-embed-s)
 
+### APT
+
+* Conversation template name: `llama2`
+* [Azurro APT3 collection at Hugging Face](https://huggingface.co/collections/Azurro/apt3-66fa965b5eea43a116b1c545)
+
+#### Specific models tested using Broken Hill:
+
+* [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
+* [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
+* [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
+* [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
+
 ### BART
 
 * [BART GitHub page](https://github.com/facebookresearch/fairseq/tree/main/examples/bart)
@@ -669,12 +669,14 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 ### Mamba
 
+* Conversation template name: `zero_shot`
 * [State Spaces' "Transformers-compatible Mamba" page at Hugging Face](https://huggingface.co/collections/state-spaces/transformers-compatible-mamba-65e7b40ab87e5297e45ae406)
 
 #### Special considerations
 
 * `--suppress-attention-mask` is required.
 * You *must* use the "-hf" ("Transformers-compatible") variations of Mamba.
+* A better conversation template to use instead of `zero_shot` would likely improve results.
 
 #### Specific models tested using Broken Hill:
 
@@ -738,3 +740,8 @@ When Broken Hill can handle this model again, BlenderBot may require `--max-new-
 
 * [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
 
+### T5
+
+* [Google T5 page at Hugging Face](https://huggingface.co/google-t5/t5-base)
+
+No model based on T5 can currently be tested with Broken Hill, because Broken Hill does not yet support its architecture.

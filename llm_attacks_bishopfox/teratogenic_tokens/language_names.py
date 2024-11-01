@@ -1,12 +1,15 @@
 #!/bin/env python
 
 import json
+import logging
 import os
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import load_json_from_file
+
+logger = logging.getLogger(__name__)
 
 BUNDLED_LANGUAGE_DEFINITION_FILE_NAME = "human_language_names.json"
 

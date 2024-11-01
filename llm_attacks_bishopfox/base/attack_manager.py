@@ -3,6 +3,7 @@
 import base64
 import gc
 import json
+import logging
 import math
 import random
 import time
@@ -22,6 +23,8 @@ from transformers import (AutoTokenizer, GPT2LMHeadModel)
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 
+logger = logging.getLogger(__name__)
+
 # Dynamically import all of the transformers "ForCausalLM" classes
 # To avoid either tedious maintenance of a manual list 
 # or the very overly-broad former "from transformers import *" statement
@@ -31,6 +34,7 @@ from inspect import isclass
 from pathlib import Path
 from pkgutil import iter_modules
 import transformers
+
 for attribute_name in dir(transformers):
     attribute = getattr(transformers, attribute_name)
     if isclass(attribute):
@@ -70,6 +74,7 @@ def is_phi_1_to_3_model(model):
 
 def get_embedding_layer(attack_state):
     use_default_logic = False
+    logger.debug(f"model is an instance of the type '{type(attack_state.model).__name__}'")
     if isinstance(attack_state.model, BartForCausalLM):
         return attack_state.model.model.decoder.get_input_embeddings()
     if isinstance(attack_state.model, BigBirdPegasusForCausalLM) or isinstance(attack_state.model, PegasusForCausalLM):
@@ -103,7 +108,8 @@ def get_embedding_layer(attack_state):
     if isinstance(attack_state.model, MambaForCausalLM):
         return attack_state.model.get_input_embeddings()
     if isinstance(attack_state.model, MptForCausalLM):
-        return attack_state.model.get_input_embeddings()
+        #return attack_state.model.get_input_embeddings()
+        return attack_state.model.model.get_input_embeddings()
     if isinstance(attack_state.model, OPTForCausalLM):
         return attack_state.model.model.get_input_embeddings()
     if isinstance(attack_state.model, peft.peft_model.PeftModelForCausalLM):
@@ -134,7 +140,7 @@ def get_embedding_layer(attack_state):
             result_name = "attack_state.model.embed_tokens"        
         if result is not None:
             if not use_default_logic:
-                print(f"[get_embedding_layer] Warning: unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
+                logger.warning(f"unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
             return result
         
         result_message = f"[get_embedding_layer] Error: unrecognized model type {type(attack_state.model)} "
@@ -144,29 +150,25 @@ def get_embedding_layer(attack_state):
         result_message += "did not have an input embedding property in any of the default locations Broken Hill is configured to search for. Processing cannot continue."
         
         raise EmbeddingLayerNotFoundException(result_message)
-        
-        #print(f"[get_embedding_layer] Warning: unrecognized model type {type(model)} - defaulting to model.get_input_embeddings() - this may cause unexpected behaviour.")
-        #return result
-        #raise ValueError(f"Unknown model type: {type(model)}")
 
 def get_embedding_matrix(attack_state):
     embedding_layer = get_embedding_layer(attack_state)
     result = embedding_layer.weight
  
-    #print(f"[get_embedding_matrix] Debug: result = {result}")
+    logger.debug(f"result = {result}")
     # Some models return a function that returns the weight values instead of the 
     # weight values themselves. I assume this is because of missing () in the model
     # code, but regardless, this works around that problem
     if callable(result):
         result = result()
-        #print(f"[get_embedding_matrix] Debug: result after calling original result = {result}")
+        logger.debug(f"result after calling original result = {result}")
         if not isinstance(result, torch.nn.Parameter):
             try:
                 result = torch.nn.Parameter(result)
             except Exception as e:
                 result = torch.nn.Parameter(result, requires_grad = False)
-                print(f"[get_embedding_matrix] Warning: returning the embedding matrix with requires_grad = False")
-            #print(f"[get_embedding_matrix] Debug: result after conversion to Parameter = {result}")
+                logger.warning(f"returning the embedding matrix with requires_grad = False")
+            logger.debug(f"result after conversion to Parameter = {result}")
     return result
 
 def get_embeddings(attack_state, input_ids):
@@ -174,7 +176,7 @@ def get_embeddings(attack_state, input_ids):
     # TKTK: validate that setting dtype = attack_state.model.dtype explicitly doesn't change/break anything.
     result = embedding_layer(input_ids)
     if result.dtype != attack_state.model.dtype:
-        print("[get_embeddings] Warning: converting embedding layer from {result.dtype} to {attack_state.model.dtype}")
+        logger.warning(f"converting embedding layer from {result.dtype} to {attack_state.model.dtype}")
         result = result.to(dtype = attack_state.model.dtype)
     return result
     # return_half = False
@@ -186,12 +188,12 @@ def get_embeddings(attack_state, input_ids):
     # elif isinstance(attack_state.model, GPTNeoXForCausalLM):
         # return_half = True
     
-    # #print(f"[get_embeddings] Debug: result properties: {result}") 
+    # #logger.debug(f"result properties: {result}") 
     
     # if return_half:
-        # print("[get_embeddings] Warning: returning .half() variation of embedding layer")
+        # logger.warning(f"returning .half() variation of embedding layer")
         # result = result.half()
-        # #print(f"[get_embeddings] Debug: result properties after .half(): {result}")
+        # #logger.debug(f"result properties after .half(): {result}")
     
     # return result
 
@@ -220,7 +222,7 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
     if hasattr(tokenizer, "model_max_length"):        
         if not isinstance(tokenizer.model_max_length, type(None)):
             tokenizer_model_max_length = tokenizer.model_max_length
-            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_model_max_length = {tokenizer_model_max_length}")
+            logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
             if tokenizer_model_max_length < desired_value:
                 limited_by_tokenizer_model_max_length = True
                 limiting_factor_count += 1
@@ -228,36 +230,36 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
     if hasattr(tokenizer, "max_position_embeddings"):        
         if not isinstance(tokenizer.max_position_embeddings, type(None)):
             tokenizer_max_position_embeddings = tokenizer.max_position_embeddings
-            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+            logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
             if tokenizer_max_position_embeddings < desired_value:
                 limited_by_tokenizer_max_position_embeddings = True
                 limiting_factor_count += 1
 
     if hasattr(tokenizer, "config"):
         if tokenizer.config is not None:
-            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer.config = {tokenizer.config}")
+            logger.debug(f"tokenizer.config = {tokenizer.config}")
             if hasattr(tokenizer.config, "model_max_length"):            
                 if not isinstance(tokenizer.config.model_max_length, type(None)):
                     tokenizer_config_model_max_length = tokenizer.config.model_max_length
-                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+                    logger.debug(f"tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
                     if tokenizer_config_model_max_length < desired_value:            
                         limited_by_tokenizer_config_model_max_length = True
                         limiting_factor_count += 1
             if hasattr(tokenizer.config, "max_position_embeddings"):            
                 if not isinstance(tokenizer.config.max_position_embeddings, type(None)):
                     tokenizer_config_max_position_embeddings = tokenizer.config.max_position_embeddings
-                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+                    logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
                     if tokenizer_config_max_position_embeddings < desired_value:            
                         limited_by_tokenizer_config_max_position_embeddings = True
                         limiting_factor_count += 1
         
     if hasattr(model, "config"):
         if model.config is not None:
-            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.config = {model.config}")
+            logger.debug(f"model.config = {model.config}")
             if hasattr(model.config, "max_position_embeddings"):            
                 if not isinstance(model.config.max_position_embeddings, type(None)):
                     model_config_max_position_embeddings = model.config.max_position_embeddings
-                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_config_max_position_embeddings = {model_config_max_position_embeddings}")
+                    logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
                     if model_config_max_position_embeddings < desired_value:            
                         limited_by_model_config_max_position_embeddings = True
                         limiting_factor_count += 1
@@ -266,17 +268,17 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
         if model.decoder is not None:
             if hasattr(model.decoder, "config"):
                 if model.decoder.config is not None:
-                    #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model.decoder.config = {model.decoder.config}")
+                    logger.debug(f"model.decoder.config = {model.decoder.config}")
                     if hasattr(model.decoder.config, "max_position_embeddings"):            
                         if not isinstance(model.decoder.config.max_position_embeddings, type(None)):
                             model_decoder_config_max_position_embeddings = model.decoder.config.max_position_embeddings
-                            #print(f"[get_effective_max_token_value_for_model_and_tokenizer] Debug: model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+                            logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
                             if model_decoder_config_max_position_embeddings < desired_value:            
                                 limited_by_model_decoder_config_max_position_embeddings = True
                                 limiting_factor_count += 1
     
     if limiting_factor_count > 0:
-        description_string = f"Warning: the current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
+        description_string = f"The current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
         for limit_value in [ tokenizer_model_max_length, tokenizer_max_position_embeddings, tokenizer_config_model_max_length, tokenizer_config_max_position_embeddings, model_config_max_position_embeddings, model_decoder_config_max_position_embeddings ]:
             if not isinstance(limit_value, type(None)):
                 effective_value = min(effective_value, limit_value)
@@ -293,7 +295,7 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
         if limited_by_model_decoder_config_max_position_embeddings:
             description_string += f"The model's decoder's configuration's max_position_embeddings value is {model_decoder_config_max_position_embeddings}. "
         description_string += f"The effective value that will be used is {effective_value}."
-        print(description_string)
+        logger.warning(description_string)
          
     return effective_value
 
