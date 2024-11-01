@@ -310,7 +310,7 @@ if __name__=='__main__':
                     else:
                         smoke_test_params.specific_model_names_to_test = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_test, et)
 
-     if args.skip_model:
+    if args.skip_model:
         for elem in args.skip_model:
             for et in elem:
                 if et.strip() != "":
