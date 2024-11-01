@@ -259,6 +259,15 @@ class BrokenHillLogManager:
             result = self.attack_params.log_file_output_level
         return result
     
+    def is_broken_hill_module(self, module_name):
+        result = False
+        module_name_lower = module_name.lower()
+        if "bishopfox" in module_name_lower:
+            result = True
+        if "brokenhill" in module_name_lower:
+            result = True
+        return result
+    
     def attach_handlers(self, module_name):
         self.module_names.append(module_name)
         module_logger = logging.getLogger(module_name)
@@ -267,16 +276,9 @@ class BrokenHillLogManager:
         if self.file_handler is not None:
             module_logger.addHandler(self.file_handler)
         
-        is_third_party_module = True
-        module_name_lower = module_name.lower()
-        if "bishopfox" in module_name_lower:
-            is_third_party_module = False
-        if "brokenhill" in module_name_lower:
-            is_third_party_module = False
-        
         module_level = self.get_lowest_log_level()
         
-        if is_third_party_module:
+        if not self.is_broken_hill_module(module_name):
             module_level = self.attack_params.third_party_module_output_level
 
         #print(f"[attach_handlers] Debug: setting log level for module '{module_name}' to {module_level}")
@@ -285,25 +287,30 @@ class BrokenHillLogManager:
 
     def attach_handlers_to_all_modules(self):
         top_level_module_names = []
-        for name in logging.root.manager.loggerDict:
-            name_prefix = name.split(".")[0]
+        for module_name in logging.root.manager.loggerDict:
+            name_prefix = module_name.split(".")[0]
             if name_prefix not in top_level_module_names:
                 top_level_module_names.append(name_prefix)
         
-        #for name in logging.root.manager.loggerDict:
-        for name in top_level_module_names:
-            self.attach_handlers(name)
+        #for module_name in logging.root.manager.loggerDict:
+        for module_name in top_level_module_names:
+            self.attach_handlers(module_name)
     
     def remove_all_existing_handlers(self):
-        for name in logging.root.manager.loggerDict:
-            module_logger = logging.getLogger(name)
-            module_logger.setLevel(self.attack_params.third_party_module_output_level)
+        for module_name in logging.root.manager.loggerDict:
+            module_logger = logging.getLogger(module_name)
+            module_level = self.get_lowest_log_level()
+            if not self.is_broken_hill_module(module_name):
+                module_level = self.attack_params.third_party_module_output_level
+            #print(f"[remove_all_existing_handlers] Debug: setting log level for module '{module_name}' to {module_level}")            
+            module_logger.setLevel(module_level)
+            
             for handler in module_logger.handlers[:]:
                 module_logger.removeHandler(handler)
 
     def get_all_module_names(self):
         result = []
-        for name in logging.root.manager.loggerDict:
-            result.append(name)
+        for module_name in logging.root.manager.loggerDict:
+            result.append(module_name)
         result.sort()
         return result

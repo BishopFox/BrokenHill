@@ -199,10 +199,11 @@ def main(test_params):
                 else:
                     logger.error(f"!!! Error !!!: command returned code {process_return_code}")
                     failed_tests.append(model_info.model_name)
-            logger.info(f"Console output writen to '{model_test_params.get_console_output_path()}'")
-            logger.info(f"JSON result data writen to '{model_test_params.get_result_json_output_path()}'")
-            logger.info(f"JSON performance data writen to '{model_test_params.get_performance_json_output_path()}'")
-            logger.info(f"PyTorch CUDA profiling pickle writen to '{model_test_params.get_torch_cuda_output_path()}'")
+            logger.info(f"Log written to '{model_test_params.get_log_path()}'")
+            logger.info(f"Console output written to '{model_test_params.get_console_output_path()}'")
+            logger.info(f"JSON result data written to '{model_test_params.get_result_json_output_path()}'")
+            logger.info(f"JSON performance data written to '{model_test_params.get_performance_json_output_path()}'")
+            logger.info(f"PyTorch CUDA profiling pickle written to '{model_test_params.get_torch_cuda_output_path()}'")
             if process_standard_output is not None:
                 #standard_output = process_standard_output.read()
                 if process_standard_output.decode("utf-8").strip() != "":

@@ -347,18 +347,18 @@ def main(attack_params, log_manager):
         if not attack_params.load_state_from_file:
             attack_state.create_initial_adversarial_content()
         
-        attack_state.check_for_adversarial_content_token_problems()
+            attack_state.check_for_adversarial_content_token_problems()
         
-        logger.info(f"Initial adversarial content: {attack_state.persistable.initial_adversarial_content.get_full_description()}")
+            logger.info(f"Initial adversarial content: {attack_state.persistable.initial_adversarial_content.get_full_description()}")
 
-        if not attack_params.load_state_from_file:
             attack_state.persistable.current_adversarial_content = attack_state.persistable.initial_adversarial_content.copy()
 
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating adversarial content manager")
         logger.debug(f"creating adversarial content manager.")        
         attack_state.adversarial_content_manager = AdversarialContentManager(attack_state = attack_state, 
             conv_template = attack_state.conversation_template, 
-            adversarial_content = attack_state.persistable.initial_adversarial_content.copy(),
+            #adversarial_content = attack_state.persistable.initial_adversarial_content.copy(),
+            adversarial_content = attack_state.persistable.current_adversarial_content.copy(),
             trash_fire_tokens = attack_state.trash_fire_token_treasury)
             
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "after creating adversarial content manager")
@@ -854,7 +854,7 @@ def main(attack_params, log_manager):
                         iteration_status_message += uov_string
                         iteration_status_message += "\n"
                     iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}\n"               
+                    iteration_status_message += f"Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}"               
                     logger.info(iteration_status_message)
                     
                     # TKTK: maybe make this a threshold

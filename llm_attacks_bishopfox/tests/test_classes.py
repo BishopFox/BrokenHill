@@ -54,7 +54,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.ignore_jailbreak_test_results = False
         self.verbose_stats = True
         self.verbose_resource_info = True
-        self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
+        self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens', '--no-ansi' ]
         # ten minute default for CUDA devices
         self.cuda_process_timeout = 600
         # default: fifteen hours, necessary for some models tested on CPU, e.g that take 2-3 hours for initial iteration, then 10 hours for each additional iteration
@@ -110,6 +110,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         
     def get_console_output_path(self):
         result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-output.txt")
+        return result
+        
+    def get_log_path(self):
+        result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-log.txt")
         return result
     
     def get_command_array(self, base_command_array = []):
@@ -174,6 +178,8 @@ class BrokenHillTestParams(JSONSerializableObject):
             result.append(self.get_performance_json_output_path())        
             result.append('--torch-cuda-memory-history-file')
             result.append(self.get_torch_cuda_output_path())        
+            result.append('--log')
+            result.append(self.get_log_path())
         
         for i in range(0, len(self.custom_options)):
             result.append(self.custom_options[i])

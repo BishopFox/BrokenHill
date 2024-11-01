@@ -2822,9 +2822,14 @@ class ResourceUtilizationData(JSONSerializableObject):
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
         self.snapshots.append(current_snapshot)
+
+        using_cpu = attack_state.persistable.attack_params.using_cpu()
+        using_cuda = attack_state.persistable.attack_params.using_cuda()        
+        #logger.debug(f"is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}")
+
         if attack_state.persistable.attack_params.performance_stats_output_file is not None:
             safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
-        
+                
         if not attack_state.persistable.attack_params.verbose_resource_info:
             if not is_key_snapshot_event:
                 return
@@ -2835,7 +2840,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         else:
             display_string = f"System resource statistics ({location_description})\n"
         
-        if attack_state.persistable.attack_params.using_cpu():
+        if using_cpu:
             display_string += f"CPU:\n"
             display_string += f"\tBroken Hill process:\n"
             display_string += f"\t\tVirtual memory in use: {current_snapshot.process_virtual_memory:n} bytes\n"
@@ -2853,7 +2858,7 @@ class ResourceUtilizationData(JSONSerializableObject):
                 display_string += f"\t\tSwap memory available: {current_snapshot.system_swap_free:n} bytes\n"
                 display_string += f"\t\tSwap memory utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
             
-        if attack_state.persistable.attack_params.using_cuda():
+        if using_cuda:
             for i in range(0, len(current_snapshot.cuda_device_data)):
                 d = current_snapshot.cuda_device_data[i]
                 display_string += f"CUDA device {d.device_name} - {d.device_display_name}:\n"

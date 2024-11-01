@@ -810,7 +810,7 @@ def get_token_allow_and_deny_lists(tokenizer, string_list, device='cpu', additio
                 # don't filter out tokens that are already empty strings, because some models (like Phi 3) use them to represent things like word breaks
                 if candidate_token == "":
                     dummy = 1
-                    logger.debug(f"did not add token {j} ('{candidate_token_escaped}') to the denylist because it was already an empty string.")
+                    #logger.debug(f"did not add token {j} ('{candidate_token_escaped}') to the denylist because it was already an empty string.")
                 else:
                     if candidate_token.strip() == "":
                         result.denylist = add_value_to_list_if_not_already_present(result.denylist, j)
