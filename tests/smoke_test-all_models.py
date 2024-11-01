@@ -280,6 +280,8 @@ if __name__=='__main__':
         help="Skip testing models that will fit within CUDA device memory.")
     parser.add_argument("--include-model", action='append', nargs='*', required=False,
         help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
+    parser.add_argument("--skip-model", action='append', nargs='*', required=False,
+        help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
     
     
     args = parser.parse_args()
@@ -307,6 +309,15 @@ if __name__=='__main__':
                         smoke_test_params.specific_model_names_to_test = [ et ]
                     else:
                         smoke_test_params.specific_model_names_to_test = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_test, et)
+
+     if args.skip_model:
+        for elem in args.skip_model:
+            for et in elem:
+                if et.strip() != "":
+                    if smoke_test_params.specific_model_names_to_skip is None:
+                        smoke_test_params.specific_model_names_to_skip = [ et ]
+                    else:
+                        smoke_test_params.specific_model_names_to_skip = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_skip, et)
     
     main(smoke_test_params)
 

@@ -104,7 +104,7 @@
 			"template": "zero_shot",
 			"size": 24207819307,
 			"safe_tensors": false,
-			"custom_options": [ "--missing-pad-token-replacement", "unk" ],
+			"custom_options": [ "--missing-pad-token-replacement", "eos" ],
 			"comment": "This model seems to hang during the second iteration - doesn't finish even at ten hours."
 		},
 		{
@@ -365,7 +365,7 @@
 			"template": "gptneox",
 			"size": 41293881230,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "unk" ],
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "eos" ],
 			"comment": "Takes about 9.75 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement value."
 		},
 		{

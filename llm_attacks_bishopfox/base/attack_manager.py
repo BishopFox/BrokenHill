@@ -68,78 +68,78 @@ def is_phi_1_to_3_model(model):
         return True
     return False
 
-def get_embedding_layer(model):
+def get_embedding_layer(attack_state):
     use_default_logic = False
-    if isinstance(model, BartForCausalLM):
-        return model.model.decoder.get_input_embeddings()
-    if isinstance(model, BigBirdPegasusForCausalLM) or isinstance(model, PegasusForCausalLM):
-        return model.model.decoder.embed_tokens
-    if isinstance(model, BlenderbotForCausalLM):
-        return model.model.decoder.embed_tokens
-    if isinstance(model, FalconForCausalLM):
-        return model.get_input_embeddings()
-    if isinstance(model, GemmaForCausalLM):
-        return model.base_model.get_input_embeddings()
-    if isinstance(model, Gemma2ForCausalLM):
-        return model.base_model.get_input_embeddings()
-    if isinstance(model, GPT2LMHeadModel):
-        return model.transformer.wte
-    if isinstance(model, GPTJForCausalLM):
-        return model.transformer.wte
-    if isinstance(model, GPTNeoForCausalLM):
-        return model.base_model.wte
-    if isinstance(model, GPTNeoXForCausalLM):
-        return model.base_model.embed_in
-    if isinstance(model, LlamaForCausalLM):
-        if hasattr(model, "model"):
-            if hasattr(model.model, "get_input_embeddings"):
-                return model.model.get_input_embeddings()
-            if hasattr(model.model, "embed_tokens"):
-                return model.model.embed_tokens
-        if hasattr(model, "embed_tokens"):
-            return model.embed_tokens
-        if hasattr(model, "get_input_embeddings"):
-            return model.get_input_embeddings()
-    if isinstance(model, MambaForCausalLM):
-        return model.get_input_embeddings()
-    if isinstance(model, MptForCausalLM):
-        return model.get_input_embeddings()
-    if isinstance(model, OPTForCausalLM):
-        return model.model.get_input_embeddings()
-    if isinstance(model, peft.peft_model.PeftModelForCausalLM):
+    if isinstance(attack_state.model, BartForCausalLM):
+        return attack_state.model.model.decoder.get_input_embeddings()
+    if isinstance(attack_state.model, BigBirdPegasusForCausalLM) or isinstance(attack_state.model, PegasusForCausalLM):
+        return attack_state.model.model.decoder.embed_tokens
+    if isinstance(attack_state.model, BlenderbotForCausalLM):
+        return attack_state.model.model.decoder.embed_tokens
+    if isinstance(attack_state.model, FalconForCausalLM):
+        return attack_state.model.get_input_embeddings()
+    if isinstance(attack_state.model, GemmaForCausalLM):
+        return attack_state.model.base_model.get_input_embeddings()
+    if isinstance(attack_state.model, Gemma2ForCausalLM):
+        return attack_state.model.base_model.get_input_embeddings()
+    if isinstance(attack_state.model, GPT2LMHeadModel):
+        return attack_state.model.transformer.wte
+    if isinstance(attack_state.model, GPTJForCausalLM):
+        return attack_state.model.transformer.wte
+    if isinstance(attack_state.model, GPTNeoForCausalLM):
+        return attack_state.model.base_model.wte
+    if isinstance(attack_state.model, GPTNeoXForCausalLM):
+        return attack_state.model.base_model.embed_in
+    if isinstance(attack_state.model, LlamaForCausalLM):
+        if hasattr(attack_state.model, "model"):
+            if hasattr(attack_state.model.model, "get_input_embeddings"):
+                return attack_state.model.model.get_input_embeddings()
+            if hasattr(attack_state.model.model, "embed_tokens"):
+                return attack_state.model.model.embed_tokens
+        if hasattr(attack_state.model, "embed_tokens"):
+            return attack_state.model.embed_tokens
+        if hasattr(attack_state.model, "get_input_embeddings"):
+            return attack_state.model.get_input_embeddings()
+    if isinstance(attack_state.model, MambaForCausalLM):
+        return attack_state.model.get_input_embeddings()
+    if isinstance(attack_state.model, MptForCausalLM):
+        return attack_state.model.get_input_embeddings()
+    if isinstance(attack_state.model, OPTForCausalLM):
+        return attack_state.model.model.get_input_embeddings()
+    if isinstance(attack_state.model, peft.peft_model.PeftModelForCausalLM):
         use_default_logic = True
-    if is_phi_1_to_3_model(model):
-        return model.model.embed_tokens
-    if isinstance(model, RobertaForCausalLM):
-        return model.get_input_embeddings()
-    if isinstance(model, Qwen2ForCausalLM):
-        return model.base_model.get_input_embeddings()
-    if isinstance(model, StableLmForCausalLM):
-        return model.base_model.embed_tokens
+    if is_phi_1_to_3_model(attack_state.model):
+        return attack_state.model.model.embed_tokens
+    if isinstance(attack_state.model, RobertaForCausalLM):
+        return attack_state.model.get_input_embeddings()
+    if isinstance(attack_state.model, Qwen2ForCausalLM):
+        return attack_state.model.base_model.get_input_embeddings()
+    if isinstance(attack_state.model, StableLmForCausalLM):
+        return attack_state.model.base_model.embed_tokens
     else:
         result = None
         result_name = None
-        if result is None and hasattr(model, "get_input_embeddings"):
-            result = model.get_input_embeddings()
-            result_name = "model.get_input_embeddings()"
-        if result is None and hasattr(model, "model"):
-            if hasattr(model.model, "get_input_embeddings"):
-                result = model.model.get_input_embeddings()
-                result_name = "model.model.get_input_embeddings()"
-            if result is None and hasattr(model.model, "embed_tokens"):
-                result = model.model.embed_tokens
-                result_name = "model.model.embed_tokens"
-        if result is None and hasattr(model, "embed_tokens"):
-            result = model.embed_tokens
-            result_name = "model.embed_tokens"        
+        if result is None and hasattr(attack_state.model, "get_input_embeddings"):
+            result = attack_state.model.get_input_embeddings()
+            result_name = "attack_state.model.get_input_embeddings()"
+        if result is None and hasattr(attack_state.model, "model"):
+            if hasattr(attack_state.model.model, "get_input_embeddings"):
+                result = attack_state.model.model.get_input_embeddings()
+                result_name = "attack_state.model.model.get_input_embeddings()"
+            if result is None and hasattr(attack_state.model.model, "embed_tokens"):
+                result = attack_state.model.model.embed_tokens
+                result_name = "attack_state.model.model.embed_tokens"
+        if result is None and hasattr(attack_state.model, "embed_tokens"):
+            result = attack_state.model.embed_tokens
+            result_name = "attack_state.model.embed_tokens"        
         if result is not None:
             if not use_default_logic:
-                print(f"[get_embedding_layer] Warning: unrecognized model type {type(model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
+                print(f"[get_embedding_layer] Warning: unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
             return result
         
-        result_message = f"[get_embedding_layer] Error: unrecognized model type {type(model)} "
+        result_message = f"[get_embedding_layer] Error: unrecognized model type {type(attack_state.model)} "
         if use_default_logic:
-            result_message = f"[get_embedding_layer] Error: model type {type(model)} "
+            result_message = f"[get_embedding_layer] Error: model type {type(attack_state.model)} "
 
         result_message += "did not have an input embedding property in any of the default locations Broken Hill is configured to search for. Processing cannot continue."
         
@@ -149,8 +149,8 @@ def get_embedding_layer(model):
         #return result
         #raise ValueError(f"Unknown model type: {type(model)}")
 
-def get_embedding_matrix(model):
-    embedding_layer = get_embedding_layer(model)
+def get_embedding_matrix(attack_state):
+    embedding_layer = get_embedding_layer(attack_state)
     result = embedding_layer.weight
  
     #print(f"[get_embedding_matrix] Debug: result = {result}")
@@ -164,30 +164,36 @@ def get_embedding_matrix(model):
             try:
                 result = torch.nn.Parameter(result)
             except Exception as e:
-                result = torch.nn.Parameter(result, requires_grad=False)
+                result = torch.nn.Parameter(result, requires_grad = False)
+                print(f"[get_embedding_matrix] Warning: returning the embedding matrix with requires_grad = False")
             #print(f"[get_embedding_matrix] Debug: result after conversion to Parameter = {result}")
     return result
 
-def get_embeddings(model, input_ids):
-    embedding_layer = get_embedding_layer(model)
+def get_embeddings(attack_state, input_ids):
+    embedding_layer = get_embedding_layer(attack_state)
+    # TKTK: validate that setting dtype = attack_state.model.dtype explicitly doesn't change/break anything.
     result = embedding_layer(input_ids)
-    return_half = False
-
-    if isinstance(model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
-        return_half = True
-    elif isinstance(model, GPTNeoForCausalLM):
-        return_half = True
-    elif isinstance(model, GPTNeoXForCausalLM):
-        return_half = True
-    
-    #print(f"[get_embeddings] Debug: result properties: {result}") 
-    
-    if return_half:
-        print("[get_embeddings] Warning: returning .half() variation of embedding layer")
-        result = result.half()
-        #print(f"[get_embeddings] Debug: result properties after .half(): {result}")
-    
+    if result.dtype != attack_state.model.dtype:
+        print("[get_embeddings] Warning: converting embedding layer from {result.dtype} to {attack_state.model.dtype}")
+        result = result.to(dtype = attack_state.model.dtype)
     return result
+    # return_half = False
+
+    # if isinstance(attack_state.model, GPTJForCausalLM) or isinstance(model, GPT2LMHeadModel):
+        # return_half = True
+    # elif isinstance(attack_state.model, GPTNeoForCausalLM):
+        # return_half = True
+    # elif isinstance(attack_state.model, GPTNeoXForCausalLM):
+        # return_half = True
+    
+    # #print(f"[get_embeddings] Debug: result properties: {result}") 
+    
+    # if return_half:
+        # print("[get_embeddings] Warning: returning .half() variation of embedding layer")
+        # result = result.half()
+        # #print(f"[get_embeddings] Debug: result properties after .half(): {result}")
+    
+    # return result
 
 # Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
 # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped

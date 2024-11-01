@@ -174,7 +174,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
 
     #attack_state.persistable.performance_data.collect_torch_stats("token_gradients")
     #print("[token_gradients] Debug: Getting embedding weight matrix")
-    embedding_matrix = get_embedding_matrix(attack_state.model)
+    embedding_matrix = get_embedding_matrix(attack_state)
     #print(f"[token_gradients] Debug: embedding_matrix = {embedding_matrix}")
     #print(f"[token_gradients] Debug: embedding_matrix.shape = {embedding_matrix.shape}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - begin")
@@ -293,9 +293,9 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     #print("[token_gradients] Debug: Getting embeddings")
     embeds = None
     try:
-        embeds = get_embeddings(attack_state.model, input_token_ids_model_device.unsqueeze(0)).detach()
+        embeds = get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach()
     except Exception as e:
-        raise GradientCreationException(f"Error calling get_embeddings(attack_state.model, input_token_ids_model_device.unsqueeze(0)).detach() with input_token_ids_model_device.unsqueeze(0) = '{input_token_ids_model_device.unsqueeze(0)}': {e}")
+        raise GradientCreationException(f"Error calling get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach() with input_token_ids_model_device.unsqueeze(0) = '{input_token_ids_model_device.unsqueeze(0)}': {e}")
     #embeds = embeds.to(attack_state.gradient_device)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - embeds created")
 

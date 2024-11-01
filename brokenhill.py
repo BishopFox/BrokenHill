@@ -124,6 +124,7 @@ from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_t
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.logging import BrokenHillLogManager
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
@@ -146,11 +147,13 @@ from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_escaped_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_file_content_from_sys_argv
+from llm_attacks_bishopfox.util.util_functions import get_log_level_names
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_random_token_id
 from llm_attacks_bishopfox.util.util_functions import get_random_token_ids
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 from llm_attacks_bishopfox.util.util_functions import load_json_from_file
+from llm_attacks_bishopfox.util.util_functions import log_level_name_to_log_level
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_float
 from llm_attacks_bishopfox.util.util_functions import numeric_string_to_int
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
@@ -167,6 +170,7 @@ SAFETENSORS_WEIGHTS_FILE_NAME = "adapter_model.safetensors"
 # 0.1 = 10%
 torch_device_reserved_memory_warning_threshold = 0.1
 
+# Use the OS-level locale
 locale.setlocale(locale.LC_ALL, '')
 
 # Workaround for glitchy Protobuf code somewhere
@@ -211,8 +215,9 @@ def check_pytorch_devices(attack_params):
 
 
 
-def main(attack_params):
+def main(attack_params, log_manager):
     attack_state = VolatileAttackState()
+    attack_state.log_manager = log_manager
     if attack_params.load_state_from_file:
         state_file_dict = load_json_from_file(attack_params.load_state_from_file)
         # Loading the AttackParams directly from the saved state won't work, because then the user wouldn't be able to override them with other explicit command-line options.
@@ -1143,6 +1148,9 @@ if __name__=='__main__':
     # TKTK: add a --multi-device mode that uses torch.nn.DataParallel
     # model= nn.DataParallel(model)
     # model.to(device)
+    parser.add_argument("--torch-dataparallel", type = str2bool, nargs='?',
+        const=True,
+        help="Experimental: Enables the PyTorch 'DataParallel' feature, which should allow utilizing multiple CUDA devices at once.")
 
     parser.add_argument("--self-test", type = str2bool, nargs='?',
         const=True,
@@ -1406,7 +1414,7 @@ if __name__=='__main__':
         help="If the number of jailbreaks detected decreases between iterations, roll back to the last 'good' adversarial data.")
     parser.add_argument("--rollback-on-jailbreak-count-threshold", type=numeric_string_to_int,
         help=f"Equivalent to --rollback-on-jailbreak-count-decrease, but only if the jailbreak count decreases by more than the specified amount for a given iteration. Can be useful for avoiding getting stuck in a local maximum.")
-        
+    
     # TKTK: branching tree rollback modes - see discussion in the main loop
     # Both of the existing rollback modes should be able to be handled as subsets of tree mode
     # Basic rollback would be a tree configuration that doesn't allow branching down to less-desirable values at all
@@ -1516,8 +1524,41 @@ if __name__=='__main__':
         help=f"Load all attack parameters from the specified JSON file. Any additional command-line options specified will override the values from the JSON file. This option may be specified multiple times to merge several partial options files together in the order specified.")
     parser.add_argument("--load-options-from-state", type = str,
         help=f"Load all attack parameters from the specified Broken Hill state-backup file. This option may be specified multiple times to merge several partial options files together in the order specified. If this option and --load-options are both specified, then any files specified using --load-options-from-state are processed first, in order, before applying any files specified using --load-options.")
+    parser.add_argument("--log", type = str,
+        help=f"Write output to the specified log file in addition to the console.")
+    parser.add_argument("--log-level", type = str,
+        choices = get_log_level_names(),
+        help=f"Limit log file entries to severities of the specified level and above.")
+    parser.add_argument("--console-level", type = str,
+        choices = get_log_level_names(),
+        help=f"Limit console output to severities of the specified level and above.")
+    parser.add_argument("--no-ansi", type = str2bool, nargs='?',
+        const=True,
+        help="Do not use ANSI formatting codes to colourize console output")
+
 
     args = parser.parse_args()
+    
+    # any arguments related to logging need to be handled here
+    if args.log:
+        attack_params.log_file_path = os.path.abspath(args.log)
+    # if attack_params.log_file_path is not None:
+        # verify_output_file_capability(attack_params.log_file_path, attack_params.overwrite_output)
+    if args.log_level:
+        attack_params.log_file_output_level = log_level_name_to_log_level(args.log_level)
+    if args.console_level:
+        attack_params.console_output_level = log_level_name_to_log_level(args.console_level)
+    if args.no_ansi:
+        attack_params.console_ansi_format = False
+    
+    log_manager = BrokenHillLogManager(attack_params)
+    log_manager.initialize_handlers()
+    log_manager.remove_all_existing_handlers()
+    log_manager.attach_handlers_to_all_modules()
+    log_manager.attach_handlers(__name__)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_manager.get_lowest_log_level())
+    logger.info(f"Log handlers are attached")    
 
     if args.list_language_tags:
         attack_params.operating_mode = BrokenHillMode.LIST_IETF_TAGS
@@ -1557,6 +1598,9 @@ if __name__=='__main__':
     if individual_device_params and combined_device_params:
         print(f"--device can only be specified if none of --model-device, --gradient-device, and --forward-device are specified.")
         sys.exit(1)
+
+    if args.torch_dataparallel:
+        attack_params.torch_dataparallel = True
 
     if cuda_available:
         if len(attack_params.get_non_cuda_devices()) > 0:
@@ -2099,14 +2143,14 @@ if __name__=='__main__':
         verify_output_file_capability(attack_params.json_output_file, attack_params.overwrite_output)
     
     if args.performance_output_file:
-        attack_params.performance_stats_output_file = args.performance_output_file
+        attack_params.performance_stats_output_file = os.path.abspath(args.performance_output_file)
     if attack_params.performance_stats_output_file is not None:
         verify_output_file_capability(attack_params.performance_stats_output_file, attack_params.overwrite_output)
 
     if args.torch_cuda_memory_history_file:
-        attack_params.torch_cuda_memory_history_file = args.torch_cuda_memory_history_file
+        attack_params.torch_cuda_memory_history_file = os.path.abspath(args.torch_cuda_memory_history_file)
     if attack_params.torch_cuda_memory_history_file is not None:
         verify_output_file_capability(attack_params.torch_cuda_memory_history_file, attack_params.overwrite_output)
     
-    main(attack_params)
+    main(attack_params, log_manager)
 

@@ -60,6 +60,7 @@ This is the most significant update to Broken Hill since its public release in S
   * The resource utilization information is used to compile and display statistical information at the end of a test.
     * By default, a relatively short list of statistics are displayed.
     * Use `--verbose-stats` to output the complete list instead.
+  * The console output formatting for resource utilization has been changed slightly to make it match the end-of-run information's language.
   * Additionally, a `--torch-cuda-memory-history-file` option has been added that uses [PyTorch's built-in CUDA profiling feature to generate a pickled blob of information that you can use to visualize details of data in memory on your CUDA device(s)](https://pytorch.org/docs/stable/torch_cuda_memory.html) during a Broken Hill run
 * Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
@@ -85,11 +86,15 @@ This is the most significant update to Broken Hill since its public release in S
   * Corrected the default behaviour for tokenizers without a padding token defined to default to the "end of string" token, and to pad from the left.
     * The new `--missing-pad-token-padding-side` option can be used to override this, e.g. `--missing-pad-token-padding-side right`, but you probably don't want to do that.
 	* If you want to default to whatever token Torch would pick (which is usually "end of string" anyway), use `--missing-pad-token-replacement default`.
+  * Added special corner-case handling for Qwen models that define non-standard, redundant, proprietary equivalents of the `dtype` parameter when loading a model.
+    * The affected models default to converting the weights to `bfloat16` on the fly if the proprietary additional parameters are not included.
+	* The corner-case handling overrides this behaviour and loads the weights in the correct format.
   * Fixed a bug that could cause a crash instead of displaying a warning during jailbreak self-testing.
   * Fixed a bug that would cause a crash when testing for jailbreaks if the LLM output was an empty string or consisted only of whitespace.
   * Fixed a bug that caused `--adversarial-candidate-filter-regex` to not be applied correctly.
   * Fixed a bug that incorrectly reported a chat template mismatch when a system message and/or template messages were specified.
   * Updated `ollama_wrapper.sh` to correctly handle adversarial content containing shell metacharacters.
+  * Memory utilization statistics now correctly display process-level virtual memory instead of duplicating the physical memory figure.
   * Minor update to the logic used to generate the "Current input string:" output text so that trailing delimiters between the input and the LLM role indicator are omitted.
   * Minor correction to the custom `stablelm2` chat template.
   * Many other lesser fixes.

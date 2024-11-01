@@ -18,7 +18,7 @@ These commands tend to be very long. To avoid corrupting the `jq` instructions b
 
 ## The most recent adversarial content token IDs
 
-This allows one to start another Broken Hill test run more or less where a previous test was completed or cancelled.
+This allows one to start another Broken Hill test run using the adversarial content that was generated in the last iteration of a test. However, if you want to continue iterating from there using an otherwise identical configuration, [you should use the `--load-state` option to restore all of the other state information instead](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
 
 jq -r '.attack_results[] | select(.loss >= 0) | (.adversarial_content | .token_ids | join(","))' results.json | tail -n1
 
@@ -368,8 +368,7 @@ jq '.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | 
 
 In versions 0.32 and later of Broken Hill, jailbreak check output should always be a shorter version of the full output, but in case you'd like to double-check:
 
-
-jq '[.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | select(.jailbreak_detected == true)) | [(.result_data_sets | keys[] as $k | .[$k] | {($k): .decoded_llm_output_string} )]]' results.json 
+jq '[.attack_results[] | select(.jailbreak_detection_count >= 1) | (.results[] | select(.jailbreak_detected == true)) | [(.result_data_sets | keys[] as $k | .[$k] | {($k): .decoded_llm_output_string} )]]' results.json
 
 ```
 [

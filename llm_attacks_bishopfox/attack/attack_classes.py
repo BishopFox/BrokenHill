@@ -5,6 +5,7 @@ import copy
 import fastchat as fschat
 import fastchat.conversation as fschat_conversation
 import json
+import logging
 import numpy
 import os
 import pathlib
@@ -14,6 +15,7 @@ import statistics
 import sys
 import time
 import torch
+import torch.nn
 import uuid
 
 from transformers import AutoModelForCausalLM
@@ -481,6 +483,9 @@ class AttackParams(JSONSerializableObject):
         # the PyTorch device where the 'forward' operation should be performed
         self.forward_device = 'cuda'
         
+        # enable torch.nn.DataParallel for the model (and any other places where it needs to be enabled explicitly)
+        self.torch_dataparallel = False
+        
         # back-end to use if CUDA is not available
         self.device_fallback = 'cpu'
 
@@ -836,6 +841,17 @@ class AttackParams(JSONSerializableObject):
 
         self.radiation_gardens = []
 
+        # logging options
+        self.log_file_path = None
+        self.console_output_level = logging.INFO
+        self.log_file_output_level = logging.INFO
+        self.console_ansi_format = True
+        self.log_file_ansi_format = False
+        
+         
+        # Workaround for overly-chatty-by-default PyTorch code
+        self.torch_logger_output_level = logging.WARN
+
         # output options
         self.overwrite_output = False
         # If this value is not None, write detailed result data to the specified JSON file
@@ -859,7 +875,7 @@ class AttackParams(JSONSerializableObject):
         self.state_directory = None
         self.state_file = None
         self.load_state_from_file = None
-        
+                
         # TKTK: option to generate a dynamically-quantized version of the model and also check results against it, because quantized models seem much less susceptible to this type of attack.
         # As noted below in the "Quantization options" section, the attack itself cannot be performed (at least using PyTorch) against an integer-based model - it must be floating point.
         # However, the attack could be performed on the floating-point model, and each adversarial result checked against the floating-point and quantized models at each iteration.
@@ -1161,6 +1177,7 @@ class PersistableAttackState(JSONSerializableObject):
 # As well as a reference to the persistable data, so there's just the one thing to pass around
 class VolatileAttackState():
     def __init__(self):
+        self.log_manager = None
         self.persistable = PersistableAttackState()
         self.random_number_generators = None
         self.model = None
@@ -1431,12 +1448,8 @@ class VolatileAttackState():
         #if ignore_mismatched_sizes:
         #    kwargs["ignore_mismatched_sizes"] = True
 
-        # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
-        # Inspired by the following PyTorch output:
-        #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
-        #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
-
         model = None
+        handled_model_load = False
 
         if self.model_weight_type is None:
             model = AutoModelForCausalLM.from_pretrained(
@@ -1446,40 +1459,55 @@ class VolatileAttackState():
                     low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
                     use_cache = self.persistable.attack_params.use_cache
                 ).to(self.model_device).eval()
-        else:
-            # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
-            charlie_prince_bf16 = False
-            charlie_prince_fp16 = False
-            charlie_prince_fp32 = False
-            if self.model_weight_type == torch.bfloat16:
-                charlie_prince_bf16 = True
-            if self.model_weight_type == torch.float16:
-                charlie_prince_fp16 = True
-            if self.model_weight_type == torch.float32:
-                charlie_prince_fp32= True
-            #print(f"[load_model_and_tokenizer] Debug: self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+            handled_model_load = True
+        if not handled_model_load:            
+            # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
+            # Inspired by the following PyTorch output:
+            #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
+            #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
+            if "qwen" in self.persistable.attack_params.model_path.lower():
+                # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
+                charlie_prince_bf16 = False
+                charlie_prince_fp16 = False
+                charlie_prince_fp32 = False
+                if self.model_weight_type == torch.bfloat16:
+                    charlie_prince_bf16 = True
+                if self.model_weight_type == torch.float16:
+                    charlie_prince_fp16 = True
+                if self.model_weight_type == torch.float32:
+                    charlie_prince_fp32= True
+                #print(f"[load_model_and_tokenizer] Debug: self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(
+                            self.persistable.attack_params.model_path,
+                            torch_dtype = self.model_weight_type,
+                            bf16 = charlie_prince_bf16,
+                            fp16 = charlie_prince_fp16,
+                            fp32 = charlie_prince_fp32,
+                            trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                            ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                            low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                            use_cache = self.persistable.attack_params.use_cache
+                        ).to(self.model_device).eval()
+                    handled_model_load = True
+                except Exception as e:
+                    #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+                    handled_model_load = False
+        if not handled_model_load:
+            model = AutoModelForCausalLM.from_pretrained(
+                    self.persistable.attack_params.model_path,
+                    torch_dtype = self.model_weight_type,
+                    trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                    ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                    low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                    use_cache = self.persistable.attack_params.use_cache
+                ).to(self.model_device).eval()                
+        
+        if self.persistable.attack_params.torch_dataparallel:
             try:
-                model = AutoModelForCausalLM.from_pretrained(
-                        self.persistable.attack_params.model_path,
-                        torch_dtype = self.model_weight_type,
-                        bf16 = charlie_prince_bf16,
-                        fp16 = charlie_prince_fp16,
-                        fp32 = charlie_prince_fp32,
-                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
-                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
-                        use_cache = self.persistable.attack_params.use_cache
-                    ).to(self.model_device).eval()
+                model = torch.nn.DataParallel(model)
             except Exception as e:
-                #print(f"[load_model_and_tokenizer] Debug: Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
-                model = AutoModelForCausalLM.from_pretrained(
-                        self.persistable.attack_params.model_path,
-                        torch_dtype = self.model_weight_type,
-                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
-                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
-                        use_cache = self.persistable.attack_params.use_cache
-                    ).to(self.model_device).eval()                
+                print(f"Error: unable to load the model using torch.nn.DataParallel: {e}")
         
         tokenizer_path_to_load = self.persistable.attack_params.model_path
         if self.persistable.attack_params.tokenizer_path is not None:
@@ -1524,10 +1552,14 @@ class VolatileAttackState():
                 tokenizer.bos_token_id = 1
                 tokenizer.unk_token_id = 0
             if 'guanaco' in tokenizer_path_to_load:
+                # Both of these are defined already in the configuration included with TheBloke's version of Guanaco.
+                # They're also defined in the configuration included with the "huggyllama" version of llama-7b, so I think both values are redundant.
                 tokenizer.eos_token_id = 2
                 tokenizer.unk_token_id = 0
             if 'llama-2' in tokenizer_path_to_load:
+                # Llama-2's tokenizer does explicitly define an unknown token ("<unk>"), so this seems fine
                 tokenizer.pad_token = tokenizer.unk_token
+                # Llama-2's tokenizer configuration explicitly pads from the right
                 tokenizer.padding_side = 'left'
             if 'falcon' in tokenizer_path_to_load:
                 tokenizer.padding_side = 'left'
@@ -1643,7 +1675,7 @@ class VolatileAttackState():
             self.model.qconfig = tq.get_default_qconfig(backend)
             #model.qconfig = float_qparams_weight_only_qconfig
             # disable quantization of embeddings because quantization isn't really supported for them
-            model_embeds = get_embedding_layer(model)
+            model_embeds = get_embedding_layer(self)
             model_embeds.qconfig = float_qparams_weight_only_qconfig
             self.model = tq.prepare(self.model, inplace=True)
             self.model = tq.convert(self.model, inplace=True)
@@ -2637,7 +2669,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             
         self.statistics.performance.add_or_update_dataset("total_processing_time_seconds", processing_time)
 
-    def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '    '):
+    def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '      '):
         new_message = message
         found_data_in_this_dataset = False
         convert_to_integer = False
@@ -2694,31 +2726,32 @@ class ResourceUtilizationData(JSONSerializableObject):
         
         found_cpu_data = False        
         cpu_message = f"{message}\n\n  CPU:"
+        cpu_message = f"{cpu_message}\n    Broken Hill process:"
         pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
-        #found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process virtual memory", pvm, "{0:.0f} byte(s)")
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process virtual memory", pvm, "{0:n} byte(s)")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
         if verbose:
             ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process physical memory", ppm, "{0:n} byte(s)")        
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
         pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
         if verbose or pswap.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Process swap memory", pswap, "{0:n} byte(s)")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
+        cpu_message = f"{cpu_message}\n    System-wide:"
         sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory in use", sys_inuse, "{0:n} byte(s)")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
         if verbose:
             sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory available", sys_avail, "{0:n} byte(s)")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
         sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System memory utilization", sys_memory_util, "{0:.2f}%")
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
         sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
         if verbose or sys_swap_inuse.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
         if verbose:
             sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory available", sys_swap_avail, "{0:n} byte(s)")        
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
         if verbose or sys_swap_inuse.maximum > 0:
             sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "System swap memory utilization", sys_swap_util, "{0:.2f}%")
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
         if found_cpu_data:
             found_data = True
             message = cpu_message
@@ -2790,38 +2823,42 @@ class ResourceUtilizationData(JSONSerializableObject):
             print(f"System resource statistics ({location_description})")
         
         if attack_state.persistable.attack_params.using_cpu():
-            display_string += f"System-level memory utilization:\n"
-            display_string += f"\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
-            display_string += f"\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
-            display_string += f"\tAvailable memory: {current_snapshot.system_available_memory:n} bytes\n"
-            display_string += f"\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
-            if current_snapshot.system_swap_total is not None:
-                display_string += f"\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
-                display_string += f"\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
-                display_string += f"\tFree swap memory: {current_snapshot.system_swap_free:n} bytes\n"
-                display_string += f"\tSwap utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
-            display_string += f"\tBroken Hill process physical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
-            display_string += f"\tBroken Hill process virtual memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
+            display_string += f"CPU:\n"
+            display_string += f"\tBroken Hill process:\n"
+            display_string += f"\t\tVirtual memory in use: {current_snapshot.process_virtual_memory:n} bytes\n"
+            display_string += f"\t\tPhysical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
             if current_snapshot.process_swap is not None:
-                display_string += f"\tProcess swap memory in use: {current_snapshot.process_swap:n} bytes\n"
-
+                display_string += f"\t\tSwap memory in use: {current_snapshot.process_swap:n} bytes\n"
+            display_string += f"\tSystem-level:\n"
+            display_string += f"\t\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
+            display_string += f"\t\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
+            display_string += f"\t\tMemory available: {current_snapshot.system_available_memory:n} bytes\n"
+            display_string += f"\t\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
+            if current_snapshot.system_swap_total is not None:
+                display_string += f"\t\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
+                display_string += f"\t\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
+                display_string += f"\t\tSwap memory available: {current_snapshot.system_swap_free:n} bytes\n"
+                display_string += f"\t\tSwap memory utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
+            
         if attack_state.persistable.attack_params.using_cuda():
             for i in range(0, len(current_snapshot.cuda_device_data)):
-                d = current_snapshot.cuda_device_data[i]            
-                display_string += f"CUDA device {d.device_name} - {d.device_display_name}\n"
-                display_string += f"\tTotal memory: {d.total_memory:n} byte(s)\n"
-                display_string += f"\tMemory in use across the entire device: {d.gpu_used_memory:n} byte(s)\n"
-                display_string += f"\tMemory available across the entire device: {d.available_memory:n} byte(s)\n"
-                display_string += f"\tMemory utilization across the entire device: {d.total_memory_utilization:.0%}\n"
-                display_string += f"\tDevice memory reserved for Broken Hill: {d.process_reserved_memory:n} byte(s)\n"
-                display_string += f"\tDevice memory utilization for Broken Hill: {d.process_memory_utilization:.0%}\n"
-                display_string += f"\tDevice reserved allocated memory for Broken Hill: {d.process_reserved_allocated_memory:n} byte(s)\n"
-                display_string += f"\tDevice reserved unallocated memory for Broken Hill: {d.process_reserved_unallocated_memory:n} byte(s)\n"
-                display_string += f"\tReserved memory utilization within Broken Hill's reserved memory space: {d.process_reserved_utilization:.0%}\n"
+                d = current_snapshot.cuda_device_data[i]
+                display_string += f"CUDA device {d.device_name} - {d.device_display_name}:\n"
+                display_string += f"\tBroken Hill process:\n"
+                display_string += f"\t\tMemory reserved: {d.process_reserved_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory utilization: {d.process_memory_utilization:.0%}\n"
+                display_string += f"\t\tMemory reserved and allocated: {d.process_reserved_allocated_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory reserved but unallocated: {d.process_reserved_unallocated_memory:n} byte(s)\n"
+                display_string += f"\t\tReserved memory utilization: {d.process_reserved_utilization:.0%}\n"
+                display_string += f"\tSystem-wide:\n"
+                display_string += f"\t\tTotal memory: {d.total_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory in use: {d.gpu_used_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory available: {d.available_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory utilization: {d.total_memory_utilization:.0%}\n"
         # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
         if current_snapshot.process_swap is not None:
             if current_snapshot.process_swap > 0:
-                display_string += f"Warning: this process has {current_snapshot.process_swap:n} bytes swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM to handle the current Broken Hill configuration.\n"
+                display_string += f"Warning: this process has {current_snapshot.process_swap:n} byte(s) swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM to handle the current Broken Hill configuration.\n"
         display_string += "---\n"
         print(display_string)
                 

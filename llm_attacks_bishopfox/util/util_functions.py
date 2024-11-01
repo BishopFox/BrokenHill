@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import logging
 import math
 import os
 import pathlib
@@ -751,3 +752,20 @@ def torch_dtype_to_bit_count(dtype):
         return 64
     raise Exception("Unrecognized PyTorch data type: '{dtype}'")
 
+def get_log_level_names():
+    return ["debug", "info", "warning", "error", "critical"]
+
+def log_level_name_to_log_level(level_name):
+    ln = level_name.strip().lower()
+    if ln == "debug":
+        return logging.DEBUG
+    if ln == "info":
+        return logging.INFO
+    if ln == "warning":
+        return logging.WARNING
+    if ln == "error":
+        return logging.ERROR
+    if ln == "critical":
+        return logging.CRITICAL
+    raise Exception(f"Couldn't convert '{level_name}' to a log level")
+       
