@@ -110,18 +110,15 @@ from llm_attacks_bishopfox.attack.attack_classes import BrokenHillResultData
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
+from llm_attacks_bishopfox.attack.attack_classes import LossThresholdException
 from llm_attacks_bishopfox.attack.attack_classes import ModelDataFormatHandling
+from llm_attacks_bishopfox.attack.attack_classes import MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException
 from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PersistableAttackState
 from llm_attacks_bishopfox.attack.attack_classes import VolatileAttackState
 from llm_attacks_bishopfox.attack.attack_classes import get_missing_pad_token_names
-#from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_from_json
-#from llm_attacks_bishopfox.dumpster_fires.conversation_templates import fschat_conversation_template_to_json
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
-#from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_nonascii_token_list
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
 from llm_attacks_bishopfox.logging import BrokenHillLogManager
@@ -218,10 +215,19 @@ def check_pytorch_devices(attack_params):
 
 
 def main(attack_params, log_manager):
+    user_aborted = False
+    abnormal_termination = False
+
     attack_state = VolatileAttackState()
     attack_state.log_manager = log_manager
     if attack_params.load_state_from_file:
-        state_file_dict = load_json_from_file(attack_params.load_state_from_file)
+        state_file_dict = None
+        try:
+            state_file_dict = load_json_from_file(attack_params.load_state_from_file)
+        except Exception as e:
+            logger.critical(f"Could not load state JSON data from '{attack_params.load_state_from_file}': {e}\n{traceback.format_exc()}")
+            sys.exit(1)
+
         # Loading the AttackParams directly from the saved state won't work, because then the user wouldn't be able to override them with other explicit command-line options.
         # attack_params is already a merged version of whatever combination of sources was specified on the command line.
         #merged_attack_params = attack_params.copy()
@@ -283,9 +289,6 @@ def main(attack_params, log_manager):
     if len(non_cuda_devices) > 0:
         logger.warning(f"Using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
 
-    user_aborted = False
-    abnormal_termination = False
-
     ietf_tag_names = None
     ietf_tag_data = None
     try:        
@@ -316,7 +319,10 @@ def main(attack_params, log_manager):
         original_model_size = 0
 
         if attack_state.persistable.attack_params.display_model_size:
-            logger.debug(f"Determining model size.")
+            # Only perform this work if the results will actually be logged, to avoid unnecessary performance impact
+            # Assume the same comment for all instances of this pattern
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Determining model size.")
             original_model_size = get_model_size(attack_state.model)
             logger.info(f"Model size: {original_model_size}")
 
@@ -354,7 +360,8 @@ def main(attack_params, log_manager):
             attack_state.persistable.current_adversarial_content = attack_state.persistable.initial_adversarial_content.copy()
 
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "before creating adversarial content manager")
-        logger.debug(f"creating adversarial content manager.")        
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"creating adversarial content manager.")        
         attack_state.adversarial_content_manager = AdversarialContentManager(attack_state = attack_state, 
             conv_template = attack_state.conversation_template, 
             #adversarial_content = attack_state.persistable.initial_adversarial_content.copy(),
@@ -429,25 +436,29 @@ def main(attack_params, log_manager):
                                        
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_id_data")
-                    logger.debug(f"calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
                     input_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_id_data")
                     
                     # Only perform this work if the results will actually be logged
+                    decoded_loss_slice = None
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        decoded_input_tokens = get_decoded_tokens(attack_state.tokenizer, input_id_data.input_token_ids)
-                        decoded_full_prompt_token_ids = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids)
-                        decoded_control_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
-                        decoded_target_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
-                        decoded_loss_slice = get_decoded_tokens(attack_state.tokenizer, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
+                        decoded_input_tokens = get_decoded_tokens(attack_state, input_id_data.input_token_ids)
+                        decoded_full_prompt_token_ids = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids)
+                        decoded_control_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
+                        decoded_target_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
+                        decoded_loss_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
                         logger.debug(f"decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
                     decoded_loss_slice_string = get_escaped_string(attack_state.tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_ids")
-                    logger.debug(f"Converting input IDs to device")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"Converting input IDs to device")
                     input_ids = input_id_data.get_input_ids_as_tensor().to(attack_state.model_device)
-                    logger.debug(f"input_ids after conversion = '{input_ids}'")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"input_ids after conversion = '{input_ids}'")
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_ids")
                     
                     input_id_data_gcg_ops = input_id_data
@@ -477,16 +488,16 @@ def main(attack_params, log_manager):
                     else:
                         # Step 2. Compute Coordinate Gradient
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating coordinate gradient")
-                        logger.debug(f"Computing coordinate gradient")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"Computing coordinate gradient")
                         try:
                             coordinate_gradient = token_gradients(attack_state,
                                 input_ids_gcg_ops,
                                 input_id_data_gcg_ops)
                         except GradientCreationException as e:
-                            logger.critical(f"Attempting to generate a coordinate gradient failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.\n{traceback.format_exc()}")
-                            #TKTK: replace this with raising an exception so any cleanup can happen
-                            sys.exit(1)
-                        logger.debug(f"coordinate_gradient.shape[0] = {coordinate_gradient.shape[0]}")
+                            raise GradientCreationException(f"Attempting to generate a coordinate gradient failed: {e}. Please contact a developer with steps to reproduce this issue if it has not already been reported.\n{traceback.format_exc()}")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"coordinate_gradient.shape[0] = {coordinate_gradient.shape[0]}")
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating coordinate gradient")
 
                         # if isinstance(random_generator_gradient, type(None)):
@@ -519,8 +530,8 @@ def main(attack_params, log_manager):
 
                                 while not got_candidate_list:                                
                                     
-                                    # Step 3.2 Randomly sample a batch of replacements.
-                                    logger.debug(f"Randomly sampling a batch of replacements")
+                                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                        logger.debug(f"Generating new adversarial content candidates")
                                     new_adversarial_candidate_list = None
                                     
                                     try:
@@ -528,23 +539,20 @@ def main(attack_params, log_manager):
                                                        coordinate_gradient,
                                                        not_allowed_tokens = attack_state.get_token_denylist_as_cpu_tensor())
                                     except GradientSamplingException as e:
-                                        logger.critical(f"Attempting to generate a new set of candidate adversarial data failed: '{e}'. Please contact a developer with steps to reproduce this issue if it has not already been reported.\n{traceback.format_exc()}")
-                                        #TKTK: replace this with raising an exception so any cleanup can happen
-                                        sys.exit(1)
+                                        raise GradientSamplingException(f"Attempting to generate a new set of candidate adversarial data failed: {e}. Please contact a developer with steps to reproduce this issue if it has not already been reported.\n{traceback.format_exc()}")
                                     except RuntimeError as e:
-                                        logger.critical(f"Attempting to generate a new set of candidate adversarial data failed with a low-level error: '{e}'. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.\n{traceback.format_exc()}")
-                                        #TKTK: replace this with raising an exception so any cleanup can happen
-                                        sys.exit(1)
+                                        raise GradientSamplingException(f"Attempting to generate a new set of candidate adversarial data failed with a low-level error: {e}. This is typically caused by excessive or conflicting candidate-filtering options. For example, the operator may have specified a regular expression filter that rejects long strings, but also specified a long initial adversarial value. This error is unrecoverable. If you believe the error was not due to excessive/conflicting filtering options, please submit an issue.\n{traceback.format_exc()}")
      
                                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before getting filtered candidates")
-                                    logger.debug(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
+                                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                        logger.debug(f"new_adversarial_candidate_list: {new_adversarial_candidate_list.adversarial_content}")
                                     
                                     # Note: I'm leaving this explanation here for historical reference
                                     # Step 3.3 This step ensures all adversarial candidates have the same number of tokens. 
-                                    # This step is necessary because tokenizers are not invertible
-                                    # so Encode(Decode(tokens)) may produce a different tokenization.
-                                    # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
-                                    logger.debug(f"Getting filtered candidates")
+                                    # This step is necessary because tokenizers are not invertible so Encode(Decode(tokens)) may produce a different tokenization.
+                                    # We ensure the number of token remains [constant -Ben] to prevent the memory keeps growing and run into OOM.
+                                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                        logger.debug(f"Getting filtered adversarial content candidates")
                                     new_adversarial_candidate_list_filtered = get_filtered_cands(attack_state, new_adversarial_candidate_list, filter_cand = True)
                                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting filtered candidates")
                                     if len(new_adversarial_candidate_list_filtered.adversarial_content) > 0:
@@ -571,7 +579,8 @@ def main(attack_params, log_manager):
                                                 something_has_changed = True
                                                 logger.info(f"{standard_explanation_intro} Because the option to add an additional token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                         else:
-                                            logger.debug(f"the option to add an additional token is disabled.")
+                                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                logger.debug(f"the option to add an additional token is disabled.")
                                         
                                         if not something_has_changed:
                                             if attack_state.persistable.attack_params.delete_token_when_no_candidates_returned:
@@ -596,7 +605,8 @@ def main(attack_params, log_manager):
                                                     something_has_changed = True
                                                     logger.info(f"{standard_explanation_intro} Because the option to delete a random token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                             else:
-                                                logger.debug(f"the option to delete a random token is disabled.")
+                                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                    logger.debug(f"the option to delete a random token is disabled.")
                                         
                                         if not something_has_changed:
                                             new_new_adversarial_value_candidate_count = attack_state.persistable.attack_params.new_adversarial_value_candidate_count + attack_state.persistable.original_new_adversarial_value_candidate_count
@@ -607,17 +617,21 @@ def main(attack_params, log_manager):
                                                     if new_new_adversarial_value_candidate_count <= attack_state.persistable.attack_params.new_adversarial_value_candidate_count:
                                                         increase_new_adversarial_value_candidate_count = False
                                                     else:
-                                                        logger.debug(f"new_new_adversarial_value_candidate_count > attack_state.persistable.attack_params.new_adversarial_value_candidate_count.")
+                                                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                            logger.debug(f"new_new_adversarial_value_candidate_count > attack_state.persistable.attack_params.new_adversarial_value_candidate_count.")
                                                 else:
-                                                    logger.debug(f"new_new_adversarial_value_candidate_count <= attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count.")
+                                                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                        logger.debug(f"new_new_adversarial_value_candidate_count <= attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count.")
                                             else:
-                                                logger.debug(f"attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count is None.")
+                                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                    logger.debug(f"attack_state.persistable.attack_params.max_new_adversarial_value_candidate_count is None.")
                                             if increase_new_adversarial_value_candidate_count:
                                                 logger.warning(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --batch-size-new-adversarial-tokens value is being increased from {attack_state.persistable.attack_params.new_adversarial_value_candidate_count} to {new_new_adversarial_value_candidate_count} to increase the number of candidate values. {standard_explanation_outro}")
                                                 attack_state.persistable.attack_params.new_adversarial_value_candidate_count = new_new_adversarial_value_candidate_count
                                                 something_has_changed = True
                                             else:
-                                                logger.debug(f"not increasing the --batch-size-new-adversarial-tokens value.")
+                                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                    logger.debug(f"not increasing the --batch-size-new-adversarial-tokens value.")
                                         
                                         if not something_has_changed:
                                             new_topk = attack_state.persistable.attack_params.topk + attack_state.persistable.original_topk
@@ -628,28 +642,32 @@ def main(attack_params, log_manager):
                                                     if new_topk <= attack_state.persistable.attack_params.topk:
                                                         increase_topk = False
                                                     else:
-                                                        logger.debug(f"new_topk > attack_state.persistable.attack_params.topk.")
+                                                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                            logger.debug(f"new_topk > attack_state.persistable.attack_params.topk.")
                                                 else:
-                                                    logger.debug(f"new_topk <= attack_state.persistable.attack_params.max_topk.")
+                                                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                        logger.debug(f"new_topk <= attack_state.persistable.attack_params.max_topk.")
                                             else:
-                                                logger.debug(f"attack_state.persistable.attack_params.max_topk is None.")
+                                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                    logger.debug(f"attack_state.persistable.attack_params.max_topk is None.")
                                             if increase_topk:
                                                 logger.warning(f"{standard_explanation_intro}  This may be due to excessive post-generation filtering options. The --topk value is being increased from {attack_state.persistable.attack_params.topk} to {new_topk} to increase the number of candidate values. {standard_explanation_outro}")
                                                 attack_state.persistable.attack_params.topk = new_topk
                                                 something_has_changed = True
                                             else:
-                                                logger.debug(f"not increasing the --topk value.")
+                                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                    logger.debug(f"not increasing the --topk value.")
                                         
                                         if not something_has_changed:
-                                            logger.critical(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_state.persistable.attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, Broken Hill will now exit. {standard_explanation_outro}\n{traceback.format_exc()}")
-                                            # TKTK: replace this with raise
-                                            sys.exit(1)
+                                            raise GradientSamplingException(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_state.persistable.attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, Broken Hill will now exit. {standard_explanation_outro}\n{traceback.format_exc()}")
                                                 
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting finalized filtered candidates")
-                                logger.debug(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"new_adversarial_candidate_list_filtered: '{new_adversarial_candidate_list_filtered.to_dict()}'")
                                 
                                 # Step 3.4 Compute loss on these candidates and take the argmin.
-                                logger.debug(f"Getting logits")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"Getting logits")
                                 logits, ids = get_logits(attack_state,
                                     input_ids = input_ids_gcg_ops,
                                     adversarial_content = attack_state.persistable.current_adversarial_content, 
@@ -657,7 +675,8 @@ def main(attack_params, log_manager):
                                     return_ids = True)
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting logits")
 
-                                logger.debug(f"Calculating target loss")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"Calculating target loss")
                                 losses = target_loss(attack_state, logits, ids, input_id_data_gcg_ops)
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting loss values")
                                 # get rid of logits and ids immediately to save device memory, as it's no longer needed after the previous operation
@@ -666,18 +685,21 @@ def main(attack_params, log_manager):
                                 del ids
                                 gc.collect()
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting logits and ids and running gc.collect")
-                                logger.debug(f"losses = {losses}")
-
-                                logger.debug(f"Getting losses argmin")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"losses = {losses}")
+                                    logger.debug(f"Getting losses argmin")
                                 best_new_adversarial_content_id = losses.argmin()
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting best new adversarial content ID")
-                                logger.debug(f"best_new_adversarial_content_id = {best_new_adversarial_content_id}")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"best_new_adversarial_content_id = {best_new_adversarial_content_id}")
 
-                                logger.debug(f"Setting best new adversarial content")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"Setting best new adversarial content")
                                 best_new_adversarial_content = new_adversarial_candidate_list_filtered.adversarial_content[best_new_adversarial_content_id].copy()
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting best new adversarial content")
 
-                                logger.debug(f"Getting current loss")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"Getting current loss")
                                 current_loss = losses[best_new_adversarial_content_id]
                                 del losses
                                 gc.collect()
@@ -710,9 +732,7 @@ def main(attack_params, log_manager):
                                             loss_attempt_result_message = f"{num_iterations_without_acceptable_loss} unsuccessful attempt(s) has reached the limit of {attack_state.persistable.attack_params.loss_threshold_max_attempts} attempts."
                                             if attack_state.persistable.attack_params.exit_on_loss_threshold_failure:
                                                 loss_attempt_result_message += " Broken Hill has been configured to exit when this condition occurs."
-                                                logger.critical(loss_attempt_result_message)
-                                                # TKTK: replace this with raise
-                                                sys.exit(1)
+                                                raise LossThresholdException(loss_attempt_result_message)
                                             else:
                                                 best_new_adversarial_content = best_failed_attempts.get_content_with_lowest_loss()
                                                 candidate_list_meets_loss_threshold = True
@@ -728,15 +748,15 @@ def main(attack_params, log_manager):
                             # END: wrap in loss threshold check 
 
                             # Update the running attack_state.persistable.current_adversarial_content with the best candidate
-                            #logger.debug(f"Updating adversarial content - was '{attack_state.persistable.current_adversarial_content.get_short_description()}', now '{best_new_adversarial_content.get_short_description()}'")
                             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before updating adversarial value")
                             
                             logger.info(f"Updating adversarial value to the best value out of the new permutation list and testing it.\nWas: {attack_state.persistable.current_adversarial_content.get_short_description()} ({len(attack_state.persistable.current_adversarial_content.token_ids)} tokens)\nNow: {best_new_adversarial_content.get_short_description()} ({len(best_new_adversarial_content.token_ids)} tokens)")
                             attack_state.persistable.current_adversarial_content = best_new_adversarial_content
                             logger.info(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {attack_state.persistable.current_adversarial_content.original_loss}")
-                            #logger.debug(f"decoded_loss_slice = '{decoded_loss_slice}'")
-                            #logger.debug(f"input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
-                            #logger.debug(f"input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
+                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                logger.debug(f"decoded_loss_slice = '{decoded_loss_slice}'")
+                                logger.debug(f"input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
+                                logger.debug(f"input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
                         
                             #attack_results_current_iteration.loss = current_loss_as_float
                             attack_results_current_iteration.loss = attack_state.persistable.current_adversarial_content.original_loss
@@ -765,7 +785,7 @@ def main(attack_params, log_manager):
                         do_sample = False
                         if randomized_test_number == 0:
                             attack_data_current_iteration.is_canonical_result = True
-                            attack_results_current_iteration.set_values(attack_state.tokenizer, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
+                            attack_results_current_iteration.set_values(attack_state, best_new_adversarial_content_input_token_id_data.full_prompt_token_ids, best_new_adversarial_content_input_token_id_data.get_user_input_token_ids())
                         else:
                             if randomized_test_number == attack_state.persistable.attack_params.random_seed_comparisons or attack_state.persistable.attack_params.model_temperature_range_begin == attack_state.persistable.attack_params.model_temperature_range_end:
                                 current_temperature = attack_state.persistable.attack_params.model_temperature_range_end
@@ -788,12 +808,11 @@ def main(attack_params, log_manager):
                                     prng_seed_index += 1
                                     len_random_seed_values = len(attack_state.random_seed_values)
                                     if prng_seed_index > len_random_seed_values:
-                                        logger.critical(f"Exceeded the number of random seeds available({len_random_seed_values})")
-                                        #TKTK: replace this with raising an exception so any cleanup can happen
-                                        sys.exit(1)
+                                        raise MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException(f"Exceeded the number of random seeds available({len_random_seed_values})")
                                 else:
-                                    got_random_seed = True                               
-                            logger.debug(f"Temporarily setting all random seeds to {random_seed} to compare results")
+                                    got_random_seed = True
+                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                logger.debug(f"Temporarily setting all random seeds to {random_seed} to compare results")
                             numpy.random.seed(random_seed)
                             torch.manual_seed(random_seed)
                             torch.cuda.manual_seed_all(random_seed)
@@ -803,7 +822,8 @@ def main(attack_params, log_manager):
                         attack_data_current_iteration.temperature = current_temperature
                     
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before checking for jailbreak success")
-                        logger.debug(f"Checking for success")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"Checking for successful jailbreak")
                         is_success, jailbreak_check_data, jailbreak_check_generation_results = attack_state.check_for_attack_success(best_new_adversarial_content_input_token_id_data,
                                                 current_temperature,
                                                 do_sample = do_sample)            
@@ -812,7 +832,8 @@ def main(attack_params, log_manager):
                             attack_data_current_iteration.jailbreak_detected = True
                             attack_results_current_iteration.jailbreak_detection_count += 1
 
-                        logger.debug(f"Passed:{is_success}\nCurrent best new adversarial content: '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"Passed:{is_success}\nCurrent best new adversarial content: '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
                         
                         full_output_dataset_name = "full_output"
                         
@@ -827,12 +848,13 @@ def main(attack_params, log_manager):
                             full_output_data = AttackResultInfoData()
                             # Note: set random seeds for randomized variations where do_sample is True so that full output begins with identical output to shorter version
                             if do_sample:
-                                logger.debug(f"[main loop] Temporarily setting all random seeds to {random_seed} to generate full output")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"Temporarily setting all random seeds to {random_seed} to generate full output")
                                 numpy.random.seed(random_seed)
                                 torch.manual_seed(random_seed)
                                 torch.cuda.manual_seed_all(random_seed)
                             generation_results = attack_state.generate(best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
-                            full_output_data.set_values(attack_state.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+                            full_output_data.set_values(attack_state, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
                             
                             attack_data_current_iteration.result_data_sets[full_output_dataset_name] = full_output_data
                         
@@ -882,7 +904,8 @@ def main(attack_params, log_manager):
                                     rollback_message += f"The loss value for the current iteration ({attack_results_current_iteration.loss}) is greater than the allowed delta of {attack_state.persistable.attack_params.rollback_on_loss_threshold} from the best value achieved during this run ({attack_state.persistable.best_loss_value}). "
                                 rollback_triggered = True
                             else:
-                                logger.debug(f"rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {attack_state.persistable.best_loss_value} and threshold {attack_state.persistable.attack_params.rollback_on_loss_threshold}.")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {attack_state.persistable.best_loss_value} and threshold {attack_state.persistable.attack_params.rollback_on_loss_threshold}.")
                         if attack_state.persistable.attack_params.rollback_on_jailbreak_count_decrease:
                             if (attack_results_current_iteration.jailbreak_detection_count + attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold) < attack_state.persistable.best_jailbreak_count:
                                 if attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold == 0:
@@ -891,7 +914,8 @@ def main(attack_params, log_manager):
                                     rollback_message += f"The jailbreak detection count for the current iteration ({attack_results_current_iteration.jailbreak_detection_count}) is less than the allowed delta of {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold} from the best count achieved during this run ({attack_state.persistable.best_jailbreak_count}). "
                                 rollback_triggered = True
                             else:
-                                logger.debug(f"rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {attack_state.persistable.best_jailbreak_count} and threshold {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold}.")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {attack_state.persistable.best_jailbreak_count} and threshold {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold}.")
                         # TKTK: if use of a threshold has allowed a score to drop below the last best value for x iterations, roll all the way back to the adversarial value that resulted in the current best value
                         # maybe use a tree model, with each branch from a node allowed to decrease 50% the amount of the previous branch, and too many failures to reach the value of the previous branch triggers a rollback to that branch
                         # That would allow some random exploration of various branches, at least allowing for the possibility of discovering a strong value within them, but never getting stuck for too long
@@ -939,7 +963,8 @@ def main(attack_params, log_manager):
                             attack_state.persistable.best_jailbreak_count = attack_results_current_iteration.jailbreak_detection_count
                         
                     # (Optional) Clean up the cache.
-                    logger.debug(f"Cleaning up the cache")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"Cleaning up the cache")
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before deleting coordinate gradient")
                     if coordinate_gradient is not None:
                         del coordinate_gradient
@@ -1027,6 +1052,9 @@ if __name__=='__main__':
     print(f"{script_name} version {script_version}, {script_date}\n{short_description}")
     
     attack_params = AttackParams()
+    attack_params.original_command_line_array = copy.deepcopy(sys.argv)
+    attack_params.original_command_line = command_array_to_string(attack_params.original_command_line_array)
+
     # any argument processing that needs to affect the attack_params object goes here, such as loading parameters from a file.
     # first, check to see if state is being loaded from a file, because that should take precedence over anything else
     file_contents = get_file_content_from_sys_argv(sys.argv, "--load-state")
@@ -1057,18 +1085,7 @@ if __name__=='__main__':
         except Exception as e:
             print(f"Couldn't load options from a saved options file: {e}")
             sys.exit(1)
-    
-    attack_params.original_command_line_array = copy.deepcopy(sys.argv)
-    attack_params.original_command_line = command_array_to_string(attack_params.original_command_line_array)
-    
-    cuda_available = torch.cuda.is_available()
-    mps_available = torch.backends.mps.is_available()
-    
-    if not cuda_available:
-        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
-    if mps_available:
-        logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
-    
+        
     parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     # TKTK: --mode full (currently the only behaviour) 
@@ -1544,7 +1561,7 @@ if __name__=='__main__':
 
     args = parser.parse_args()
     
-    # any arguments related to logging need to be handled here
+    # BEGIN: any arguments related to logging need to be handled here
     if args.log:
         attack_params.log_file_path = os.path.abspath(args.log)
     # if attack_params.log_file_path is not None:
@@ -1566,6 +1583,16 @@ if __name__=='__main__':
     logger = logging.getLogger(__name__)
     logger.setLevel(log_manager.get_lowest_log_level())
     logger.info(f"Log handlers are attached")    
+    # END: any arguments related to logging need to be handled here
+    
+    cuda_available = torch.cuda.is_available()
+    mps_available = torch.backends.mps.is_available()
+    
+    if not cuda_available:
+        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
+    if mps_available:
+        logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
+
 
     if args.list_language_tags:
         attack_params.operating_mode = BrokenHillMode.LIST_IETF_TAGS
@@ -1791,7 +1818,8 @@ if __name__=='__main__':
         logger.warning(f"--loss-slice-is-target-slice was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
 
     attack_params.loss_slice_index_shift = args.loss_slice_index_shift
-    logger.debug(f"attack_params.loss_slice_index_shift = {attack_params.loss_slice_index_shift}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"attack_params.loss_slice_index_shift = {attack_params.loss_slice_index_shift}")
 
     # if not isinstance(args.mellowmax, type(None)) and args.mellowmax == True:
         # attack_params.loss_algorithm = LossAlgorithm.MELLOWMAX  

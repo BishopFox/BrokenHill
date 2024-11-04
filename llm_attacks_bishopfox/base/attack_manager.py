@@ -74,7 +74,8 @@ def is_phi_1_to_3_model(model):
 
 def get_embedding_layer(attack_state):
     use_default_logic = False
-    logger.debug(f"model is an instance of the type '{type(attack_state.model).__name__}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"This model is an instance of the type '{type(attack_state.model).__name__}'")
     if isinstance(attack_state.model, BartForCausalLM):
         return attack_state.model.model.decoder.get_input_embeddings()
     if isinstance(attack_state.model, BigBirdPegasusForCausalLM) or isinstance(attack_state.model, PegasusForCausalLM):
@@ -155,20 +156,23 @@ def get_embedding_matrix(attack_state):
     embedding_layer = get_embedding_layer(attack_state)
     result = embedding_layer.weight
  
-    logger.debug(f"result = {result}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"result = {result}")
     # Some models return a function that returns the weight values instead of the 
     # weight values themselves. I assume this is because of missing () in the model
     # code, but regardless, this works around that problem
     if callable(result):
         result = result()
-        logger.debug(f"result after calling original result = {result}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result after calling original result = {result}")
         if not isinstance(result, torch.nn.Parameter):
             try:
                 result = torch.nn.Parameter(result)
             except Exception as e:
                 result = torch.nn.Parameter(result, requires_grad = False)
                 logger.warning(f"returning the embedding matrix with requires_grad = False")
-            logger.debug(f"result after conversion to Parameter = {result}")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"result after conversion to Parameter = {result}")
     return result
 
 def get_embeddings(attack_state, input_ids):
@@ -200,7 +204,7 @@ def get_embeddings(attack_state, input_ids):
 # Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
 # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
 # TKTK: iterate over all other parameters with similar names and warn the user if any of them may cause the script to crash unless the value is reduced.
-def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model, tokenizer, desired_value):
+def get_effective_max_token_value_for_model_and_tokenizer(attack_state, parameter_name, desired_value):
     effective_value = desired_value
 
     limited_by_tokenizer_model_max_length = False
@@ -219,60 +223,69 @@ def get_effective_max_token_value_for_model_and_tokenizer(parameter_name, model,
 
     limiting_factor_count = 0
     
-    if hasattr(tokenizer, "model_max_length"):        
-        if not isinstance(tokenizer.model_max_length, type(None)):
-            tokenizer_model_max_length = tokenizer.model_max_length
-            logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
+    if hasattr(attack_state.tokenizer, "model_max_length"):        
+        if not isinstance(attack_state.tokenizer.model_max_length, type(None)):
+            tokenizer_model_max_length = attack_state.tokenizer.model_max_length
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
             if tokenizer_model_max_length < desired_value:
                 limited_by_tokenizer_model_max_length = True
                 limiting_factor_count += 1
                 
-    if hasattr(tokenizer, "max_position_embeddings"):        
-        if not isinstance(tokenizer.max_position_embeddings, type(None)):
-            tokenizer_max_position_embeddings = tokenizer.max_position_embeddings
-            logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+    if hasattr(attack_state.tokenizer, "max_position_embeddings"):        
+        if not isinstance(attack_state.tokenizer.max_position_embeddings, type(None)):
+            tokenizer_max_position_embeddings = attack_state.tokenizer.max_position_embeddings
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
             if tokenizer_max_position_embeddings < desired_value:
                 limited_by_tokenizer_max_position_embeddings = True
                 limiting_factor_count += 1
 
-    if hasattr(tokenizer, "config"):
-        if tokenizer.config is not None:
-            logger.debug(f"tokenizer.config = {tokenizer.config}")
-            if hasattr(tokenizer.config, "model_max_length"):            
-                if not isinstance(tokenizer.config.model_max_length, type(None)):
-                    tokenizer_config_model_max_length = tokenizer.config.model_max_length
-                    logger.debug(f"tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+    if hasattr(attack_state.tokenizer, "config"):
+        if attack_state.tokenizer.config is not None:
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"attack_state.tokenizer.config = {attack_state.tokenizer.config}")
+            if hasattr(attack_state.tokenizer.config, "model_max_length"):            
+                if not isinstance(attack_state.tokenizer.config.model_max_length, type(None)):
+                    tokenizer_config_model_max_length = attack_state.tokenizer.config.model_max_length
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
                     if tokenizer_config_model_max_length < desired_value:            
                         limited_by_tokenizer_config_model_max_length = True
                         limiting_factor_count += 1
-            if hasattr(tokenizer.config, "max_position_embeddings"):            
-                if not isinstance(tokenizer.config.max_position_embeddings, type(None)):
-                    tokenizer_config_max_position_embeddings = tokenizer.config.max_position_embeddings
-                    logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+            if hasattr(attack_state.tokenizer.config, "max_position_embeddings"):            
+                if not isinstance(attack_state.tokenizer.config.max_position_embeddings, type(None)):
+                    tokenizer_config_max_position_embeddings = attack_state.tokenizer.config.max_position_embeddings
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
                     if tokenizer_config_max_position_embeddings < desired_value:            
                         limited_by_tokenizer_config_max_position_embeddings = True
                         limiting_factor_count += 1
         
-    if hasattr(model, "config"):
-        if model.config is not None:
-            logger.debug(f"model.config = {model.config}")
-            if hasattr(model.config, "max_position_embeddings"):            
-                if not isinstance(model.config.max_position_embeddings, type(None)):
-                    model_config_max_position_embeddings = model.config.max_position_embeddings
-                    logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
+    if hasattr(attack_state.model, "config"):
+        if attack_state.model.config is not None:
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"model.config = {attack_state.model.config}")
+            if hasattr(attack_state.model.config, "max_position_embeddings"):            
+                if not isinstance(attack_state.model.config.max_position_embeddings, type(None)):
+                    model_config_max_position_embeddings = attack_state.model.config.max_position_embeddings
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
                     if model_config_max_position_embeddings < desired_value:            
                         limited_by_model_config_max_position_embeddings = True
                         limiting_factor_count += 1
     
-    if hasattr(model, "decoder"):
-        if model.decoder is not None:
-            if hasattr(model.decoder, "config"):
-                if model.decoder.config is not None:
-                    logger.debug(f"model.decoder.config = {model.decoder.config}")
-                    if hasattr(model.decoder.config, "max_position_embeddings"):            
-                        if not isinstance(model.decoder.config.max_position_embeddings, type(None)):
-                            model_decoder_config_max_position_embeddings = model.decoder.config.max_position_embeddings
-                            logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+    if hasattr(attack_state.model, "decoder"):
+        if attack_state.model.decoder is not None:
+            if hasattr(attack_state.model.decoder, "config"):
+                if attack_state.model.decoder.config is not None:
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"attack_state.model.decoder.config = {attack_state.model.decoder.config}")
+                    if hasattr(attack_state.model.decoder.config, "max_position_embeddings"):            
+                        if not isinstance(attack_state.model.decoder.config.max_position_embeddings, type(None)):
+                            model_decoder_config_max_position_embeddings = attack_state.model.decoder.config.max_position_embeddings
+                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
                             if model_decoder_config_max_position_embeddings < desired_value:            
                                 limited_by_model_decoder_config_max_position_embeddings = True
                                 limiting_factor_count += 1

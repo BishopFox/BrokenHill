@@ -343,7 +343,11 @@ class LargeLanguageModelInfoList(JSONSerializableObject):
     def from_bundled_json_file():
         base_path = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(base_path, BUNDLED_LLM_LIST_FILE_NAME)
-        file_content = load_json_from_file(file_path, failure_is_critical = True)
+        file_content = None
+        try:
+            file_content = load_json_from_file(file_path, failure_is_critical = True)
+        except Exception as e:
+            raise LargeLanguageModelException(f"Could not load JSON data from the file '{file_path}': {e}\n{traceback.format_exc()")
         if file_content is None:
             raise LargeLanguageModelException(f"Found no content in the file '{file_path}'")
         return LargeLanguageModelInfoList.from_dict(file_content)

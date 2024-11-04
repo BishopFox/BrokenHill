@@ -54,10 +54,11 @@ This is the most significant update to Broken Hill since its public release in S
     * [huge-roadrunner-pythia-1b-deduped-oasst](https://huggingface.co/csimokat/huge-roadrunner-pythia-1b-deduped-oasst)
   * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF) (derived from Vicuna and therefore from Llama as well)  
 * Added the following custom chat templates:
-  * `daredevil`
   * `felladrin-llama-chat`
   * `gemma`
   * `gptneox`
+  * `mistral`
+  * `mistral-nemo`
   * `solar`
   * `vikhr`
 * System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.

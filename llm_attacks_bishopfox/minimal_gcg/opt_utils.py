@@ -16,8 +16,6 @@ from llm_attacks_bishopfox.base.attack_manager import get_embeddings
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token 
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens 
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +52,42 @@ def get_first_value_from_tensor(t):
             tensor_item = tensor_item[0]
         return get_first_value_from_tensor(tensor_item)
     return t
+
+def pad_token_id_list(attack_state, token_id_list, length_to_pad_to):
+    len_token_id_list = len(token_id_list)
+    num_tokens_to_add = length_to_pad_to - len_token_id_list
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"token_id_list = {token_id_list}, length_to_pad_to = {length_to_pad_to}, num_tokens_to_add = {num_tokens_to_add}")
+    if num_tokens_to_add == 0:
+        return token_id_list
+    if num_tokens_to_add < 0:
+        raise PaddingException(f"Received a request to pad a list of length {len_token_id_list} to length {length_to_pad_to}, which is fewer tokens than the existing length.")
     
-def get_padded_target_token_ids(tokenizer, loss_slice, target_ids):
-    logger.debug(f"target_ids = {target_ids}, loss_slice = {loss_slice}")
+    try:
+        if attack_state.persistable.attack_params.missing_pad_token_padding_side == 'right':
+            # while len(token_id_list) < length_to_pad_to:
+                # token_id_list.append(attack_state.tokenizer.pad_token_id)
+            for i in range(0, num_tokens_to_add):
+                token_id_list.append(attack_state.tokenizer.pad_token_id)
+        else:
+            # while len(token_id_list) < length_to_pad_to:
+                # token_id_list.insert(0, attack_state.tokenizer.pad_token_id)
+            result = []
+            for i in range(0, num_tokens_to_add):
+                result.append(attack_state.tokenizer.pad_token_id)
+            for i in range(0, len_token_id_list):
+                result.append(token_id_list[i])
+            token_id_list = result
+            
+    except Exception as e:
+        raise PaddingException(f"Exception padding token_id_list {token_id_list} to length {length_to_pad_to}: {e}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"token_id_list (after padding) = {token_id_list}")
+    return token_id_list
+
+def get_padded_target_token_ids(attack_state, loss_slice, target_ids):
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"target_ids = {target_ids}, loss_slice = {loss_slice}")
     result = target_ids
     return_tensor = None
     input_is_list_of_lists = False
@@ -82,70 +113,86 @@ def get_padded_target_token_ids(tokenizer, loss_slice, target_ids):
 
     # Calls to this function with output from e.g. get_logits are passing a multidimensional array of values that need to be padded
     if isinstance(target_ids_as_list[0], list):
-        logger.debug(f"target_ids_as_list is a multidimensional array")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"target_ids_as_list is a multidimensional array.")
         input_is_list_of_lists = True
         len_comparison = len(target_ids_as_list[0])
+    else:
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"target_ids_as_list is a single list.")
 
-    logger.debug(f"target_ids_as_list = {target_ids_as_list}, len_loss_slice = {len_loss_slice}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"target_ids_as_list = {target_ids_as_list}, len_loss_slice = {len_loss_slice}")
     
     if len_loss_slice > len_comparison:
-        if isinstance(tokenizer.pad_token_id, type(None)):
+        if isinstance(attack_state.tokenizer.pad_token_id, type(None)):
             # This should never occur unless someone is calling this function directly, outside of Broken Hill
             raise NullPaddingTokenException("The current target slice must be padded to match the length of the loss slice, but the tokenizer's padding token ID is None.")
         
         if input_is_list_of_lists:
             for list_entry_num in range(0, len(target_ids_as_list)):
-                logger.debug(f"target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' before padding.")
-                while len_loss_slice > len(target_ids_as_list[list_entry_num]):
-                    try:
-                        target_ids_as_list[list_entry_num].append(tokenizer.pad_token_id)
-                    except Exception as e:
-                        raise PaddingException(f"[get_padded_target_token_ids] exception calling target_ids_as_list[list_entry_num].append(tokenizer.pad_token_id) with target_ids_as_list = '{target_ids_as_list}', list_entry_num = {list_entry_num}, tokenizer.pad_token_id = '{tokenizer.pad_token_id}'.")
-                logger.debug(f"target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' after padding.")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' before padding.")
+                # while len_loss_slice > len(target_ids_as_list[list_entry_num]):
+                    # try:
+                        # target_ids_as_list[list_entry_num].append(attack_state.tokenizer.pad_token_id)
+                    # except Exception as e:
+                        # raise PaddingException(f"Exception calling target_ids_as_list[list_entry_num].append(tokenizer.pad_token_id) with target_ids_as_list = '{target_ids_as_list}', list_entry_num = {list_entry_num}, attack_state.tokenizer.pad_token_id = '{attack_state.tokenizer.pad_token_id}'.")
+                target_ids_as_list[list_entry_num] = pad_token_id_list(attack_state, target_ids_as_list[list_entry_num], len_loss_slice)
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"target_ids_as_list[list_entry_num] = '{target_ids_as_list[list_entry_num]}' after padding.")
         else:
-            while len_loss_slice > len(target_ids_as_list):
-                target_ids_as_list.append(tokenizer.pad_token_id)
+            #while len_loss_slice > len(target_ids_as_list):
+            #    target_ids_as_list.append(attack_state.tokenizer.pad_token_id)
+            target_ids_as_list = pad_token_id_list(attack_state, target_ids_as_list, len_loss_slice)
         result = target_ids_as_list
     
     if return_tensor:
         if not isinstance(result, torch.Tensor):
             result = torch.tensor(result, device = target_ids.device)
     
-    logger.debug(f"original_target_ids_length = {original_target_ids_length}, len(result) = {len(result)}, len(target_ids_as_list) = {len(target_ids_as_list)}, len_loss_slice = {len_loss_slice}, result = '{result}', target_ids_as_list = '{target_ids_as_list}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"original_target_ids_length = {original_target_ids_length}, len(result) = {len(result)}, len(target_ids_as_list) = {len(target_ids_as_list)}, len_loss_slice = {len_loss_slice}, result = '{result}', target_ids_as_list = '{target_ids_as_list}'")
     
     return result
 
 # BEGIN: mellowmax loss function borrowed from nanoGCG
-def mellowmax(t: torch.Tensor, alpha = 1.0, dim = -1):
+def mellowmax(attack_state, t: torch.Tensor, alpha = 1.0, dim = -1):
     torch_logsumexp = None
     torch_tensor = None
     torch_log = None
     tensor_data = None
     result = None
-    logger.debug(f"t = '{t}', t.shape = '{t.shape}', t.dtype = {t.dtype}, alpha = {alpha}, dim = {dim}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"t = '{t}', t.shape = '{t.shape}', t.dtype = {t.dtype}, alpha = {alpha}, dim = {dim}")
     try:
         torch_logsumexp = torch.logsumexp(alpha * t, dim = dim)
-        logger.debug(f"torch_logsumexp = '{torch_logsumexp}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"torch_logsumexp = '{torch_logsumexp}'")
     except Exception as e:
         raise MellowmaxException(f"Error calling torch.logsumexp(alpha * t, dim = dim) with alpha = alpha, t = '{t}', dim = '{dim}': {e}")
     try:
         torch_tensor = torch.tensor(t.shape[-1], dtype = t.dtype, device = t.device)
-        logger.debug(f"torch_tensor = '{torch_tensor}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"torch_tensor = '{torch_tensor}'")
     except Exception as e:
         raise MellowmaxException(f"Error calling torch.tensor(t.shape[-1], dtype = t.dtype, device = t.device) with t = '{t}', t.shape = '{t.shape}', dtype = '{dtype}': {e}")
     try:
         torch_log = torch.log(torch_tensor)
-        logger.debug(f"torch_log = '{torch_log}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"torch_log = '{torch_log}'")
     except Exception as e:
         raise MellowmaxException(f"Error calling torch.log(torch_tensor) with torch_tensor = '{torch_tensor}': {e}")
     try:
         tensor_data = torch_logsumexp - torch_log
-        logger.debug(f"tensor_data = '{tensor_data}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"tensor_data = '{tensor_data}'")
     except Exception as e:
         raise MellowmaxException(f"Error calling torch_logsumexp - torch_log with torch_logsumexp = '{torch_logsumexp}', torch_log = '{torch_log}': {e}")
     try:
         result = 1.0 / alpha * (tensor_data)
-        logger.debug(f"result = '{result}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result = '{result}'")
     except Exception as e:
         raise MellowmaxException(f"Error calling 1.0 / alpha * (tensor_data) with alpha = alpha, tensor_data = '{tensor_data}': {e}")
     return result
@@ -175,28 +222,35 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     """
 
     #attack_state.persistable.performance_data.collect_torch_stats("token_gradients")
-    logger.debug(f"Getting embedding weight matrix")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Getting embedding weight matrix")
     embedding_matrix = get_embedding_matrix(attack_state)
-    logger.debug(f"embedding_matrix = {embedding_matrix}")
-    logger.debug(f"embedding_matrix.shape = {embedding_matrix.shape}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"embedding_matrix = {embedding_matrix}")
+        logger.debug(f"embedding_matrix.shape = {embedding_matrix.shape}")
+        logger.debug(f"embedding_matrix.dtype = {embedding_matrix.dtype}")
+
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - begin")
 
-    logger.debug(f"embedding_matrix.dtype={embedding_matrix.dtype}")
 
     input_token_ids_gradient_device = input_token_ids_model_device.to(attack_state.gradient_device)
 
     quantized_tensors = False
     if embedding_matrix is not None:
         if hasattr(embedding_matrix, "quantization_scheme"):
-            logger.debug(f"embedding_matrix has quantization_scheme property, assuming quantized tensors")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"embedding_matrix has quantization_scheme property, assuming quantized tensors")
             quantized_tensors = True
         if embedding_matrix.data is not None and len(embedding_matrix.data) > 0:
-            logger.debug(f"type(embedding_matrix.data) = {type(embedding_matrix.data)}")
-            logger.debug(f"embedding_matrix.data = {embedding_matrix.data} with attributes: {dir(embedding_matrix.data)} and variables: {vars(embedding_matrix.data)}")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"type(embedding_matrix.data) = {type(embedding_matrix.data)}")
+                logger.debug(f"embedding_matrix.data = {embedding_matrix.data} with attributes: {dir(embedding_matrix.data)} and variables: {vars(embedding_matrix.data)}")
             if hasattr(embedding_matrix.data, "qscheme"):
-                logger.debug(f"embedding_matrix.data.qscheme = {embedding_matrix.data.qscheme}")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"embedding_matrix.data.qscheme = {embedding_matrix.data.qscheme}")
             if embedding_matrix.data.is_quantized:
-                logger.debug(f"embedding_matrix.data.is_quantized is True, assuming quantized tensors")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"embedding_matrix.data.is_quantized is True, assuming quantized tensors")
                 quantized_tensors = True
         else:
             raise GradientCreationException(f"Can't create a gradient when embedding_matrix.data is null or empty.")
@@ -205,14 +259,15 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"input_id_data.slice_data.control = {input_id_data.slice_data.control}")
         logger.debug(f"input_token_ids_gradient_device = {input_token_ids_gradient_device}")
-        input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state.tokenizer, input_token_ids_gradient_device)
+        input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state, input_token_ids_gradient_device)
         logger.debug(f"input_token_ids_gradient_device_decoded = {input_token_ids_gradient_device_decoded}")
         logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
     
     if input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0] < 1:
         raise GradientCreationException(f"Can't create a gradient when the adversarial content ('control') slice of the input ID data has no content.")
 
-    logger.debug(f"Getting one_hot")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Getting one_hot")
     # memory management: one_hot is required until almost the end of this method
     one_hot = None
     scales_value = None
@@ -222,7 +277,8 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         pczp = embedding_matrix.data.q_per_channel_zero_points()
         scales_value = get_first_value_from_tensor(scales)
         pczp_value = int(get_first_value_from_tensor(pczp))
-        logger.debug(f"scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"scales = {scales}, scales_value = {scales_value}, type(scales_value) = {type(scales_value)}, pczp = {pczp}, pczp_value = {pczp_value}, type(pczp_value) = {type(pczp_value)}")
         one_hot = create_new_quantized_tensor(0, (input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0],embedding_matrix.shape[0]), attack_state.gradient_device, embedding_matrix.data.dtype, scales_value, pczp_value)
     else:
         try:
@@ -234,14 +290,16 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         except Exception as e:
             raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0], embedding_matrix.shape[0], device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_token_ids_gradient_device[input_id_data.slice_data.control] = '{input_token_ids_gradient_device[input_id_data.slice_data.control]}', input_token_ids_gradient_device[input_id_data.slice_data.control].shape = '{input_token_ids_gradient_device[input_id_data.slice_data.control].shape}', embedding_matrix = '{embedding_matrix}', embedding_matrix.shape = '{embedding_matrix.shape}', dtype = '{dtype}': {e}")        
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot created")
-    logger.debug(f"one_hot = {one_hot}")
-    logger.debug(f"scales_value = {scales_value}")
-    logger.debug(f"pczp_value = {pczp_value}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"one_hot = {one_hot}")
+        logger.debug(f"scales_value = {scales_value}")
+        logger.debug(f"pczp_value = {pczp_value}")
     
     if one_hot.shape[0] < 1:
         raise GradientCreationException(f"Got an empty list when trying to create the one_hot tensor.")
 
-    logger.debug(f"Getting one_hot scatter")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Getting one_hot scatter")
     one_hot_ones = None
     if quantized_tensors:
         one_hot_ones = create_new_quantized_tensor(1, (one_hot.shape[0],1), attack_state.gradient_device, embedding_matrix.data.dtype, scales_value, pczp_value)
@@ -251,7 +309,8 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         except Exception as e:
             raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}")
 
-    logger.debug(f"one_hot_ones = {one_hot_ones}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"one_hot_ones = {one_hot_ones}")
 
     one_hot_scatter_input = None
     try:
@@ -269,7 +328,8 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         raise GradientCreationException(f"Error calling one_hot.scatter_(1, one_hot_scatter_input, one_hot_ones) with one_hot_scatter_input = '{one_hot_scatter_input}', one_hot_ones = '{one_hot_ones}': {e}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot scattered")
     
-    logger.debug(f"one_hot_ones = {one_hot_ones}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"one_hot_ones = {one_hot_ones}")
     
     # one_hot_ones and one_hot_scatter_input are no longer needed
     del one_hot_ones
@@ -277,11 +337,13 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     gc.collect()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting one_hot_ones")
 
-    logger.debug(f"one_hot.requires_grad_()")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"one_hot.requires_grad_()")
     one_hot.requires_grad_()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot.requires_grad_() complete")
 
-    logger.debug(f"Getting input_embeds")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Getting input_embeds")
     input_embeds = (one_hot.to(attack_state.model_device) @ embedding_matrix).unsqueeze(0)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - input_embeds created")
 
@@ -290,10 +352,10 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     gc.collect()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting embedding_matrix")
     
-    logger.debug(f"input_embeds = {input_embeds}")
-    
     # now stitch it together with the rest of the embeddings
-    logger.debug(f"Getting embeddings")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"input_embeds = {input_embeds}")
+        logger.debug(f"Getting embeddings")
     embeds = None
     try:
         embeds = get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach()
@@ -302,27 +364,20 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     #embeds = embeds.to(attack_state.gradient_device)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - embeds created")
 
-    logger.debug(f"embeds = {embeds}")
-
-    logger.debug(f"Getting full_embeds")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"embeds = {embeds}")
+        logger.debug(f"Getting full_embeds")
     full_embeds = None
-    # try:
-        # full_embeds = torch.cat(
-            # [
-                # embeds[:,:input_id_data.slice_data.control.start,:], 
-                # input_embeds, 
-                # embeds[:,input_id_data.slice_data.control.stop:,:]
-            # ], 
-            # dim=1)
-    full_embeds = torch.cat(
-        [
-            embeds[:,:input_id_data.slice_data.control.start,:], 
-            input_embeds, 
-            embeds[:,input_id_data.slice_data.control.stop:,:]
-        ], 
-        dim=1)
-    # except Exception as e:
-        # raise GradientCreationException(f"Error calling torch.cat([embeds[:,:input_id_data.slice_data.control.start,:], input_embeds, embeds[:,input_id_data.slice_data.control.stop:,:]], dim=1) with embeds = '{embeds}', input_embeds = '{input_embeds}': {e}")
+    try:
+        full_embeds = torch.cat(
+            [
+                embeds[:,:input_id_data.slice_data.control.start,:], 
+                input_embeds, 
+                embeds[:,input_id_data.slice_data.control.stop:,:]
+            ], 
+            dim=1)
+    except Exception as e:
+        raise GradientCreationException(f"Error calling torch.cat([embeds[:,:input_id_data.slice_data.control.start,:], input_embeds, embeds[:,input_id_data.slice_data.control.stop:,:]], dim=1) with embeds = '{embeds}', input_embeds = '{input_embeds}': {e}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - full_embeds created")
 
     del embeds
@@ -330,14 +385,15 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     gc.collect()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting embeds and input_embeds")
 
-    #logger.debug(f"Converting full_embeds to float32 because that's what logits() expects")
+    #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+    #    logger.debug(f"Converting full_embeds to float32 because that's what logits() expects")
     #full_embeds = full_embeds.to(torch.float32)
     #attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - full_embeds converted to float32")
 
-    logger.debug(f"full_embeds = {full_embeds}")
-    logger.debug(f"full_embeds.dtype: {full_embeds.dtype}")
-    
-    logger.debug(f"Getting logits")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"full_embeds = {full_embeds}")
+        logger.debug(f"full_embeds.dtype: {full_embeds.dtype}")
+        logger.debug(f"Getting logits")
     logits = None
     try:
         logits = attack_state.model(inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
@@ -346,20 +402,23 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     except Exception as e:
         raise GradientCreationException(f"Error calling attack_state.model(inputs_embeds = full_embeds).logits with full_embeds = '{full_embeds}': {e}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - logits created")
-    logger.debug(f"logits = {logits}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"logits = {logits}")
     
     del full_embeds
     gc.collect()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting full_embeds")
 
-    logger.debug(f"Getting targets")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Getting targets")
     targets = None
     try:
         targets = input_token_ids_gradient_device[input_id_data.slice_data.target_output]
     except Exception as e:
         raise GradientCreationException(f"Error calling input_token_ids_gradient_device[input_id_data.slice_data.target_output] with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - targets created")
-    logger.debug(f"targets = {targets}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"targets = {targets}")
     
     del input_token_ids_gradient_device
     gc.collect()
@@ -367,22 +426,13 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     
     # pad the target token IDs, if necessary
     try:
-        targets = get_padded_target_token_ids(attack_state.tokenizer, input_id_data.slice_data.loss, targets)
+        targets = get_padded_target_token_ids(attack_state, input_id_data.slice_data.loss, targets)
     except Exception as e:
         raise GradientCreationException(f"Error calling get_padded_target_token_ids(attack_state.tokenizer, input_id_data.slice_data.loss, targets) with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}', targets = '{targets}': {e}")
-    # len_loss_slice = input_id_data.slice_data.loss.stop - input_id_data.slice_data.loss.start
-    # if len_loss_slice > len(targets):
-        # if attack_state.tokenizer.pad_token_id is None:
-            # # This should never occur unless someone is calling this function directly, outside of Broken Hill
-            # raise NullPaddingTokenException("The current target slice must be padded to match the length of the loss slice, but the tokenizer's padding token ID is None.")
-        # targets_as_list = targets.tolist()
-        # while len_loss_slice > len(targets_as_list):
-            # targets_as_list.append(attack_state.tokenizer.pad_token_id)
-        # targets = torch.tensor(targets_as_list, device = targets.device)
-    logger.debug(f"targets (after padding, if necessary) = {targets}")
 
-
-    logger.debug(f"Getting loss")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"targets (after padding, if necessary) = {targets}")
+        logger.debug(f"Getting loss")
     got_loss = False
     loss = None
     loss_logits = None
@@ -391,7 +441,8 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     except Exception as e:
         raise GradientCreationException(f"Error calling logits[0,input_id_data.slice_data.loss,:] with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}': {e}")
 
-    logger.debug(f"loss_logits = {loss_logits}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"loss_logits = {loss_logits}")
 
     del logits
     gc.collect()
@@ -412,15 +463,13 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         # except Exception as e:
             # raise GradientCreationException(f"Error calling torch.gather(loss_logits, -1, targets.unsqueeze(-1)).squeeze(-1) with loss_logits = '{loss_logits}', targets.unsqueeze(-1) = '{targets.unsqueeze(-1)}': {e}")
         # try:
-            # loss = mellowmax(-label_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1)
+            # loss = mellowmax(attack_state, -label_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1)
             # got_loss = True
         # except Exception as e:
             # raise GradientCreationException(f"Error calling mellowmax(-label_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1) with label_logits = '{label_logits}', alpha = '{alpha}': {e}")
 
     if not got_loss:
-        logger.critical(f"Unknown loss algorithm '{attack_state.persistable.attack_params.loss_algorithm}'")
-        # TKTK: replace this with raising an exception
-        sys.exit(1)
+        raise GradientSamplingException(f"Unknown loss algorithm '{attack_state.persistable.attack_params.loss_algorithm}'")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - loss created")
     
     del targets
@@ -428,18 +477,18 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     gc.collect()
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting targets and loss_logits")
     
-    logger.debug(f"loss = {loss}")
-
-    logger.debug(f"loss.backward()")
-    #try:
-    #    loss.backward()
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"loss = {loss}")
+        logger.debug(f"loss.backward()")
+    try:
     # This one operation requires about 1 GiB of PyTorch device memory for a 500M parameter model, regardless of whether it's CPU or GPU
-    loss.backward()
-    #except Exception as e:
-    #    raise GradientCreationException(f"Error calling loss.backward(): {e}")
+        loss.backward()
+    except Exception as e:
+        raise GradientCreationException(f"Error calling loss.backward(): {e}")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - loss.backward() complete")
     
-    logger.debug(f"loss (after backpropagation) = {loss}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"loss (after backpropagation) = {loss}")
 
     # del loss
     # gc.collect()
@@ -447,7 +496,8 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     
     
     if one_hot.grad is not None:
-        logger.debug(f"Cloning one_hot.grad")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Cloning one_hot.grad")
         result_gradient = one_hot.grad.clone()
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot.grad cloned")
         
@@ -456,15 +506,16 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         # gc.collect()
         # attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - after deleting one_hot")
         
-        logger.debug(f"result_gradient = {result_gradient}")
-
-        logger.debug(f"Getting gradients")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result_gradient = {result_gradient}")
+            logger.debug(f"Getting gradients")
         try:
             result_gradient = result_gradient / result_gradient.norm(dim=-1, keepdim=True)
         except Exception as e:
             raise GradientCreationException(f"Error calling result_gradient / result_gradient.norm(dim=-1, keepdim=True) with result_gradient = '{result_gradient}', result_gradient.norm(dim=-1, keepdim=True) = '{result_gradient.norm(dim=-1, keepdim=True)}': {e}")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - result_gradient created")
-        logger.debug(f"result_gradient (after normalization) = {result_gradient}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result_gradient (after normalization) = {result_gradient}")
         return result_gradient
 
     raise GradientCreationException("Error: one_hot.grad is None")
@@ -502,7 +553,8 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
         
     # TKTK: validate this
         if use_nanogcg_sampling_algorithm:
-            logger.debug(f"using nanoGCG sampling algorithm")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Using nanoGCG sampling algorithm")
             # BEGIN: nanoGCG gradient-sampling algorithm
             random_ids_1 = None
             random_ids_2 = None
@@ -530,7 +582,8 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             # END: nanoGCG gradient-sampling algorithm
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_val")
         else:
-            logger.debug(f"using original sampling algorithm")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Using original sampling algorithm")
             num_adversarial_tokens = len(current_adversarial_content_token_ids_gradient_device)
 
             try:
@@ -560,7 +613,8 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             except Exception as e:
                 raise GradientSamplingException(f"Error calling torch.randint(0, attack_state.persistable.attack_params.topk, (num_rand_ints, 1), ...) with attack_state.persistable.attack_params.topk = '{attack_state.persistable.attack_params.topk}', num_rand_ints = '{num_rand_ints}': {e}")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating rand_ints")
-            #logger.debug(f"new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
             new_token_val = None
             top_indices_len_1 = top_indices.shape[0] - 1
             new_token_pos_in_bounds_values = []
@@ -592,16 +646,16 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_val")
             new_token_pos = new_token_pos.unsqueeze(-1)
 
-        logger.debug(f"original_adversarial_content_token_ids_gradient_device = {original_adversarial_content_token_ids_gradient_device}")
-        #logger.debug(f"new_token_pos = {new_token_pos}")
-        #logger.debug(f"new_token_val = {new_token_val}")
-        #new_token_pos_unsqueezed = new_token_pos.unsqueeze(-1)
-        #logger.debug(f"new_token_pos_unsqueezed = {new_token_pos_unsqueezed}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"original_adversarial_content_token_ids_gradient_device = {original_adversarial_content_token_ids_gradient_device}")
+            logger.debug(f"new_token_pos = {new_token_pos}")
+            logger.debug(f"new_token_val = {new_token_val}")
         try:
             new_adversarial_token_ids = original_adversarial_content_token_ids_gradient_device.scatter_(1, new_token_pos, new_token_val)
         except Exception as e:
             raise GradientSamplingException(f"Error calling original_adversarial_content_token_ids_gradient_device.scatter_(1, new_token_pos, new_token_val) with original_adversarial_content_token_ids_gradient_device = '{original_adversarial_content_token_ids_gradient_device}', new_token_pos = '{new_token_pos}', new_token_val = '{new_token_val}': {e}")
-        logger.debug(f"new_adversarial_token_ids = {new_adversarial_token_ids}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"new_adversarial_token_ids = {new_adversarial_token_ids}")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_adversarial_token_ids")
     
     result = AdversarialContentList()
@@ -609,11 +663,12 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
     if new_adversarial_token_ids is not None:
         logger.debug(f"new_adversarial_token_ids = {new_adversarial_token_ids}")
         for i in range(new_adversarial_token_ids.shape[0]):
-            logger.debug(f"new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"new_adversarial_token_ids[{i}] = {new_adversarial_token_ids[i]}")
             new_adversarial_token_ids_as_list = new_adversarial_token_ids[i].tolist()
             if AdversarialContent.token_list_contains_invalid_tokens(attack_state.tokenizer, new_adversarial_token_ids_as_list):
-                dummy = 1
-                logger.debug(f"adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
             else:
                 new_candidate = AdversarialContent.from_token_ids(attack_state.tokenizer, attack_state.adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
                 result.append_if_new(new_candidate)
@@ -636,18 +691,20 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
         return result
     len_new_adversarial_content_list = len(new_adversarial_content_list.adversarial_content)
     for i in range(len_new_adversarial_content_list):
-        #logger.debug(f"i = {i}")
-        logger.debug(f"new_adversarial_content_list.adversarial_content[i] = {new_adversarial_content_list.adversarial_content[i].get_short_description()}")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"new_adversarial_content_list.adversarial_content[i] = {new_adversarial_content_list.adversarial_content[i].get_short_description()}")
         adversarial_candidate = new_adversarial_content_list.adversarial_content[i].copy()
         if adversarial_candidate is not None and adversarial_candidate.as_string is not None:
             #adversarial_candidate_message_represenation = adversarial_candidate.adversarial_candidate.get_short_description()
             adversarial_candidate_message_represenation = adversarial_candidate.as_string
-            logger.debug(f"adversarial_candidate = '{adversarial_candidate.get_short_description()}', attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adversarial_candidate = '{adversarial_candidate.get_short_description()}', attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
             include_candidate = True
             # make sure the LLM sorcery hasn't accidentally introduced a token ID that's outside of the valid range
             if AdversarialContent.token_list_contains_invalid_tokens(attack_state.tokenizer, adversarial_candidate.token_ids):
                     include_candidate = False
-                    logger.debug(f"adversarial_candidate '{adversarial_candidate.get_short_description()}' contains token ID {adversarial_candidate.token_ids[candidate_token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"adversarial_candidate '{adversarial_candidate.get_short_description()}' contains token ID {adversarial_candidate.token_ids[candidate_token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
             if include_candidate and filter_cand:
                 include_candidate = False
                 
@@ -655,20 +712,24 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                     include_candidate = True
                 else:
                     include_candidate = False
-                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to the current adversarial content value '{attack_state.persistable.current_adversarial_content.get_short_description()}'.")
+                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to the current adversarial content value '{attack_state.persistable.current_adversarial_content.get_short_description()}'.")
                     filtered_due_to_already_being_tested.append(adversarial_candidate)
                 if include_candidate:
                     if adversarial_candidate_message_represenation.strip() == "":
                         include_candidate = False
-                        logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it is an empty string, or equivalent to an empty string.")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it is an empty string, or equivalent to an empty string.")
                         filtered_due_to_empty_string.append(adversarial_candidate)
                 if include_candidate:
                     if attack_state.persistable.tested_adversarial_content.contains_adversarial_content(adversarial_candidate):
                         include_candidate = False
-                        logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to a previous adversarial value.")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to a previous adversarial value.")
                         filtered_due_to_already_being_tested.append(adversarial_candidate)
                     else:
-                        logger.debug(f"candidate '{adversarial_candidate.get_short_description()}' is not equivalent to any previous adversarial values.")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"candidate '{adversarial_candidate.get_short_description()}' is not equivalent to any previous adversarial values.")
                 if include_candidate:
                     if include_candidate:
                         
@@ -677,21 +738,24 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                         if not isinstance(attack_state.persistable.attack_params.candidate_filter_tokens_min, type(None)):
                             if candidate_token_count < attack_state.persistable.attack_params.candidate_filter_tokens_min:
                                 include_candidate = False
-                                logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was less than the minimum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_min}).")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was less than the minimum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_min}).")
                                 filtered_due_to_insufficient_token_count.append(adversarial_candidate)
                         if not isinstance(attack_state.persistable.attack_params.candidate_filter_tokens_max, type(None)):
                             if candidate_token_count > attack_state.persistable.attack_params.candidate_filter_tokens_max:
                                 include_candidate = False
-                                logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_max}).")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_max}).")
                                 filtered_due_to_excessive_token_count.append(adversarial_candidate)
                         if attack_state.persistable.attack_params.attempt_to_keep_token_count_consistent:
                             # Test whether or not the candidate can be decoded to a string, then re-encoded to token IDs without changing the number of tokens
                             # Note that this doesn't guarantee a lossless conversion. For example, if two tokens in the input become one token in the output, but a different token in the input becomes two tokens in the output, this check will still succeed.
-                            reencoded_candidate_token_ids = encode_string_for_real_without_any_cowboy_funny_business(attack_state.tokenizer, adversarial_candidate.as_string)
+                            reencoded_candidate_token_ids = encode_string_for_real_without_any_cowboy_funny_business(attack_state, adversarial_candidate.as_string)
                             #if candidate_token_count != current_adversarial_content_token_count:
                             if len(reencoded_candidate_token_ids) != candidate_token_count:
                                 include_candidate = False
-                                logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{attack_state.persistable.current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{attack_state.persistable.current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
                                 filtered_due_to_nonmatching_token_count.append(adversarial_candidate)
 
                     if include_candidate:
@@ -704,15 +768,17 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                                             newline_character_count += 1
                             if newline_character_count > attack_state.persistable.attack_params.candidate_filter_newline_limit:
                                 include_candidate = False
-                                logger.debug(f"'{adversarial_candidate_message_represenation}' rejected due to presence of newline character(s)")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"'{adversarial_candidate_message_represenation}' rejected due to presence of newline character(s)")
                                 filtered_due_to_containing_newline_characters.append(adversarial_candidate)
                         if include_candidate and filter_regex is not None:
                             if filter_regex.search(adversarial_candidate.as_string):
-                                dummy = 1
-                                logger.debug(f"'{adversarial_candidate_message_represenation}' represented as '{adversarial_candidate.as_string}' passed the regular expression filter")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"'{adversarial_candidate_message_represenation}' represented as '{adversarial_candidate.as_string}' passed the regular expression filter")
                             else:
                                 include_candidate = False
-                                logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_state.persistable.attack_params.candidate_filter_regex}'.")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_state.persistable.attack_params.candidate_filter_regex}'.")
                                 filtered_due_to_not_matching_regex.append(adversarial_candidate)
                         if include_candidate and not isinstance(attack_state.persistable.attack_params.candidate_filter_repetitive_tokens, type(None)) and attack_state.persistable.attack_params.candidate_filter_repetitive_tokens > 0:
                             token_counts = {}
@@ -726,10 +792,12 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                                         filtered_due_to_repetitive_tokens.append(adversarial_candidate)
                                         if c_token not in already_notified_tokens:
                                             already_notified_tokens.append(c_token)
-                                            logger.debug(f"'{adversarial_candidate_message_represenation}' rejected because it had more than {attack_state.persistable.attack_params.candidate_filter_repetitive_tokens} occurrences of the token '{c_token}'")
+                                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                logger.debug(f"'{adversarial_candidate_message_represenation}' rejected because it had more than {attack_state.persistable.attack_params.candidate_filter_repetitive_tokens} occurrences of the token '{c_token}'")
                                 token_counts[c_token] = t_count
                             if include_candidate:
-                                logger.debug(f"'{adversarial_candidate_message_represenation}' passed the repetitive token filter.")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"'{adversarial_candidate_message_represenation}' passed the repetitive token filter.")
                         if include_candidate and not isinstance(attack_state.persistable.attack_params.candidate_filter_repetitive_lines, type(None)) and attack_state.persistable.attack_params.candidate_filter_repetitive_lines > 0:
                             candidate_lines = adversarial_candidate.as_string.splitlines()
                             token_counts = {}
@@ -743,10 +811,12 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                                         filtered_due_to_repetitive_lines.append(adversarial_candidate)
                                         if c_line not in already_notified_tokens:
                                             already_notified_tokens.append(c_line)
-                                            logger.debug(f"'{adversarial_candidate_message_represenation}' rejected because it had more than {attack_state.persistable.attack_params.candidate_filter_repetitive_lines} occurrences of the line '{c_line}'")
+                                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                                logger.debug(f"'{adversarial_candidate_message_represenation}' rejected because it had more than {attack_state.persistable.attack_params.candidate_filter_repetitive_lines} occurrences of the line '{c_line}'")
                                 token_counts[c_line] = t_count
                             if include_candidate:
-                                logger.debug(f"'{adversarial_candidate_message_represenation}' passed the repetitive line filter.")
+                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"'{adversarial_candidate_message_represenation}' passed the repetitive line filter.")
                             
                 
             if include_candidate:
@@ -756,18 +826,21 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                     decoded_str = decoded_str.replace("\r", attack_state.persistable.attack_params.candidate_replace_newline_characters)
                     if decoded_str != adversarial_candidate.as_string:
                         adversarial_candidate = AdversarialContent.from_string(attack_state.tokenizer, attack_state.adversarial_content_manager.trash_fire_tokens, decoded_str)
-                logger.debug(f"appending '{adversarial_candidate_message_represenation}' to candidate list.\n")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"appending '{adversarial_candidate_message_represenation}' to candidate list.\n")
                 result.append_if_new(adversarial_candidate)
             else:
-                logger.debug(f"not appending '{adversarial_candidate_message_represenation}' to candidate list because it was filtered out.\n")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"not appending '{adversarial_candidate_message_represenation}' to candidate list because it was filtered out.\n")
                 filtered_count += 1
 
-    logger.debug(f"result = {result}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"result = {result}")
 
     if filter_cand:
         if len(result.adversarial_content) == 0:
-            dummy = 1
-            logger.debug(f"No candidates found")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"No candidates found")
         else:
             # I *think* this step is supposed to append copies of the last entry in the list enough times to make the new list as long as the original list
             #cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
@@ -775,8 +848,8 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
             if len(result.adversarial_content) < len(new_adversarial_content_list.adversarial_content):
                 while len(result.adversarial_content) < len(new_adversarial_content_list.adversarial_content):
                     result.adversarial_content.append(result.adversarial_content[-1].copy())
-                    
-            logger.debug(f"{round(filtered_count / len(result.adversarial_content), 2)} control candidates were not valid")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"{round(filtered_count / len(result.adversarial_content), 2)} control candidates were not valid")
 
     percent_passed = float(len(result.adversarial_content)) / float(len_new_adversarial_content_list)
     percent_rejected = float(filtered_count) / float(len_new_adversarial_content_list)
@@ -850,9 +923,10 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
     test_ids = torch.nested.to_padded_tensor(nested_ids, pad_tok, (len(test_ids), max_len))
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after recreating nested_ids")
 
-    decoded_test_ids = get_decoded_tokens(attack_state.tokenizer, test_ids)
-    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating decoded_test_ids")
-    #logger.debug(f"test_ids = '{test_ids}'\n decoded_test_ids = '{decoded_test_ids}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        decoded_test_ids = get_decoded_tokens(attack_state, test_ids)
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating decoded_test_ids")
+        logger.debug(f"test_ids = '{test_ids}'\n decoded_test_ids = '{decoded_test_ids}'")
 
     if not(test_ids[0].shape[0] == number_of_adversarial_token_ids):
         raise ValueError((
@@ -883,7 +957,8 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
     if return_ids:
         #del locs, test_ids ; gc.collect()
         result1 = forward(attack_state = attack_state, input_ids = ids, attention_mask = attn_mask, batch_size = attack_state.persistable.attack_params.batch_size_get_logits)
-        logger.debug(f"returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"returning result1 = '{result1}', ids = '{ids}', attn_mask = '{attn_mask}'")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating result1 via forward")
         return result1, ids
     else:
@@ -894,7 +969,8 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
         gc.collect()
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after deleting ids and running garbage collection")
         
-        logger.debug(f"returning logits = '{logits}', attn_mask = '{attn_mask}'")
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"returning logits = '{logits}', attn_mask = '{attn_mask}'")
         
         return logits
     
@@ -932,7 +1008,7 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
             model_result = attack_state.model(input_ids = batch_input_ids)
         
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            model_result_decoded = get_decoded_tokens(attack_state.tokenizer, model_result)
+            model_result_decoded = get_decoded_tokens(attack_state, model_result)
             logger.debug(f"getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
 
         model_result_logits = model_result.logits
@@ -940,10 +1016,6 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
             model_result_logits = model_result_logits.to(attack_state.forward_device)
 
         logits.append(model_result_logits)
-        #logger.debug(f"new_row.shape = {model_result_logits.shape}, len(logits) = {len(logits)}")
-        #new_row = model_result_logits.detach().clone()
-        #logits.append(new_row)
-        #logger.debug(f"new_row.shape = {new_row.shape}, len(logits) = {len(logits)}")
 
         del model_result
         del model_result_logits
@@ -973,12 +1045,13 @@ def target_loss(attack_state, logits, ids, input_id_data):
     ids_sliced = ids[:,input_id_data.slice_data.target_output]
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating ids_sliced")
     
-    ids_sliced = get_padded_target_token_ids(attack_state.tokenizer, input_id_data.slice_data.loss, ids_sliced)
+    ids_sliced = get_padded_target_token_ids(attack_state, input_id_data.slice_data.loss, ids_sliced)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after recreating ids_sliced")
     
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        ids_sliced_decoded = get_decoded_tokens(attack_state.tokenizer, ids_sliced)
-        logger.debug(f"calculating loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")
+        ids_sliced_decoded = get_decoded_tokens(attack_state, ids_sliced)
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"calculating loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")
 
     got_loss = False
     loss_logits = logits[0,input_id_data.slice_data.loss,:]
@@ -990,26 +1063,28 @@ def target_loss(attack_state, logits, ids, input_id_data):
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating loss")
         got_loss = True
     # if not got_loss and attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.MELLOWMAX:
-        # #loss = mellowmax(-loss_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1)
+        # #loss = mellowmax(attack_state,-loss_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha, dim = -1)
         # #crit = torch.nn.CrossEntropyLoss(reduction='none')
         # #loss = crit(logits_sliced_transposed, ids_sliced)
-        # #logger.debug(f"cross-entropy loss = '{loss}'")
+        #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        #     logger.debug(f"cross-entropy loss = '{loss}'")
         
-        # loss = mellowmax(-loss_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha)
-        # #logger.debug(f"mellowmax loss = '{loss}'")
+        # loss = mellowmax(attack_state, -loss_logits, alpha = attack_state.persistable.attack_params.mellowmax_alpha)
+        #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        #     logger.debug(f"mellowmax loss = '{loss}'")
         
         # got_loss = True
     if not got_loss:
-        logger.critical(f"Unknown loss algorithm '{attack_state.persistable.attack_params.loss_algorithm}'")
-        # TKTK: replace this with raising an exception
-        sys.exit(1)
+        raise GradientSamplingException(f"Unknown loss algorithm '{attack_state.persistable.attack_params.loss_algorithm}'")
 
-    #logger.debug(f"loss = '{loss}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"loss = '{loss}'")
 
     result = loss.mean(dim=-1)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after creating result")
 
-    logger.debug(f"result = '{result}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"result = '{result}'")
 
     return result
 

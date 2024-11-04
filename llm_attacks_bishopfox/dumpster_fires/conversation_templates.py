@@ -11,10 +11,6 @@ import fastchat.conversation as fschat_conversation
 
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
-from llm_attacks_bishopfox.util.util_functions import find_first_occurrence_of_array_in_array
 from llm_attacks_bishopfox.util.util_functions import find_index_of_first_nonmatching_element
 from llm_attacks_bishopfox.util.util_functions import remove_whitespace_and_nonprintable_characters
 
@@ -174,7 +170,7 @@ class TokenAndTokenIDListComparisonResult:
         self.decoded_tokens_first_nonmatching_index = None
     
     @staticmethod
-    def compare_data(first_string, first_token_id_list, first_decoded_token_list, second_string, second_token_id_list, second_decoded_token_list):
+    def compare_data(attack_state, first_string, first_token_id_list, first_decoded_token_list, second_string, second_token_id_list, second_decoded_token_list):
         result = TokenAndTokenIDListComparisonResult()
         
         if first_string == second_string:
@@ -182,7 +178,7 @@ class TokenAndTokenIDListComparisonResult:
             result.strings_match_without_whitespace_and_nonprintable = True
         else:
             result.strings_match_exactly = False
-            result.strings_first_nonmatching_index = find_index_of_first_nonmatching_element(first_string, second_string)
+            result.strings_first_nonmatching_index = find_index_of_first_nonmatching_element(first_string, second_string, log_manager = attack_state.log_manager)
             first_string_stripped = remove_whitespace_and_nonprintable_characters(first_string)
             second_string_stripped = remove_whitespace_and_nonprintable_characters(second_string)
             if first_string_stripped == second_string_stripped:
@@ -200,13 +196,13 @@ class TokenAndTokenIDListComparisonResult:
         else:
             result.decoded_tokens_lengths_match = False
         
-        result.token_ids_first_nonmatching_index = find_index_of_first_nonmatching_element(first_token_id_list, second_token_id_list)
+        result.token_ids_first_nonmatching_index = find_index_of_first_nonmatching_element(first_token_id_list, second_token_id_list, log_manager = attack_state.log_manager)
         if isinstance(result.token_ids_first_nonmatching_index, type(None)):
             result.token_ids_match = True
         else:
             result.token_ids_match = False
         
-        result.decoded_tokens_first_nonmatching_index = find_index_of_first_nonmatching_element(first_decoded_token_list, second_decoded_token_list)
+        result.decoded_tokens_first_nonmatching_index = find_index_of_first_nonmatching_element(first_decoded_token_list, second_decoded_token_list, log_manager = attack_state.log_manager)
         if isinstance(result.decoded_tokens_first_nonmatching_index, type(None)):
             result.decoded_tokens_match = True
         else:
@@ -233,7 +229,7 @@ class ConversationTemplateTester:
         self.adversarial_content_manager = adversarial_content_manager
         self.model = model
     
-    def test_templates(self, verbose = False):
+    def test_templates(self, attack_state, verbose = False):
         result = TokenizerConversationTemplateTestResult()
         
         result.existing_fschat_template = self.adversarial_content_manager.conv_template.copy()
@@ -314,7 +310,7 @@ class ConversationTemplateTester:
             if got_tokenizer_chat_template_with_no_system_as_string:
                 try:
                     tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
-                    tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, tokenizer_prompt_no_system_token_ids)
+                    tokenizer_prompt_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, tokenizer_prompt_no_system_token_ids)
                     result.tokenizer_supports_apply_chat_template_method = True
                     result.got_tokenizer_chat_template = True
                 except Exception as e:
@@ -332,7 +328,7 @@ class ConversationTemplateTester:
                 if got_tokenizer_chat_template_with_system_as_string:
                     try:
                         tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
-                        tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, tokenizer_prompt_with_system_token_ids)
+                        tokenizer_prompt_with_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, tokenizer_prompt_with_system_token_ids)
                         result.tokenizer_chat_template_supports_messages_with_system_role = True
                         result.tokenizer_supports_apply_chat_template_method = True
                         result.got_tokenizer_chat_template = True
@@ -375,9 +371,9 @@ class ConversationTemplateTester:
         ef_template_prompt_with_system_role_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_with_system_role_string)
         ef_template_prompt_with_no_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_with_no_system_string)
 
-        ef_template_prompt_with_system_message_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_system_message_token_ids)
-        ef_template_prompt_with_system_role_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_system_role_token_ids)
-        ef_template_prompt_with_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_with_no_system_token_ids)        
+        ef_template_prompt_with_system_message_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, ef_template_prompt_with_system_message_token_ids)
+        ef_template_prompt_with_system_role_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, ef_template_prompt_with_system_role_token_ids)
+        ef_template_prompt_with_no_system_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, ef_template_prompt_with_no_system_token_ids)        
 
         # do the templates *actually* support system messages, or are they ignored?
         if result.tokenizer_supports_apply_chat_template_method:
@@ -462,7 +458,7 @@ class ConversationTemplateTester:
         #       * If the tokenizer's chat template supports system role messages, test all of the above with and without a system message
         # the remainder of the tests require the tokenizer's chat template output
         if result.tokenizer_supports_apply_chat_template_method:                
-            result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(ef_template_prompt_string, 
+            result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(attack_state, ef_template_prompt_string, 
                 ef_template_prompt_token_ids, 
                 ef_template_prompt_decoded_tokens, 
                 tokenizer_prompt_string, 
@@ -472,28 +468,33 @@ class ConversationTemplateTester:
             
             # temporary workaround for minor issue with Llama-2 template that can't be easily corrected without fschat code changes
             if result.existing_fschat_template.name in get_stop_string_or_equivalent_is_different_template_names():
-                logger.debug(f"template name '{result.existing_fschat_template.name}' is in the list of template names with known non-identical endings that are currently displayed as minor warnings. Workaround logic may apply.")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"template name '{result.existing_fschat_template.name}' is in the list of template names with known non-identical endings that are currently displayed as minor warnings. Workaround logic may apply.")
                 if not result.template_comparison_result.strings_match_exactly:
                     if len(ef_template_prompt_string) > len(tokenizer_prompt_string):
-                        logger.debug(f"len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"len(ef_template_prompt_string) > len(tokenizer_prompt_string)")
                         truncated_ef_template_prompt_string = ef_template_prompt_string[:len(tokenizer_prompt_string)]
                         if truncated_ef_template_prompt_string == tokenizer_prompt_string:                            
                             result.result_messages.append(f"Warning: the conversation template '{result.existing_fschat_template.name}' and the tokenizer did not generate identical output for a test conversation. This is due to minor issues with the conversation template that cannot be easily resolved without updates to the fschat library. These issues should not materially affect Broken Hill's results.")
                             ef_template_prompt_string = truncated_ef_template_prompt_string
                             ef_template_prompt_token_ids = self.adversarial_content_manager.attack_state.tokenizer.encode(ef_template_prompt_string)
-                            ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state.tokenizer, ef_template_prompt_token_ids)
-                            result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(ef_template_prompt_string, 
+                            ef_template_prompt_decoded_tokens = get_decoded_tokens(self.adversarial_content_manager.attack_state, ef_template_prompt_token_ids)
+                            result.template_comparison_result = TokenAndTokenIDListComparisonResult.compare_data(attack_state, ef_template_prompt_string, 
                                 ef_template_prompt_token_ids, 
                                 ef_template_prompt_decoded_tokens, 
                                 tokenizer_prompt_string, 
                                 tokenizer_prompt_token_ids, 
                                 tokenizer_prompt_with_decoded_tokens)
                         else:
-                            logger.debug(f"truncated_ef_template_prompt_string != tokenizer_prompt_string")
+                            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                logger.debug(f"truncated_ef_template_prompt_string != tokenizer_prompt_string")
                     else:
-                        logger.debug(f"len(ef_template_prompt_string) <= len(tokenizer_prompt_string)")
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"len(ef_template_prompt_string) <= len(tokenizer_prompt_string)")
             else:
-                logger.debug(f"template name '{result.existing_fschat_template.name}' is not in the list of Llama-2 template names.")
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"template name '{result.existing_fschat_template.name}' is not in the list of Llama-2 template names.")
             
             # Test whether the generated prompts are character-for-character identical
             if not result.template_comparison_result.strings_match_exactly:

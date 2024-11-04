@@ -70,10 +70,19 @@ from transformers.generation import GenerationConfig
 
 logger = logging.getLogger(__name__)
 
+class AttackInitializationException(Exception):
+    pass
+
 class DecodingException(Exception):
     pass
 
 class EncodingException(Exception):
+    pass
+
+class LossThresholdException(Exception):
+    pass
+
+class MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException(Exception):
     pass
 
 # TKTK: actually resolve this circular import without code duplication
@@ -241,38 +250,38 @@ class AdversarialContent(JSONSerializableObject):
     def token_list_contains_invalid_tokens(tokenizer, token_ids):
         for token_num in range(0, len(token_ids)):
             if token_ids[token_num] < 0 or token_ids[token_num] >= tokenizer.vocab_size: 
-                logger.debug(f"adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                logger.warning(f"adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
                 return True
         return False
     
     @staticmethod
-    def from_token_ids(tokenizer, trash_fire_tokens, token_ids, trim_token_list = False):
+    def from_token_ids(attack_state, trash_fire_tokens, token_ids, trim_token_list = False):
         result = AdversarialContent()
         result.token_ids = copy.deepcopy(token_ids)
-        result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
+        result.tokens = get_decoded_tokens(attack_state, result.token_ids)
         if trim_token_list:
-            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
+            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(attack_state, trash_fire_tokens, result.token_ids, result.tokens)
         try:
-            result.as_string = tokenizer.decode(result.token_ids)
+            result.as_string = attack_state.tokenizer.decode(result.token_ids)
         except Exception as e:
             try:
-                result.as_string = get_decoded_tokens(tokenizer, result.token_ids)
-                logger.debug(f"couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
-                raise DecodingException(f"[AdversarialContent.from_token_ids] couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                result.as_string = get_decoded_tokens(attack_state, result.token_ids)
+                logger.warning(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                raise DecodingException(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
             except Exception as e2:
                 raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}")
 
         return result
 
     @staticmethod
-    def from_string(tokenizer, trash_fire_tokens, input_string):
+    def from_string(attack_state, trash_fire_tokens, input_string):
         result = AdversarialContent()
         #result.as_string = input_string
-        #result.token_ids = tokenizer.encode(input_string)
-        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, input_string)
-        result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
-        result.as_string = tokenizer.decode(result.token_ids)
+        #result.token_ids = attack_state.tokenizer.encode(input_string)
+        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(attack_state, input_string)
+        result.tokens = get_decoded_tokens(attack_state, result.token_ids)
+        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(attack_state, trash_fire_tokens, result.token_ids, result.tokens)   
+        result.as_string = attack_state.tokenizer.decode(result.token_ids)
         return result
 
 class AdversarialContentList(JSONSerializableObject):
@@ -592,19 +601,7 @@ class AttackParams(JSONSerializableObject):
         self.missing_pad_token_padding_side = "left"
 
         # Options that control detection of a successful jailbreak
-        #
-        # TKTK: replace the negative and positive lists with a linear rule-based engine
-        # e.g.:
-        #   rule 1: "I'm sorry" indicates no jailbreak
-        #   rule 2-14: other "no jailbreak" strings
-        #   rule 15: "Here's a hypothetical scenario" indicates jailbreak after all
-        #   rule 16: "10-year-old's birthday party" indicates no jailbreak
-        #   rule 17 added via command-line: "pin the tail on the donkey but where the 
-        #           winner gets to anonymously kill you" indicates jailbreak after all
-        #   All rules evaluated every time, like a firewall policy
         self.jailbreak_detection_rule_set = None      
-
-        # TKTK: detect jailbreak based on some loss threshold?
         
         # If this value is specified, at each iteration, Broken Hill will test results using <VALUE> additional random seed values, to attempt to avoid focusing on fragile results
         # The values are selected from the hardcoded results in attack_manager.py => get_random_seed_list_for_comparisons()
@@ -1089,17 +1086,20 @@ class PersistableAttackState(JSONSerializableObject):
         
         # TKTK: add a localization option for these
         if self.attack_params.exclude_slur_tokens:
-            logger.debug(f"adding slurs to the list that will be used to build the token denylist.")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding slurs to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_slurs())
         if self.attack_params.exclude_profanity_tokens:
-            logger.debug(f"adding profanity to the list that will be used to build the token denylist.")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding profanity to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_profanity())
         if self.attack_params.exclude_other_offensive_tokens:
-            logger.debug(f"adding other highly-problematic content to the list that will be used to build the token denylist.")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding other highly-problematic content to the list that will be used to build the token denylist.")
             self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
         
         logger.info(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
-        self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state.tokenizer, 
+        self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state, 
             self.not_allowed_token_list, 
             device = attack_state.model_device, 
             additional_token_strings_case_insensitive = self.not_allowed_token_list_case_insensitive, 
@@ -1235,7 +1235,8 @@ class VolatileAttackState():
         if fp_stem_new == fp_stem:
             fp_stem_new = f"{fp_stem}{file_number_string}"
         result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
-        logger.debug(f"input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
         return result
     
     def add_file_name_suffix(self, file_path, suffix):
@@ -1249,12 +1250,15 @@ class VolatileAttackState():
         handled_suffix = False        
         continued_regex = re.compile("-(resumed|continued)-[0-9]{6}_iterations-[0-9]{4}$")
         if continued_regex.search(fp_stem):
-            logger.debug(f"continued_regex matches fp_stem '{fp_stem}'.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"continued_regex matches fp_stem '{fp_stem}'.")
             fp_stem = continued_regex.sub("", fp_stem)
-            logger.debug(f"fp_stem is now '{fp_stem}'.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"fp_stem is now '{fp_stem}'.")
         if not handled_suffix:
             result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
-        logger.debug(f"input: '{file_path}', suffix: {suffix}, result: '{result}'.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"input: '{file_path}', suffix: {suffix}, result: '{result}'.")
         return result
     
     def get_continuation_command(self, state_file_path, completed_all_iterations):
@@ -1275,7 +1279,8 @@ class VolatileAttackState():
                     script_index = i
                     break
                 else:
-                    logger.debug(f"no match between '{comparison_string}' and '{script_name}'")
+                    if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"no match between '{comparison_string}' and '{script_name}'")
 
         if script_index is None:
             raise Exception(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
@@ -1375,7 +1380,7 @@ class VolatileAttackState():
             
         self.persistable.attack_params.original_command_line_array
         
-        return command_array_to_string(result_array, add_line_breaks = True)
+        return command_array_to_string(result_array, add_line_breaks = True, log_manager = self.log_manager)
     
     def get_state_loading_message(self, completed_all_iterations):
         if not self.persistable.attack_params.save_state:
@@ -1445,7 +1450,8 @@ class VolatileAttackState():
         self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
 
     def load_model_and_tokenizer(self):
-        logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
 
         #if ignore_mismatched_sizes:
         #    kwargs["ignore_mismatched_sizes"] = True
@@ -1480,7 +1486,8 @@ class VolatileAttackState():
                     charlie_prince_fp16 = True
                 if self.model_weight_type == torch.float32:
                     charlie_prince_fp32= True
-                logger.debug(f"self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
                 try:
                     model = AutoModelForCausalLM.from_pretrained(
                             self.persistable.attack_params.model_path,
@@ -1495,7 +1502,8 @@ class VolatileAttackState():
                         ).to(self.model_device).eval()
                     handled_model_load = True
                 except Exception as e:
-                    logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+                    if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
                     handled_model_load = False
         if not handled_model_load:
             model = AutoModelForCausalLM.from_pretrained(
@@ -1517,7 +1525,8 @@ class VolatileAttackState():
         if self.persistable.attack_params.tokenizer_path is not None:
             tokenizer_path_to_load = self.persistable.attack_params.tokenizer_path
         
-        logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
 
         tokenizer = None
         
@@ -1581,6 +1590,8 @@ class VolatileAttackState():
             else:
                 logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
         
+        logger.info(f"This model is an instance of the type '{type(model).__name__}', and the tokenizer is an instance of the type '{type(tokenizer).__name__}'")
+        
         return model, tokenizer
 
 
@@ -1591,7 +1602,8 @@ class VolatileAttackState():
                 model_load_message = f"Loading model from '{self.persistable.attack_params.model_path}' and tokenizer from {self.persistable.attack_params.tokenizer_path}."
             logger.info(model_load_message)
             self.model_weight_type = self.persistable.attack_params.get_model_data_type()
-            logger.debug(f"model_weight_type = {self.model_weight_type}")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"model_weight_type = {self.model_weight_type}")
             model_config_path = None
             model_config_dict = None
             try:
@@ -1614,11 +1626,10 @@ class VolatileAttackState():
                 tokenizer_message = ""
                 if self.persistable.attack_params.tokenizer_path is not None and self.persistable.attack_params.tokenizer_path != "":
                     tokenizer_message = ", with tokenizer path '{self.persistable.attack_params.tokenizer_path}'"
-                logger.critical(f"Exception thrown while loading model from '{self.persistable.attack_params.model_path}'{tokenizer_message}: {e}\n{traceback.format_exc()}")
-                # TKTK: replace this with raising an exception so any cleanup can happen
-                sys.exit(1)
+                raise AttackInitializationException(f"Exception thrown while loading model from '{self.persistable.attack_params.model_path}'{tokenizer_message}: {e}\n{traceback.format_exc()}")
             self.persistable.performance_data.collect_torch_stats(self, is_key_snapshot_event = True, location_description = "after loading model and tokenizer")
-            logger.debug(f"Model loaded.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Model loaded.")
             model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
             if self.model_weight_storage_string != "":            
                 model_data_type_message = f"{self.model_weight_storage_string}, and was loaded as {self.model.dtype}"
@@ -1628,9 +1639,7 @@ class VolatileAttackState():
                 try:
                     self.model = PeftModel.from_pretrained(self.model, self.persistable.attack_params.peft_adapter_path)
                 except Exception as e:
-                    logger.critical(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
-                    # TKTK: replace this with raising an exception so any cleanup can happen
-                    sys.exit(1)
+                    raise AttackInitializationException(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
                 self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading PEFT adapter")
                 logger.info(f"PEFT adapter loaded.")
             
@@ -1640,18 +1649,15 @@ class VolatileAttackState():
             
             if isinstance(self.tokenizer.pad_token_id, type(None)):
                 if self.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
-                    logger.critical("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
-                    # TKTK: replace this with raising an exception so any cleanup can happen
-                    sys.exit(1)
+                    raise AttackInitializationException("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
             
-            logger.debug(f"getting max effective token value for model and tokenizer.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Getting max effective token value for model and tokenizer.")
         
-            self.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", self.model, self.tokenizer, self.persistable.attack_params.generation_max_new_tokens)
-            self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.model, self.tokenizer, self.persistable.attack_params.full_decoding_max_new_tokens)
+            self.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer(self, "--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
+            self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
         except Exception as e:
-            logger.critical(f"Error loading model: {e}\n{traceback.format_exc()}")
-            # TKTK: replace this with raising an exception so any cleanup can happen
-            sys.exit(1)
+            raise AttackInitializationException(f"Error loading model: {e}\n{traceback.format_exc()}")
 
     def build_token_allow_and_denylists(self):
         self.persistable.build_token_allow_and_denylists(self)
@@ -1668,9 +1674,7 @@ class VolatileAttackState():
     def apply_model_quantization(self):
         if self.persistable.attack_params.quantization_dtype:
             if self.persistable.attack_params.enable_static_quantization:
-                logger.critical("Broken Hill only supports quantizing using static or dynamic approaches, not both at once")
-                # TKTK: replace with raise
-                sys.exit(1)
+                raise AttackInitializationException("Broken Hill only supports quantizing using static or dynamic approaches, not both at once")
             self.persistable.performance_data.collect_torch_stats(self, location_description = "before quantizing model")
             logger.info(f"Quantizing model to '{self.persistable.attack_params.quantization_dtype}'")    
             #self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = quantization_dtype, inplace = False)
@@ -1691,29 +1695,35 @@ class VolatileAttackState():
     
     def apply_model_dtype_conversion(self):
         if self.persistable.attack_params.conversion_dtype:
-            logger.debug(f"converting model dtype to {self.persistable.attack_params.conversion_dtype}.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"converting model dtype to {self.persistable.attack_params.conversion_dtype}.")
             self.model = self.model.to(self.persistable.attack_params.conversion_dtype)
 
     def load_conversation_template(self):
-        logger.debug(f"registering conversation templates.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Registering conversation templates.")
         self.persistable.performance_data.collect_torch_stats(self, location_description = "before loading conversation template")
         
-        logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
         self.conversation_template = None
         
         if self.persistable.attack_params.template_name is not None:
             if self.persistable.attack_params.template_name not in fschat_conversation.conv_templates.keys():
                 logger.warning(f"chat template '{self.persistable.attack_params.template_name}' was not found in fschat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
                 self.persistable.attack_params.template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
-            logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'")
             self.conversation_template = fschat_conversation.get_conv_template(self.persistable.attack_params.template_name)
         else:
-            logger.debug(f"determining chat template based on content in '{self.persistable.attack_params.model_path}'")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"determining chat template based on content in '{self.persistable.attack_params.model_path}'")
             self.conversation_template = fschat.model.get_conversation_template(self.persistable.attack_params.model_path)
         # make sure fschat doesn't sneak the one_shot messages in when zero_shot was requested
         if self.persistable.attack_params.clear_existing_template_conversation:
             if hasattr(self.conversation_template, "messages"):
-                logger.debug(f"resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
                 self.conversation_template.messages = []
             else:
                 logger.warning(f"the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
@@ -1741,13 +1751,15 @@ class VolatileAttackState():
             if hasattr(self.conversation_template, "system_message"):
                 original_system_message = self.conversation_template.system_message
                 self.conversation_template.system_message = self.persistable.attack_params.custom_system_prompt
-                logger.debug(f"Replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
             else:
                 logger.warning(f"The option to set the conversation template's system message was enabled, but the template does not include a system message.")
         if self.persistable.attack_params.conversation_template_messages is not None:
             if not hasattr(self.conversation_template, "messages"):
                 self.conversation_template.messages = []
-            logger.debug(f"Existing conversation template messages '{self.conversation_template.messages}'.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Existing conversation template messages '{self.conversation_template.messages}'.")
             for i in range(0, len(self.persistable.attack_params.conversation_template_messages)):
                 role_id_or_name = self.persistable.attack_params.conversation_template_messages[i][0]
                 message = self.persistable.attack_params.conversation_template_messages[i][1]
@@ -1758,30 +1770,32 @@ class VolatileAttackState():
                     except Exception as e:
                         raise Exception("Could not convert the role ID '{}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
                 self.conversation_template.messages.append((role_id_or_name, message))
-            logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
         
         if self.persistable.attack_params.template_name is not None:
             if self.conversation_template.name != self.persistable.attack_params.template_name:
                 logger.warning(f"The template '{self.persistable.attack_params.template_name}' was specified, but fschat returned the template '{self.conversation_template.name}' in response to that value.")
         if self.conversation_template is None:
-            logger.critical(f"Got a null conversation template when trying to load '{self.persistable.attack_params.template_name}'. This should never happen.")
-            # TKTK: replace this with raising an exception
-            sys.exit(1)
-        logger.debug(f"Conversation template: '{self.conversation_template.name}'")
-        logger.debug(f"Conversation template sep: '{self.conversation_template.sep}'")
-        logger.debug(f"Conversation template sep2: '{self.conversation_template.sep2}'")
-        logger.debug(f"Conversation template roles: '{self.conversation_template.roles}'")
-        logger.debug(f"Conversation template system message: '{self.conversation_template.system_message}'")
-        messages = json.dumps(self.conversation_template.messages, indent=4)
-        logger.debug(f"Conversation template messages: '{messages}'")
+            raise AttackInitializationException(f"Got a null conversation template when trying to load '{self.persistable.attack_params.template_name}'. This should never happen.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Conversation template: '{self.conversation_template.name}'")
+            logger.debug(f"Conversation template sep: '{self.conversation_template.sep}'")
+            logger.debug(f"Conversation template sep2: '{self.conversation_template.sep2}'")
+            logger.debug(f"Conversation template roles: '{self.conversation_template.roles}'")
+            logger.debug(f"Conversation template system message: '{self.conversation_template.system_message}'")
+            messages = json.dumps(self.conversation_template.messages, indent=4)
+            logger.debug(f"Conversation template messages: '{messages}'")
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading conversation template")
+        # no return value because it's setting a property of this class
 
     def ignite_trash_fire_token_treasury(self):
         logger.info(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with large numbers of tokens.")
-        self.trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self.tokenizer, self.conversation_template)
+        self.trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self, self.conversation_template)
 
     def create_initial_adversarial_content(self):
-        logger.debug(f"setting initial adversarial content.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Setting initial adversarial content.")
         self.persistable.initial_adversarial_content = None
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
             self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
@@ -1789,21 +1803,16 @@ class VolatileAttackState():
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
             single_token_id = None
             try:
-                single_token_id = get_encoded_token(self.tokenizer, self.persistable.attack_params.initial_adversarial_token_string)
+                single_token_id = get_encoded_token(self, self.persistable.attack_params.initial_adversarial_token_string)
             except Exception as e:
-                logger.critical(f"Error encoding string '{self.persistable.attack_params.initial_adversarial_token_string}' to token: {e}\n{traceback.format_exc()}")
-                # TKTK: replace this with raising an exception
-                sys.exit(1)
+                raise AttackInitializationException(f"Error encoding string '{self.persistable.attack_params.initial_adversarial_token_string}' to token: {e}\n{traceback.format_exc()}")
             if isinstance(single_token_id, type(None)):
-                    logger.critical(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
-                    # TKTK: replace this with raising an exception
-                    sys.exit(1)
+                    raise AttackInitializationException(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
             if isinstance(single_token_id, list):
-                decoded_tokens = get_decoded_tokens(self.tokenizer, single_token_id)
-                single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(self.trash_fire_token_treasury, single_token_id, decoded_tokens)
+                decoded_tokens = get_decoded_tokens(self, single_token_id)
+                single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(self, self.trash_fire_token_treasury, single_token_id, decoded_tokens)
                 if len(single_token_id) > 1:
-                    logger.critical(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
-                    sys.exit(1)
+                    raise AttackInitializationException(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
                 else:
                     single_token_id = single_token_id[0]
             self.persistable.attack_params.initial_adversarial_token_ids = []
@@ -1826,12 +1835,11 @@ class VolatileAttackState():
         
         # This should never actually happen, but just in case
         if self.persistable.initial_adversarial_content is None:
-            logger.critical(f"No initial adversarial content was specified.")
-            # TKTK: replace this with raising an exception
-            sys.exit(1)
+            raise AttackInitializationException(f"No initial adversarial content was specified.")
 
     def check_for_adversarial_content_token_problems(self):
-        logger.debug(f"Determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
         tokens_in_denylist = []
         tokens_not_in_tokenizer = []
         for i in range(0, len(self.persistable.initial_adversarial_content.token_ids)):
@@ -1847,7 +1855,7 @@ class VolatileAttackState():
         if len(tokens_in_denylist) > 0:
             token_list_string = ""
             for i in range(0, len(tokens_in_denylist)):
-                decoded_token = get_escaped_string(get_decoded_token(self.tokenizer, tokens_in_denylist[i]))
+                decoded_token = get_escaped_string(get_decoded_token(self, tokens_in_denylist[i]))
                 formatted_token = f"'{decoded_token}' (ID {tokens_in_denylist[i]})"
                 if token_list_string == "":
                     token_list_string = formatted_token
@@ -1867,7 +1875,7 @@ class VolatileAttackState():
     def test_conversation_template(self):
         logger.info(f"Testing conversation template '{self.conversation_template.name}'")
         conversation_template_tester = ConversationTemplateTester(self.adversarial_content_manager, self.model)
-        conversation_template_test_results = conversation_template_tester.test_templates(verbose = self.persistable.attack_params.verbose_self_test_output)
+        conversation_template_test_results = conversation_template_tester.test_templates(self, verbose = self.persistable.attack_params.verbose_self_test_output)
         if len(conversation_template_test_results.result_messages) > 0:
             for i in range(0, len(conversation_template_test_results.result_messages)):
                 logger.warning(conversation_template_test_results.result_messages[i])
@@ -1883,7 +1891,8 @@ class VolatileAttackState():
 
     def perform_jailbreak_tests(self):
         empty_output_during_jailbreak_self_tests = False
-        logger.debug(f"Testing for jailbreak with no adversarial content")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
@@ -1906,7 +1915,8 @@ class VolatileAttackState():
             else:
                 logger.info(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
         
-        logger.debug(f"Testing for jailbreak when the LLM is prompted with the target string")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Testing for jailbreak when the LLM is prompted with the target string")
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
             1.0,
             do_sample = False,
@@ -1932,9 +1942,7 @@ class VolatileAttackState():
         if self.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
             if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
                 if not self.persistable.attack_params.ignore_jailbreak_self_tests:
-                    logger.critical(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
-                    # TKTK: replace with raise
-                    sys.exit(1)
+                    raise AttackInitializationException(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
 
     def generate(self, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
         working_gen_config = gen_config
@@ -1977,7 +1985,8 @@ class VolatileAttackState():
         
         result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
         
-        logger.debug(f"result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
         
         return result
         
@@ -1989,21 +1998,23 @@ class VolatileAttackState():
                                         include_target_content = include_target_content)
                                                 
         result_ar_info_data = AttackResultInfoData()
-        result_ar_info_data.set_values(self.tokenizer, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+        result_ar_info_data.set_values(self, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
         
-        logger.debug(f"result_ar_info_data = {result_ar_info_data.to_json()}")
-        #logger.debug(f"result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result_ar_info_data = {result_ar_info_data.to_json()}")
+            logger.debug(f"result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
         
         jailbroken = False
         
         jailbreak_check_result = JailbreakDetectionRuleResult.FAILURE
         
         if result_ar_info_data.decoded_llm_output_string.strip() != "":
-            jailbreak_check_result = self.jailbreak_detector.check_string(result_ar_info_data.decoded_llm_output_string)
+            jailbreak_check_result = self.jailbreak_detector.check_string(self, result_ar_info_data.decoded_llm_output_string)
 
         if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
             jailbroken = True
-        logger.debug(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
         
         return jailbroken, result_ar_info_data, generation_results
 
@@ -2032,7 +2043,7 @@ class AttackResultInfoData(JSONSerializableObject):
         # a single string decoded from llm_output_token_ids
         self.decoded_llm_output_string = None
 
-    def set_values(self, tokenizer, max_token_length, llm_generation_token_ids, llm_output_token_ids):
+    def set_values(self, attack_state, max_token_length, llm_generation_token_ids, llm_output_token_ids):
         self.max_token_length = max_token_length
         self.llm_generation_token_ids = llm_generation_token_ids
         self.llm_output_token_ids = llm_output_token_ids
@@ -2043,10 +2054,10 @@ class AttackResultInfoData(JSONSerializableObject):
         if isinstance(self.llm_output_token_ids, torch.Tensor):
             self.llm_output_token_ids = self.llm_output_token_ids.tolist()
         
-        self.decoded_llm_generation_tokens = get_decoded_tokens(tokenizer, llm_generation_token_ids)
-        self.decoded_llm_generation_string = tokenizer.decode(llm_generation_token_ids)
-        self.decoded_llm_output_tokens = get_decoded_tokens(tokenizer, llm_output_token_ids)
-        self.decoded_llm_output_string = tokenizer.decode(llm_output_token_ids)
+        self.decoded_llm_generation_tokens = get_decoded_tokens(attack_state, llm_generation_token_ids)
+        self.decoded_llm_generation_string = attack_state.tokenizer.decode(llm_generation_token_ids)
+        self.decoded_llm_output_tokens = get_decoded_tokens(attack_state, llm_output_token_ids)
+        self.decoded_llm_output_string = attack_state.tokenizer.decode(llm_output_token_ids)
 
     def to_dict(self):
         result = super(AttackResultInfoData, self).properties_to_dict(self)
@@ -2163,7 +2174,7 @@ class AttackResultInfoCollection(JSONSerializableObject):
         self.unique_result_count = 0
         self.results = []
     
-    def set_values(self, tokenizer, generated_prompt_token_ids, user_input_token_ids):
+    def set_values(self, attack_state, generated_prompt_token_ids, user_input_token_ids):
         self.generated_prompt_token_ids = generated_prompt_token_ids
         self.user_input_token_ids = user_input_token_ids
         
@@ -2173,10 +2184,10 @@ class AttackResultInfoCollection(JSONSerializableObject):
         if isinstance(self.user_input_token_ids, torch.Tensor):
             self.user_input_token_ids = self.user_input_token_ids.tolist()
         
-        self.decoded_generated_prompt_tokens = get_decoded_tokens(tokenizer, generated_prompt_token_ids)
-        self.decoded_generated_prompt_string = tokenizer.decode(generated_prompt_token_ids)
-        self.decoded_user_input_tokens = get_decoded_tokens(tokenizer, user_input_token_ids)
-        self.decoded_user_input_string = tokenizer.decode(user_input_token_ids)
+        self.decoded_generated_prompt_tokens = get_decoded_tokens(attack_state, generated_prompt_token_ids)
+        self.decoded_generated_prompt_string = attack_state.tokenizer.decode(generated_prompt_token_ids)
+        self.decoded_user_input_tokens = get_decoded_tokens(attack_state, user_input_token_ids)
+        self.decoded_user_input_string = attack_state.tokenizer.decode(user_input_token_ids)
     
     def get_unique_output_values(self):
         unique_output_values = {}
@@ -2682,6 +2693,63 @@ class ResourceUtilizationData(JSONSerializableObject):
             
         self.statistics.performance.add_or_update_dataset("total_processing_time_seconds", processing_time)
 
+    def add_statistics_row(self, found_data, data_array, dataset, data_format_string):
+        result_row = []
+        found_data_in_this_dataset = False
+        convert_to_integer = False
+        if ":n" in data_format_string:
+            convert_to_integer = True
+        if dataset is not None:            
+            if dataset.maximum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.maximum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.minimum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.minimum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.median is not None:
+                found_data_in_this_dataset = True
+                val = dataset.median
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")        
+            if dataset.mean is not None:
+                found_data_in_this_dataset = True
+                val = dataset.mean
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.value_range is not None:
+                found_data_in_this_dataset = True
+                val = dataset.value_range
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+        if found_data_in_this_dataset:
+            found_data = True
+            data_array.append(result_row)
+        return found_data, data_array
+
     def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '      '):
         new_message = message
         found_data_in_this_dataset = False
@@ -2732,91 +2800,208 @@ class ResourceUtilizationData(JSONSerializableObject):
 
     def output_statistics(self, verbose = False):
         message = "Resource utilization / performance statistics:"
-        if verbose:
-            message = f"{message} (verbose)"
+        #if verbose:
+        #    message = f"{message} (verbose)"
+        message = f"{message}\n\n"
+        
+        found_data_overall = False  
+        column_headers = [
+            "Maximum",
+            "Minimum",
+            "Median",
+            "Average",
+            "Range"
+            ]
         
         found_data = False
+        row_headers_cpu_process_memory = [ 
+            "Virtual memory in use (bytes):",
+            "Physical memory in use (bytes):",
+            "Swap memory in use (bytes):"
+            ]
+        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv.column_headers = column_headers
+        cgv.row_headers = row_headers_cpu_process_memory
+        current_stats = []
+        dataset = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        if found_data:
+            cgv.title = "CPU - Broken Hill Process"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True
         
-        found_cpu_data = False        
-        cpu_message = f"{message}\n\n  CPU:"
-        cpu_message = f"{cpu_message}\n    Broken Hill process:"
-        pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
-        if verbose:
-            ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
-        pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
-        if verbose or pswap.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
-        cpu_message = f"{cpu_message}\n    System-wide:"
-        sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
-        if verbose:
-            sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
-        sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
-        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
-        sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
-        if verbose or sys_swap_inuse.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
-        if verbose:
-            sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
-        if verbose or sys_swap_inuse.maximum > 0:
-            sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
-        if found_cpu_data:
-            found_data = True
-            message = cpu_message
+        found_data = False  
+        row_headers_cpu_system_memory = [ 
+            "Memory in use (bytes):",
+            "Memory available (bytes):",
+            "Memory utilization:",
+            "Swap memory in use (bytes):",
+            "Swap memory available (bytes):",
+            "Swap memory utilization:"
+            ]
+        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv.column_headers = column_headers
+        cgv.row_headers = row_headers_cpu_system_memory
+        current_stats = []
+        dataset = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset,  "{0:.2f}%")
+         dataset = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset,  "{0:.2f}%")
+        if found_data:
+            cgv.title = "CPU - System-Wide"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True
         
-        found_cuda_data = False
-        cuda_message = f"{message}\n\n  CUDA devices:"
-        cuda_padding = '        '
-        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
-            found_cuda_device_data = False
+        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):            
+            found_data = False  
             cd = self.statistics.cuda_devices[cuda_device_num]
-            cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
-            cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
-            cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
-            cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
-            if verbose:
-                cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
-                cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
-                cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
-            cuda_device_message = f"{cuda_device_message}\n      System-wide:"
-            cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
-            if verbose:
-                cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
-            cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
-            
-            if found_cuda_device_data:
-                found_cuda_data = True
-                cuda_message = f"{cuda_message}{cuda_device_message}"
+            row_headers_cuda_process_memory = [ 
+                "Memory reserved by Broken Hill (bytes):",
+                "Memory utilization by Broken Hill:",
+                "Memory reserved and allocated (bytes):",
+                "Memory reserved but unallocated (bytes):",
+                "Reserved memory utilization by Broken Hill:"
+                "Memory in use system-wide (bytes):",
+                "Memory available system-wide (bytes):",
+                "Memory utilization system-wide:"
+                ]
+            cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+            cgv.column_headers = column_headers
+            cgv.row_headers = row_headers_cuda_process_memory
+            current_stats = []
+            dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+            dataset = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+            found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            dataset = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+             dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+            dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+            found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+            dataset = cd.get_dataset("available_memory", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+            dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            if found_data:
+                cgv.title = "CUDA Device {cuda_device_num}: {cd.cube_name}"
+                cgv.set_data(current_stats)
+                table_text = cgv.render_table()
+                message = f"{message}{table_text}\n\n"
+                found_data_overall = True
         
-        if found_cuda_data:
-            found_data = True
-            message = cuda_message
+        found_data = False
+        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv.column_headers = column_headers
+        cgv.row_headers = [ "Seconds to process each iteration:" ]
+        current_stats = []
+        dataset = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}")
+        if found_data:
+            cgv.title = "Processing Performance"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True           
+        
+        # found_cpu_data = False        
+        # cpu_message = f"{message}\n\n  CPU:"
+        # cpu_message = f"{cpu_message}\n    Broken Hill process:"
+        # pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
+        # if verbose:
+            # ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
+        # pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        # if verbose or pswap.maximum > 0:
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
+        # cpu_message = f"{cpu_message}\n    System-wide:"
+        # sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
+        # if verbose:
+            # sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
+        # sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
+        # sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        # if verbose or sys_swap_inuse.maximum > 0:
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
+        # if verbose:
+            # sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
+        # if verbose or sys_swap_inuse.maximum > 0:
+            # sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
+        # if found_cpu_data:
+            # found_data = True
+            # message = cpu_message
+        
+        # found_cuda_data = False
+        # cuda_message = f"{message}\n\n  CUDA devices:"
+        # cuda_padding = '        '
+        # for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+            # found_cuda_device_data = False
+            # cd = self.statistics.cuda_devices[cuda_device_num]
+            # cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
+            # cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
+            # cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
+            # cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
+            # if verbose:
+                # cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
+                # cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
+                # cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
+            # cuda_device_message = f"{cuda_device_message}\n      System-wide:"
+            # cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
+            # if verbose:
+                # cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
+                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
+            # cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
+            
+            # if found_cuda_device_data:
+                # found_cuda_data = True
+                # cuda_message = f"{cuda_message}{cuda_device_message}"
+        
+        # if found_cuda_data:
+            # found_data = True
+            # message = cuda_message
         
         # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
         
-        found_perf_data = False
-        perf_message = f"{message}\n\n  Processing performance:"
-        tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
-        found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
+        #found_perf_data = False
+        #perf_message = f"{message}\n\n  Processing performance:"
+        #tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        #found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
     
         if found_perf_data:
             found_data = True
             message = perf_message
     
-        if found_data:
+        if found_data_overall:
             logger.info(message)
 
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
@@ -2824,8 +3009,9 @@ class ResourceUtilizationData(JSONSerializableObject):
         self.snapshots.append(current_snapshot)
 
         using_cpu = attack_state.persistable.attack_params.using_cpu()
-        using_cuda = attack_state.persistable.attack_params.using_cuda()        
-        #logger.debug(f"is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}")
+        using_cuda = attack_state.persistable.attack_params.using_cuda()
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}")
 
         if attack_state.persistable.attack_params.performance_stats_output_file is not None:
             safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())

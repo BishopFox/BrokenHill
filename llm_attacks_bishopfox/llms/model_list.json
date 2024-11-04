@@ -614,7 +614,7 @@
 			"model_path": "MistralAI/Mistral-Nemo-Instruct-2407",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "mistral",
+			"template": "mistral-nemo",
 			"size": 24495604224,
 			"safe_tensors": true,
 			"custom_options": []
@@ -636,7 +636,7 @@
 			"model_path": "mlabonne/Daredevil-7B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "daredevil",
+			"template": "mistral",
 			"size": 14483498040,
 			"safe_tensors": true,
 			"custom_options": []
@@ -647,7 +647,7 @@
 			"model_path": "mlabonne/NeuralDaredevil-7B",
 			"tokenizer_path": "",
 			"peft_path": "",
-			"template": "daredevil",
+			"template": "mistral",
 			"size": 14483497728,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]

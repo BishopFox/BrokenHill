@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 class RequiredValueIsNoneException(Exception):
     pass
 
+class BrokenHillFileIOException(Exception):
+    pass
+
 # for debugging
 class FakeException(Exception):
     pass
@@ -95,7 +98,7 @@ def get_broken_hill_state_file_name(attack_state):
     return get_broken_hill_file_name(attack_state, "state", ".json")
 
 def get_escaped_string(input_string):
-    logger.debug(f"escaping string '{input_string}'")
+    #logger.debug(f"escaping string '{input_string}'")
     if input_string is None:
         return None
     result = input_string.replace("\n", "\\n")
@@ -106,8 +109,17 @@ def get_escaped_string(input_string):
         replaced_chars.append(i)
     for i in range(0, len(replaced_chars)):
         result = result.replace(chr(replaced_chars[i]), f"\\x{i:02x}")
-    logger.debug(f"escaped string '{input_string}' to '{result}'")
+    #logger.debug(f"escaped string '{input_string}' to '{result}'")
     return result
+
+# BEGIN: based on https://stackoverflow.com/a/38662876
+def strip_ansi_codes(line):
+    ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', line)
+# END: based on https://stackoverflow.com/a/38662876
+
+class OptionParsingException(Exception):
+    pass
 
 # For getting string options (e.g. --load-state somefile.json) from sys.argv prior to using argparse
 def get_string_option_from_sys_argv(sys_argv, option_flag, return_first = False):
@@ -115,8 +127,7 @@ def get_string_option_from_sys_argv(sys_argv, option_flag, return_first = False)
     for i in range(0, len(sys.argv)):        
         if sys.argv[i] == option_flag:
             if i == (len(sys.argv) - 1):
-                print(f"The option {option_flag} requires a second parameter, and none was found.")
-                sys.exit(1)
+                raise OptionParsingException(f"The option {option_flag} requires a second parameter, and none was found.")
             if return_first:
                 return sys.argv[i + 1]
             else:
@@ -144,7 +155,7 @@ def get_file_content(file_path, failure_is_critical = True):
     except Exception as e:
         print(f"Couldn't read the file '{file_path}': {e}")
         if failure_is_critical:
-            sys.exit(1)
+            raise(BrokenHillFileIOException)
         result = None
     return result
 
@@ -156,9 +167,7 @@ def load_json_from_file(file_path, failure_is_critical = True):
     except Exception as e:
         error_message = f"Couldn't deserialize JSON data in the file '{file_path}': {e}\n{traceback.format_exc()}"
         if failure_is_critical:
-            logger.critical(error_message)
-            # TKTK: replace with raise
-            sys.exit(1)
+            raise BrokenHillFileIOException(error_message)
         logger.error(error_message)
         result = None
     return result
@@ -238,7 +247,7 @@ def update_elapsed_time_string(time_string, new_element_name, count):
 
 def get_elapsed_time_string(start_time, end_time):
     delta_value = end_time - start_time
-    logger.debug(f"{delta_value}, {delta_value.days}, {delta_value.seconds}, {delta_value.microseconds}")
+    #logger.debug(f"{delta_value}, {delta_value.days}, {delta_value.seconds}, {delta_value.microseconds}")
     result = f"{delta_value}"
     num_days = delta_value.days
     if num_days > 0:
@@ -269,7 +278,7 @@ def get_model_size(mdl):
     logger.debug(f"Writing model to '{tempfile_path}'")
     torch.save(mdl.state_dict(), tempfile_path)
     model_size = os.path.getsize(tempfile_path)
-    logger.debug(f"Model size: {model_size}")
+    #logger.debug(f"Model size: {model_size}")
     #result = "%.2f" %(model_size)
     result = model_size
     os.remove(tempfile_path)
@@ -493,7 +502,7 @@ def tensor_to_dict(t):
     return result
 
 def tensor_from_dict(d):
-    logger.debug(f"d = {d}")
+    #logger.debug(f"d = {d}")
     dtype = torch_dtype_from_string(d["dtype"])
     device = None
     if d["device"] is not None:
@@ -501,8 +510,10 @@ def tensor_from_dict(d):
     result = torch.tensor(d["data"], dtype = dtype, device = device)
     return result
 
-def find_index_of_first_nonmatching_element(list1, list2):
-    logger.debug(f"list1 = {list1}, list2 = {list2}")
+def find_index_of_first_nonmatching_element(list1, list2, log_manager = None):
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"list1 = {list1}, list2 = {list2}")
     len_list1 = len(list1)
     len_list2 = len(list2)
     last_index = len_list1
@@ -514,12 +525,16 @@ def find_index_of_first_nonmatching_element(list1, list2):
     i = 0
     while i < last_index:
         if list1[i] != list2[i]:
-            logger.debug(f"result = {i}")
+            if log_manager is not None:
+                if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"result = {i}")
             return i
         i += 1
     
     if len_list1 != len_list2:
-        logger.debug(f"len_list1 != len_list2, result = {i}")
+        if log_manager is not None:
+            if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"len_list1 != len_list2, result = {i}")
         return i
     
     return None
@@ -551,35 +566,49 @@ def append_single_or_list_members(existing_list, value_or_list_to_add, ignore_if
             existing_list.append(value_or_list_to_add)
     return existing_list
  
-def find_first_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
+def find_first_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None, log_manager = None):
     result = None
-    logger.debug(f"Searching for '{inner_array}' in '{outer_array}'")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Searching for '{inner_array}' in '{outer_array}'")
     len_inner = len(inner_array)
     len_outer = len(outer_array)
     range_end = len_outer
     if not isinstance(stop_index, type(None)):
         range_end = stop_index
-    logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {start_index} to {range_end}'")
     for i in range(start_index, range_end):
         if (i + len_inner) >=  len_outer:
             break
         if outer_array[i] == inner_array[0]:
             is_match = True
-            logger.debug(f"found potential match beginning at index {i}'")
+            if log_manager is not None:
+                if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"found potential match beginning at index {i}'")
             for j in range(1, len_inner):
                 if outer_array[i + j] != inner_array[j]:
                     is_match = False
-                    logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
+                    if log_manager is not None:
+                        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
                     break
             if is_match:
-                logger.debug(f"found match at index {i}")
+                if log_manager is not None:
+                    if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"Found match at index {i} for '{inner_array}' in '{outer_array}'")
                 return i
-    logger.debug(f"no match found")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"No match found for '{inner_array}' in '{outer_array}'")
     return result
 
-def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None):
+def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index = 0, stop_index = None, log_manager = None):
     result = None
-    logger.debug(f"Searching for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index}")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Searching for '{inner_array}' in '{outer_array}' with start_index = {start_index} and stop_index = {stop_index}")
     len_inner = len(inner_array)
     len_outer = len(outer_array)
     if len_inner > len_outer or len_inner == 0 or len_outer == 0:
@@ -590,27 +619,37 @@ def find_last_occurrence_of_array_in_array(inner_array, outer_array, start_index
         range_start = stop_index - len_inner
     range_end = start_index - 1
     if range_end < -1 or range_end > len_outer or range_start > len_outer or range_start < -1:
-        raise TrashFireTokenException(f"[find_last_occurrence_of_array_in_array] Error: cannot search for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}' with start_index = {start_index} and stop_index = {stop_index}")
-    logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}'")
+        raise TrashFireTokenException(f"Error: cannot search for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}' with start_index = {start_index} and stop_index = {stop_index}")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"searching for '{inner_array}' in '{outer_array}' from index {range_start} to {range_end}'")
     for i in range(range_start, range_end, -1):
         if outer_array[i] == inner_array[0]:
             is_match = True
-            logger.debug(f"found potential match beginning at index {i}'")
+            if log_manager is not None:
+                if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"found potential match beginning at index {i}'")
             for j in range(1, len_inner):
                 if outer_array[i + j] != inner_array[j]:
                     is_match = False
-                    logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
+                    if log_manager is not None:
+                        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"'{outer_array[i + j]}' != '{inner_array[j]}'")
                     break
             if is_match:
-                logger.debug(f"found match at index {i}")
+                if log_manager is not None:
+                    if log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"found match at index {i}")
                 return i
-    logger.debug(f"no match found")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"no match found")
     return result
 
 # Convert a nice array of command elements to a terrible single value which can be used with bash -c.
 # Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
 # Or, alternatively, log a reproducible (properly quoted) string that represents the command that launched a Python script, so the user can re-run it later
-def command_array_to_string(command_array, add_line_breaks = False):
+def command_array_to_string(command_array, add_line_breaks = False, log_manager = None):
     inner_command = None
     previous_element = None
     for i in range(0, len(command_array)):
@@ -640,12 +679,14 @@ def command_array_to_string(command_array, add_line_breaks = False):
         previous_element = current_element
     #result = shlex.quote(inner_command)
     result = inner_command
-    logger.debug(f"input = {command_array}, output = {result}")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"input = {command_array}, output = {result}")
     return result
 
 # return a slice that begins with the lower of two other slices start values, and ends with the greater of their stop values.
 # Not quite a "union" operation, so I've avoided that term.
-def get_widened_slice(slice1, slice2):
+def get_widened_slice(slice1, slice2, log_manager = None):
     slice_start = None
     slice_stop = None
     if slice1 is not None:
@@ -673,7 +714,9 @@ def get_widened_slice(slice1, slice2):
             if set_stop:
                 slice_stop = slice2.stop
     result = slice(slice_start, slice_stop)
-    logger.debug(f"slice1 = {slice1}, slice2 = {slice2}, result = {result}")
+    if log_manager is not None:
+        if log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"slice1 = {slice1}, slice2 = {slice2}, result = {result}")
     return result
 
 def torch_dtype_from_string(string):

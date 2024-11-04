@@ -10,22 +10,14 @@ import fastchat.conversation as fschat_conversation
 
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_token 
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_encoded_tokens 
 
-#from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
-#from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import get_llama2_and_3_fschat_template_names
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_non_garbage_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_first_index_of_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_index_of_token
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import find_last_non_garbage_token
-from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import is_disastrous_dumpster_fire_token
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import find_first_occurrence_of_array_in_array
 from llm_attacks_bishopfox.util.util_functions import find_index_of_first_nonmatching_element
 from llm_attacks_bishopfox.util.util_functions import find_last_occurrence_of_array_in_array
 from llm_attacks_bishopfox.util.util_functions import get_widened_slice
@@ -87,12 +79,12 @@ def get_blenderbot_conversation_template():
     conv_template.stop_str = "</s>"
     return conv_template
 
-def get_daredevil_conversation_template():
-    conv_template = fschat_conversation.get_conv_template("mistral").copy()
-    conv_template.name = "daredevil"
-    conv_template.system_template = "<s> [INST] {system_message}\n"
-    conv_template.sep2 = "</s>"
-    return conv_template
+# def get_daredevil_conversation_template():
+    # conv_template = fschat_conversation.get_conv_template("mistral").copy()
+    # conv_template.name = "daredevil"
+    # conv_template.system_template = "<s> [INST] {system_message}\n"
+    # conv_template.sep2 = "</s>"
+    # return conv_template
 
 def get_felladrin_llama_conversation_template():
     conv_template = get_default_conversation_template().copy()
@@ -156,7 +148,22 @@ def get_llama2_conversation_template():
     #conv_template.sep = ' </s><s>'
     conv_template.stop_str = " </s>"
     return conv_template
-    
+
+def get_mistral_conversation_template():
+    conv_template = fschat_conversation.get_conv_template("mistral").copy()
+    conv_template.name = "mistral"
+    conv_template.system_template = "<s> [INST] {system_message}\n"
+    return conv_template
+
+def get_mistralnemo_conversation_template():
+    conv_template = fschat_conversation.get_conv_template("mistral").copy()
+    conv_template.name = "mistral-nemo"
+    conv_template.system_template = "<s>[INST]{system_message}"
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.LLAMA2
+    conv_template.sep = ''
+    conv_template.sep2 = '</s>'
+    return conv_template
+
 def get_mpt_conversation_template():
     conv_template = fschat_conversation.get_conv_template("mpt-7b-chat").copy()
     conv_template.name = "mpt"
@@ -261,6 +268,9 @@ def register_custom_conversation_template(attack_params, fschat_has_existing_tem
 
 def get_custom_conversation_templates():
     result = []
+    # Mistral first because others depend on it
+    result.append(get_mistral_conversation_template())
+
     result.append(get_blenderbot_conversation_template())
     result.append(get_daredevil_conversation_template())
     result.append(get_felladrin_llama_conversation_template())
@@ -268,6 +278,7 @@ def get_custom_conversation_templates():
     result.append(get_gptneox_conversation_template())
     result.append(get_guanaco_conversation_template())
     result.append(get_llama2_conversation_template())
+    result.append(get_mistralnemo_conversation_template())
     result.append(get_mpt_conversation_template())
     result.append(get_phi2_conversation_template())
     result.append(get_phi3_conversation_template())
@@ -334,13 +345,13 @@ class PromptSliceData(JSONSerializableObject):
     # handle any placement of base prompt ("goal") and adversarial content ("control")
     def get_complete_user_input_slice(self):
         result = get_widened_slice(self.goal, self.control)
-        logger.debug(f"result = {result}")
+        #logger.debug(f"result = {result}")
         return result
 
     # handle any placement of target output and loss data   
     def get_target_output_and_loss_slice(self):
         result = get_widened_slice(self.target_output, self.loss)
-        logger.debug(f"result = {result}")
+        #logger.debug(f"result = {result}")
         return result
     
     @staticmethod
@@ -437,8 +448,9 @@ class AdversarialContentManager:
     # and the list of tokens the slices refer to
     def get_slice_info(self, slice_data, tokens):
         result = {}
-        decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, tokens)
-        logger.debug(f"len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
+        decoded_tokens = get_decoded_tokens(self.attack_state, tokens)
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"len(tokens) = {len(tokens)}, tokens = '{tokens}', decoded_tokens = '{decoded_tokens}'")
         slice_dictionary = slice_data.get_slice_dictionary()
         for slice_name in slice_dictionary.keys():
             sl = slice_dictionary[slice_name]
@@ -449,12 +461,13 @@ class AdversarialContentManager:
         return result
                 
     def print_slice_info(self, source_method_name, slice_data, tokens):
-        logger.debug(f"len(tokens) = {len(tokens)}, tokens = '{tokens}'")
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"len(tokens) = {len(tokens)}, tokens = '{tokens}'")
         slice_info = self.get_slice_info(slice_data, tokens)
         slice_dictionary = slice_data.get_slice_dictionary()
         for slice_name in slice_info.keys():
-            #logger.debug(f"slice '{slice_name}' decoded tokens = '{slice_info[slice_name]}'")
-            logger.debug(f"Slice '{slice_name}' = {slice_dictionary[slice_name]}, decoded tokens = '{slice_info[slice_name]}', tokens = {tokens[slice_dictionary[slice_name]]}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Slice '{slice_name}' = {slice_dictionary[slice_name]}, decoded tokens = '{slice_info[slice_name]}', tokens = {tokens[slice_dictionary[slice_name]]}")
 
     def get_slice_info_for_validation_check(self, slice_data, slice_dictionary, ordered_slice_list, slice_number):
         slice_name = ordered_slice_list[slice_number]
@@ -492,7 +505,8 @@ class AdversarialContentManager:
 
     def validate_slice_data(self, source_method_name, slice_data, token_ids, decoded_tokens):
         invalid_slice_dictionary = {}
-        logger.debug(f"token_ids = {token_ids}, decoded_tokens = {decoded_tokens}")
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"token_ids = {token_ids}, decoded_tokens = {decoded_tokens}")
         slice_dictionary = slice_data.get_slice_dictionary()
         all_slices_are_not_none = True
         found_at_least_one_slice = False
@@ -513,8 +527,9 @@ class AdversarialContentManager:
                 if is_valid:
                     found_at_least_one_slice = True
                 else:
-                    invalid_slice_dictionary[slice_name] = sl       
-            logger.debug(f"slice '{slice_name}' = '{sl}', is_valid = {is_valid}.")
+                    invalid_slice_dictionary[slice_name] = sl
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"slice '{slice_name}' = '{sl}', is_valid = {is_valid}.")
         if not found_at_least_one_slice:
             all_slices_are_not_none = False
         if len(invalid_slice_dictionary.keys()) > 0:
@@ -530,13 +545,15 @@ class AdversarialContentManager:
             ordered_slice_list = [ "system", "user_role", "goal and control", "assistant_role", "target_output and loss" ]
             for current_slice_number in range(0, len(ordered_slice_list) - 1):
                 current_slice_name, current_slice_start, current_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, current_slice_number)
-                logger.debug(f"current_slice_name = '{current_slice_name}', current_slice_start = {current_slice_start}, current_slice_stop = {current_slice_stop}")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"current_slice_name = '{current_slice_name}', current_slice_start = {current_slice_start}, current_slice_stop = {current_slice_stop}")
                 if current_slice_start is not None and current_slice_stop is not None:
                     if current_slice_start > current_slice_stop:
                         logger.error(f"The start index for {current_slice_name} ({current_slice_start}) is greater than the stop index for the same slice ({current_slice_stop}).{nonsensical_slice_boilerplate}")
                 for comparison_slice_number in range(current_slice_number + 1, len(ordered_slice_list)):
                     comparison_slice_name, comparison_slice_start, comparison_slice_stop = self.get_slice_info_for_validation_check(slice_data, slice_dictionary, ordered_slice_list, comparison_slice_number)
-                    logger.debug(f"comparison_slice_name = '{comparison_slice_name}', comparison_slice_start = {comparison_slice_start}, comparison_slice_stop = {comparison_slice_stop}")
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"comparison_slice_name = '{comparison_slice_name}', comparison_slice_start = {comparison_slice_start}, comparison_slice_stop = {comparison_slice_stop}")
                     if current_slice_start is not None and comparison_slice_start is not None:
                         if current_slice_start > comparison_slice_start:
                             logger.error(f"The start index for {current_slice_name} ({current_slice_start}) is greater than the start index for {comparison_slice_name} ({comparison_slice_start}).{nonsensical_slice_boilerplate}")
@@ -554,14 +571,16 @@ class AdversarialContentManager:
         self.print_slice_info(f"validate_slice_data - {source_method_name}", slice_data, token_ids)
 
     def extend_slice_if_next_token_is_in_list(self, decoded_tokens, current_slice, token_string_list):
-        logger.debug(f"decoded_tokens: {decoded_tokens}, decoded current slice is {decoded_tokens[current_slice]}.")
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"decoded_tokens: {decoded_tokens}, decoded current slice is {decoded_tokens[current_slice]}.")
         result = current_slice
         next_token_stop = current_slice.stop + 1
         if (next_token_stop) <= len(decoded_tokens):
             next_token = decoded_tokens[current_slice.stop]
             if next_token in token_string_list or next_token.strip() in token_string_list:
                 new_slice = slice(current_slice.start, next_token_stop)
-                logger.debug(f"next token is '{next_token}', extending slice stop by 1. Slice contents were {decoded_tokens[current_slice]}, now {decoded_tokens[new_slice]}.")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"next token is '{next_token}', extending slice stop by 1. Slice contents were {decoded_tokens[current_slice]}, now {decoded_tokens[new_slice]}.")
                 result = new_slice
         return result
 
@@ -623,15 +642,6 @@ class AdversarialContentManager:
 
     #prompt_and_input_id_data should be a PromptAndInputIDCollection
     def get_complete_input_token_ids(self, prompt_and_input_id_data):
-        # start_index = prompt_and_input_id_data.slice_data.goal.start
-        # if prompt_and_input_id_data.slice_data.control.start < start_index:
-            # start_index = prompt_and_input_id_data.slice_data.control.start
-        # end_index = prompt_and_input_id_data.slice_data.control.stop
-        # if prompt_and_input_id_data.slice_data.goal.stop > end_index:
-            # end_index = prompt_and_input_id_data.slice_data.goal.stop
-        # # increment by one to include the last token
-        # #end_index += 1
-        # return prompt_and_input_id_data.full_prompt_token_ids[start_index:end_index]
         return prompt_and_input_id_data.full_prompt_token_ids[prompt_and_input_id_data.slice_data.get_complete_user_input_slice()]
     
     #prompt_and_input_id_data should be a PromptAndInputIDCollection
@@ -646,7 +656,8 @@ class AdversarialContentManager:
             result = True
         if self.conv_template.sep_style == fschat_conversation.SeparatorStyle.ADD_COLON_SPACE_SINGLE:
             result = True
-        #logger.debug(f"self.conv_template.sep_style = {self.conv_template.sep_style}, result = {result}")
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.conv_template.sep_style = {self.conv_template.sep_style}, result = {result}")
         return result
 
     def get_prompt(self, adversarial_content = None, force_python_tokenizer = False):#, update_self_values = True):
@@ -662,15 +673,10 @@ class AdversarialContentManager:
             separator = ''
             
         if conversation_template is None:
-            logger.critical(f"Got a null conversation template when trying to call self.conv_template.copy(). This should never happen. self.conv_template was '{self.conv_template}'")
-            # TKTK: replace with raise
-            sys.exit(1)
+            raise PromptGenerationException(f"Got a null conversation template when trying to call self.conv_template.copy(). This should never happen. self.conv_template was '{self.conv_template}'")
         
         if adversarial_content is not None:
             working_adversarial_content = adversarial_content.copy()
-
-        # Get the list of dumpster fire tokens once to make the many references to it run faster
-        #hardcoded_trash_fire_tokens = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self.attack_state.tokenizer, conversation_template)
 
         conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
         conversation_template.append_message(conversation_template.roles[1], f"{self.attack_state.persistable.attack_params.target_output}")
@@ -678,9 +684,9 @@ class AdversarialContentManager:
 
         encoded_conversation_template_prompt = self.attack_state.tokenizer(result.prompt)
         current_token_ids = encoded_conversation_template_prompt.input_ids
-        current_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
+        current_decoded_tokens = get_decoded_tokens(self.attack_state, current_token_ids)
         #original_toks = copy.deepcopy(current_token_ids)
-        #original_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, original_toks)
+        #original_decoded_tokens = get_decoded_tokens(self.attack_state, original_toks)
        
         # Remove any tokens that occur *after* the end of the target output.
         # For models like oasst-sft-4-pythia-12b-epoch-3.5 that end messages with a hard delimiter and will not generate additional content after that point.
@@ -705,8 +711,9 @@ class AdversarialContentManager:
             try:
                 #test_value = encoded_conversation_template_prompt.char_to_token(len(result.prompt)-1)
                 # Unlike EVERY OTHER Transformers-compatible LLM, Llama-3 doesn't throw an exception when the Python tokenizer gets a call to char_to_token - it returns None instead! But only for offsets that are in the middle of the prompt! Otherwise it pretends it works!
-                test_value = encoded_conversation_template_prompt.char_to_token(int((float(len(result.prompt)) - 1.0) / 2.0))                
-                #logger.debug(f"test_value = {test_value}")
+                test_value = encoded_conversation_template_prompt.char_to_token(int((float(len(result.prompt)) - 1.0) / 2.0))
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Testing char_to_token to determine fast tokenizer support. test_value = {test_value}")
                 if test_value is None:
                     python_tokenizer = True
             except:
@@ -715,7 +722,8 @@ class AdversarialContentManager:
         if python_tokenizer:
             # TKTK: consider rewriting this to not use fschat at all.
             # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
-            logger.debug(f"Using Python tokenizer.")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Using Python tokenizer.")
             # reset the conversation template (to get rid of the messages that have been added earlier in this function), but preserve any messages that are part of the template
             conversation_template = self.conv_template.copy()
             
@@ -726,9 +734,10 @@ class AdversarialContentManager:
             #conversation_template.append_message(conversation_template.roles[0], None)
             conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
             current_prompt = conversation_template.get_prompt()
-            logger.debug(f"current_prompt = '{current_prompt}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"current_prompt = '{current_prompt}'")
             user_role_prompt_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
-            user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids)
+            user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids, log_manager = self.attack_state.log_manager)
             if user_role_start_index is None:
                 logger.error(f"Did not find a non-matching element when comparing the strings '{prompt_with_no_additional_messages}' and '{current_prompt}', which were tokenized to the following IDs:\n{prompt_with_no_additional_messages_token_ids}\n{user_role_prompt_token_ids}")
 
@@ -737,11 +746,12 @@ class AdversarialContentManager:
             #conversation_template.update_last_message(f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
             conversation_template.append_message(conversation_template.roles[1], self.attack_state.persistable.attack_params.target_output)
             current_prompt = conversation_template.get_prompt()
-            logger.debug(f"current_prompt = '{current_prompt}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"current_prompt = '{current_prompt}'")
             current_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
-            current_decoded_tokens = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
+            current_decoded_tokens = get_decoded_tokens(self.attack_state, current_token_ids)
 
-            result.slice_data.goal = find_last_index_of_token(self.attack_state.tokenizer, 
+            result.slice_data.goal = find_last_index_of_token(self.attack_state, 
                 self.trash_fire_tokens, 
                 self.attack_state.persistable.attack_params.base_prompt, 
                 current_token_ids, 
@@ -752,18 +762,19 @@ class AdversarialContentManager:
                 remove_leading_and_trailing_trash_fire_tokens = False)
             
             # Can't do this optimization because the context of what appears before and after can change the tokens
-            # goal_slice_start = find_last_occurrence_of_array_in_array(self.base_prompt_token_ids, current_token_ids)
+            # goal_slice_start = find_last_occurrence_of_array_in_array(self.base_prompt_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
             # goal_slice_end = goal_slice_start + len(self.base_prompt_token_ids)
             # result.slice_data.goal = slice(goal_slice_start, goal_slice_end)
 
             self.validate_slice_data('get_prompt (Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            logger.debug(f"current_prompt = '{current_prompt}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"current_prompt = '{current_prompt}'")
 
             if working_adversarial_content.as_string == "":
                 result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
             else:
-                result.slice_data.control = find_last_index_of_token(self.attack_state.tokenizer, 
+                result.slice_data.control = find_last_index_of_token(self.attack_state, 
                     self.trash_fire_tokens, 
                     working_adversarial_content.as_string, 
                     current_token_ids, 
@@ -772,15 +783,16 @@ class AdversarialContentManager:
                     strip_leading_and_trailing_tokens = False, 
                     remove_empty_leading_and_trailing_tokens = False, 
                     remove_leading_and_trailing_trash_fire_tokens = False)
-                # control_slice_start = find_last_occurrence_of_array_in_array(working_adversarial_content.token_ids, current_token_ids)
+                # control_slice_start = find_last_occurrence_of_array_in_array(working_adversarial_content.token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
                 # control_slice_end = control_slice_start + len(working_adversarial_content.token_ids)
                 # result.slice_data.control = slice(control_slice_start, control_slice_end)
 
             self.validate_slice_data('get_prompt (Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            logger.debug(f"current_prompt = '{current_prompt}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"current_prompt = '{current_prompt}'")
 
-            result.slice_data.target_output = find_last_index_of_token(self.attack_state.tokenizer, 
+            result.slice_data.target_output = find_last_index_of_token(self.attack_state, 
                 self.trash_fire_tokens, 
                 self.attack_state.persistable.attack_params.target_output, 
                 current_token_ids, 
@@ -791,7 +803,7 @@ class AdversarialContentManager:
                 remove_leading_and_trailing_trash_fire_tokens = False)
             
             # Can't do this optimization because the context of what appears before and after can change the tokens
-            # target_slice_start = find_last_occurrence_of_array_in_array(self.target_output_token_ids, current_token_ids)
+            # target_slice_start = find_last_occurrence_of_array_in_array(self.target_output_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
             # target_slice_end = goal_slice_start + len(self.target_output_token_ids)
             # result.slice_data.target_output = slice(target_slice_start, target_slice_end)
             
@@ -800,8 +812,9 @@ class AdversarialContentManager:
             # use the known locations of the base prompt, adversarial content, and target output slices to determine the remaining role indices
             # this section should already handle alternative adversarial content placement more or less correctly, except if it's placed in the middle of the base prompt (or interleaved)
             
-            logger.debug(f"current_prompt = '{current_prompt}'")
-            logger.debug(f"result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"current_prompt = '{current_prompt}'")
+                logger.debug(f"result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
             
             user_role_stop_index = result.slice_data.goal.start
             if result.slice_data.control.start < user_role_stop_index:
@@ -810,7 +823,8 @@ class AdversarialContentManager:
             result.slice_data.user_role = slice(user_role_start_index, user_role_stop_index)
             self.validate_slice_data('get_prompt (Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
             
-            logger.debug(f"result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
             
             assistant_role_start_index = result.slice_data.control.stop
             if result.slice_data.goal.stop > assistant_role_start_index:
@@ -822,9 +836,9 @@ class AdversarialContentManager:
 
             self.validate_slice_data('get_prompt (Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            #logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
 
-            #logger.debug(f"getting loss slice using mode {self.attack_state.persistable.attack_params.loss_slice_mode}")
             if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
                 #result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, result.slice_data.target_output.stop)
@@ -847,7 +861,8 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
             
         else:
-            logger.debug(f"Using fast tokenizer")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Using fast tokenizer")
             
             # result.slice_data.user_role = slice(
                 # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0])),
@@ -868,19 +883,23 @@ class AdversarialContentManager:
                     except Exception as e:
                         dummy = 1
                         # last_token_index is already correct
-                        logger.debug(f"exception while getting second token index for user role using fast tokenizer: {e}")
+                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"exception while getting second token index for user role using fast tokenizer: {e}")
             
-            logger.debug(f"result.prompt = {result.prompt}")
-            logger.debug(f"last_token_index = {last_token_index}")
-            logger.debug(f"encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
-            decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state.tokenizer, encoded_conversation_template_prompt.input_ids)
-            logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"result.prompt = {result.prompt}")
+                logger.debug(f"last_token_index = {last_token_index}")
+                logger.debug(f"encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
+                decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state, encoded_conversation_template_prompt.input_ids)
+                logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
             
             user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
-            logger.debug(f"user_role_start_index = {user_role_start_index}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"user_role_start_index = {user_role_start_index}")
             user_role_end_index = encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[0]) + 1)
-            logger.debug(f"user_role_start_index = {user_role_start_index}")
-            logger.debug(f"user_role_end_index = {user_role_end_index}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"user_role_start_index = {user_role_start_index}")
+                logger.debug(f"user_role_end_index = {user_role_end_index}")
             
             result.slice_data.user_role = slice(
                 user_role_start_index,
@@ -897,18 +916,21 @@ class AdversarialContentManager:
             base_prompt_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.base_prompt)
             len_base_prompt = len(self.attack_state.persistable.attack_params.base_prompt)
             base_prompt_end_index = base_prompt_start_index + len_base_prompt
-            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state.tokenizer, self.attack_state.persistable.attack_params.base_prompt)
+            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, self.attack_state.persistable.attack_params.base_prompt)
             
-            logger.debug(f"base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
             base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
             base_prompt_token_end_index = encoded_conversation_template_prompt.char_to_token(base_prompt_end_index)
-            logger.debug(f"base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
             if base_prompt_token_end_index is None:
                 # I don't know why some tokenizers return None for perfectly valid end indices here.
                 # I don't know anything anymore.
                 # This fallback approach is not guaranteed to be accurate, but should be nearly all of the time
                 base_prompt_token_end_index = base_prompt_token_start_index + len(encoded_base_prompt)
-                logger.debug(f"updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
             result.slice_data.goal = slice(              
                 base_prompt_token_start_index,
                 base_prompt_token_end_index
@@ -923,37 +945,27 @@ class AdversarialContentManager:
                 len_working_adversarial_content = len(working_adversarial_content.as_string)
                 working_adversarial_content_end_index = working_adversarial_content_start_index + len_working_adversarial_content
                 
-                logger.debug(f"working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
                 working_adversarial_content_token_start_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_start_index)
                 working_adversarial_content_token_end_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_end_index)
-                logger.debug(f"working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
                 if working_adversarial_content_token_end_index is None:
                     working_adversarial_content_token_end_index = working_adversarial_content_token_start_index + len(working_adversarial_content.token_ids)
-                    logger.debug(f"updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
                 result.slice_data.control = slice(
-                    #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string)),
-                    #encoded_conversation_template_prompt.char_to_token(result.prompt.find(working_adversarial_content.as_string) + len(working_adversarial_content.as_string))
                     working_adversarial_content_token_start_index,
                     working_adversarial_content_token_end_index
                 )
             self.validate_slice_data('get_prompt (non-Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
             # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
             
-            logger.debug(f"finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
-            # result.slice_data.assistant_role = slice(
-                # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[1])),
-                # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[1]) + len(conversation_template.roles[1]) + 1)
-            # )
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
             
             last_token_index = result.prompt.rindex(conversation_template.roles[1])
-            # if conversation_template.name in get_llama2_and_3_fschat_template_names():
-                # try:
-                    # last_token_index_2 = result.prompt.rindex(conversation_template.roles[1], 0, last_token_index)
-                    # last_token_index = last_token_index_2
-                # except Exception as e:
-                    # dummy = 1
-                    # # last_token_index is already correct
-                    # logger.debug(f"exception while getting second token index for assistant role using fast tokenizer: {e}")
             
             result.slice_data.assistant_role = slice(
                 encoded_conversation_template_prompt.char_to_token(last_token_index),
@@ -963,12 +975,15 @@ class AdversarialContentManager:
             self.validate_slice_data('get_prompt (non-Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
             self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
-            logger.debug(f"result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
             prompt_find_self_target = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
-            logger.debug(f"prompt_find_self_target = '{prompt_find_self_target}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"prompt_find_self_target = '{prompt_find_self_target}'")
             prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
             if isinstance(prompt_find_self_target_c2t, type(None)):
-                logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                 prompt_find_self_target_c2t = result.slice_data.assistant.stop
             prompt_combined_c2t = None
             add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
@@ -979,14 +994,16 @@ class AdversarialContentManager:
                     prompt_combined_c2t = prompt_find_self_target_c2t
                     break
             # Subtract one more than the first valid value so that the length of the slice is correct
-            logger.debug(f"prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
             result.slice_data.target_output = slice(
                 prompt_find_self_target_c2t,
                 prompt_combined_c2t + 1
             )
             self.validate_slice_data('get_prompt (non-Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
-            
-            logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+
+            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
             if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                 result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
 
@@ -1027,9 +1044,10 @@ class AdversarialContentManager:
         if user_role_length == 0:
             result.slice_data.user_role = slice(0, user_input_slice.start)
 
-        logger.debug(f"conversation_template (after modifications) = '{conversation_template}'")
-        final_decoded_toks = get_decoded_tokens(self.attack_state.tokenizer, current_token_ids)
-        logger.debug(f"current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"conversation_template (after modifications) = '{conversation_template}'")
+            final_decoded_toks = get_decoded_tokens(self.attack_state, current_token_ids)
+            logger.debug(f"current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
         
         if remove_tokens_after_target_output:
             current_token_ids = current_token_ids[:result.slice_data.target_output.stop]
