@@ -1021,8 +1021,7 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
             model_result = attack_state.model(input_ids = batch_input_ids)
         
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            model_result_decoded = get_decoded_tokens(attack_state, model_result)
-            logger.debug(f"getting logits for model_result = '{model_result}', model_result_decoded = '{model_result_decoded}'")
+            logger.debug(f"getting logits for model_result = '{model_result}'")
 
         model_result_logits = model_result.logits
         if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.forward_device:

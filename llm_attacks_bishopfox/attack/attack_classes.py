@@ -3076,7 +3076,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         using_cpu = attack_state.persistable.attack_params.using_cpu()
         using_cuda = attack_state.persistable.attack_params.using_cuda()
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}")
+            logger.debug(f"Collecting Torch statistics. location_description = {location_description}, is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}.")
 
         if attack_state.persistable.attack_params.performance_stats_output_file is not None:
             safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())

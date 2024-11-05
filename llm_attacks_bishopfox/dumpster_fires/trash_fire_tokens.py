@@ -87,7 +87,7 @@ def get_decoded_token(attack_state, token):
         #result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=True)
         result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=False)
     except Exception as e:
-        logger.error(f"Error decoding token {token_to_decode}: {e}")
+        logger.error(f"Error decoding token {token_to_decode}: {e}\n{traceback.format_exc()}")
         result = None
     #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
     #    logger.debug(f"decoded token '{token}' to '{result}'")
@@ -131,7 +131,7 @@ def get_encoded_token(attack_state, token, exterminate_all_cowboy_nonsense = Fal
         if isinstance(result, type(None)):
             logger.warning(f"the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
     except Exception as e:
-        logger.error(f"Error encoding token {token}: {e}")
+        logger.error(f"Error encoding token {token}: {e}\n{traceback.format_exc()}")
     return result
 
 def get_encoded_tokens(attack_state, tokens, exterminate_all_cowboy_nonsense = False):
