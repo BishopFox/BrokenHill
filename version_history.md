@@ -70,13 +70,12 @@ This is the most significant update to Broken Hill since its public release in S
 * System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.
   * Use `--verbose-resource-info` to display the data every time it's collected. This is probably only useful when debugging Broken Hill.
   * The resource utilization information is used to compile and display statistical information at the end of a test.
-    * By default, a relatively short list of statistics are displayed.
-    * Use `--verbose-stats` to output the complete list instead.
   * The console output formatting for resource utilization has been changed slightly to make it match the end-of-run information's language.
-  * Additionally, a `--torch-cuda-memory-history-file` option has been added that uses [PyTorch's built-in CUDA profiling feature to generate a pickled blob of information that you can use to visualize details of data in memory on your CUDA device(s)](https://pytorch.org/docs/stable/torch_cuda_memory.html) during a Broken Hill run
+  * Additionally, a `--torch-cuda-memory-history-file` option has been added that uses [PyTorch's built-in CUDA profiling feature to generate a pickled blob of information that you can use to visualize details of data in memory on your CUDA device(s)](https://pytorch.org/docs/stable/torch_cuda_memory.html) during a Broken Hill run.
 * Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
-* Added some basic automated tests to make validating additional models and families easier and avoid regression bugs.
+* Greatly improved error handling throughout.
+* Added automated testing to make validating additional models and families easier and avoid regression bugs.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
 * Added the following additional [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
   * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.  

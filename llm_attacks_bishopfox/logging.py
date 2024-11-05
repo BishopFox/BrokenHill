@@ -104,9 +104,23 @@ class ANSIFormatter():
         return result    
         
     def get_ansi_format_code(self, code_name):
+        result = ""
         if code_name in self.ansi_map:
-            return ANSIFormatter.get_ansi_esc(f"{self.ansi_map[code_name]}m")
-        return None
+            result = ANSIFormatter.get_ansi_esc(f"{self.ansi_map[code_name]}m")
+            # if the colour is "bright", prefix it with the non-bright version to approximate the selected colour on terminals that don't support the AIX colour extensions
+            if "_bright_" in code_name:                
+                non_bright_name = code_name.replace("_bright", "")
+                # special cases
+                if "bright_yellow" in code_name:
+                    non_bright_name = code_name.replace("bright_yellow", "brown")
+                if "bright_white" in code_name:
+                    non_bright_name = code_name.replace("bright_white", "light_grey")
+                if non_bright_name in self.ansi_map:
+                    non_bright_code = ANSIFormatter.get_ansi_esc(f"{self.ansi_map[non_bright_name]}m")
+                    result = f"{non_bright_code}{result}"
+        else:
+            logger.error(f"No result for ANSI formatting code name '{code_name}' - returning empty string")
+        return result
 
 class ConsoleLevelFilter(logging.Filter):
     def __init__(self, attack_params):
@@ -133,24 +147,29 @@ class BrokenHillLogFormatter(logging.Formatter):
         self.ansi_formatter = ANSIFormatter()        
         self.use_ansi = use_ansi
         # create these once at the beginning to avoid constant calls to regenerate them
-        self.ac_reset = self.ansi_formatter.get_ansi_format_code("reset") + self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        # self.ac_debug = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
-        # self.ac_info = self.ansi_formatter.get_ansi_format_code("fg_light_green")
-        # self.ac_warning = self.ansi_formatter.get_ansi_format_code("fg_yellow")
-        # self.ac_error = self.ansi_formatter.get_ansi_format_code("fg_red")
-        # self.ac_critical = self.ansi_formatter.get_ansi_format_code("fg_red") + self.ansi_formatter.get_ansi_format_code("blink_slow")
-        #self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_magenta") + self.ansi_formatter.get_ansi_format_code("bg_bright_magenta") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_info = self.ansi_formatter.get_ansi_format_code("bg_green") + self.ansi_formatter.get_ansi_format_code("bg_bright_green") + self.ansi_formatter.get_ansi_format_code("fg_black")
-        #self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("bg_bright_yellow") + self.ansi_formatter.get_ansi_format_code("fg_black")
-        self.ac_error = self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_critical = self.ansi_formatter.get_ansi_format_code("blink_slow") + self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_separators = self.ansi_formatter.get_ansi_format_code("fg_light_grey") + self.ansi_formatter.get_ansi_format_code("faint")
-        self.ac_debug_text = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
-        self.ac_normal_text = self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_critical_text = self.ansi_formatter.get_ansi_format_code("fg_light_red")
-        self.ac_timestamp = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
+        self.ac_reset = ""
+        self.ac_debug = ""
+        self.ac_info = ""
+        self.ac_warning = ""
+        self.ac_error = ""
+        self.ac_critical = ""
+        self.ac_separators = ""
+        self.ac_debug_text = ""
+        self.ac_normal_text = ""
+        self.ac_critical_text = ""
+        self.ac_timestamp = ""
+        if self.use_ansi:
+            self.ac_reset = self.ansi_formatter.get_ansi_format_code("reset") + self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
+            self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_bright_magenta") + self.ansi_formatter.get_ansi_format_code("fg_white")
+            self.ac_info = self.ansi_formatter.get_ansi_format_code("bg_bright_green") + self.ansi_formatter.get_ansi_format_code("fg_black")
+            self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_bright_yellow") + self.ansi_formatter.get_ansi_format_code("fg_black")
+            self.ac_error = self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
+            self.ac_critical = self.ansi_formatter.get_ansi_format_code("blink_slow") + self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
+            self.ac_separators = self.ansi_formatter.get_ansi_format_code("fg_light_grey") + self.ansi_formatter.get_ansi_format_code("faint")
+            self.ac_debug_text = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
+            self.ac_normal_text = self.ansi_formatter.get_ansi_format_code("fg_white")
+            self.ac_critical_text = self.ansi_formatter.get_ansi_format_code("fg_light_red")
+            self.ac_timestamp = self.ansi_formatter.get_ansi_format_code("fg_light_grey")
     
     @staticmethod
     def get_short_level_name(levelno):
@@ -186,7 +205,7 @@ class BrokenHillLogFormatter(logging.Formatter):
 # BEGIN: based on https://stackoverflow.com/a/77821614
     def formatTime(self, record, datefmt = None):
         if datefmt is None:
-            result = datetime.fromtimestamp(record.created).astimezone().isoformat(timespec='milliseconds')
+            result = datetime.datetime.fromtimestamp(record.created).astimezone().isoformat(timespec='milliseconds')
         else:
             # BEGIN: borrowed from https://github.com/python/cpython/blob/eac41c5ddfadf52fbd84ee898ad56aedd5d90a41/Lib/logging/__init__.py#L648C9-L655C17
             ct = self.converter(record.created)
@@ -198,15 +217,18 @@ class BrokenHillLogFormatter(logging.Formatter):
     def format(self, record):
         #logger.debug(f"record = {record}")
         short_level_name = BrokenHillLogFormatter.get_short_level_name(record.levelno)
-        levelname = record.levelname
+        # refer to properties of the record using f-strings to guarantee that changing the local variable won't change the record itself.
+        levelname = f"{record.levelname}"
         record.message = record.getMessage()
-        message = record.message        
+        message = f"{record.message}"
         record.asctime = self.formatTime(record, self.datefmt)
-        asctime = record.asctime
+        asctime = f"{record.asctime}"
 
         # separator_left and separator_right, with short names to avoid even messier formatting strings
         sl = "["
         sr = "]"
+
+        #print(f"[BrokenHillLogFormatter.format] Debug: levelname = '{levelname}', self.use_ansi = {self.use_ansi}")
 
         if self.use_ansi:
             sl = f"{self.ac_separators}{sl}{self.ac_reset}"
@@ -227,12 +249,13 @@ class BrokenHillLogFormatter(logging.Formatter):
             # strip any ANSI codes from the message
             message = strip_ansi_codes(message)
         
+        #print(f"[BrokenHillLogFormatter.format] Debug: levelname = '{levelname}', self.use_ansi = {self.use_ansi}")
+        
         # Get the basic values the same way as https://github.com/python/cpython/blob/d0abd0b826cfa574d1515c6f8459c9901939388f/Lib/logging/__init__.py#L477
-        values = record.__dict__
+        # make a copy to avoid tampering with the values in the record itself
+        values = copy.deepcopy(record.__dict__)
         if self.defaults is not None:
-            values = self.defaults | record.__dict__
-        else:
-            values = record.__dict__
+            values = values | self.defaults
         
         # add custom[ized] values
         values["levelname"] = levelname
@@ -270,22 +293,22 @@ class BrokenHillLogManager:
         self.file_handler = None
     
     def get_console_formatter(self):
-        result = BrokenHillLogFormatter(
+        console_formatter = BrokenHillLogFormatter(
             "{sl}{asctime}{sr}{sl}{short_level_name}{sr} {message}",
             datefmt = "%Y-%m-%d@%H:%M:%S",
             attack_params = self.attack_params,
             use_ansi = self.attack_params.console_ansi_format
         )
-        return result
+        return console_formatter
         
     def get_log_file_formatter(self):
-        result = BrokenHillLogFormatter(
+        file_formatter = BrokenHillLogFormatter(
             "{sl}{asctime}{sr} {sl}{funcName}{sr} {sl}{pathname}:{lineno}{sr} {sl}{levelname}{sr} {message}",
             #datefmt = "%Y-%m-%d@%H:%M:%S:uuu%z",
             attack_params = self.attack_params,
             use_ansi = self.attack_params.log_file_ansi_format
         )
-        return result
+        return file_formatter
     
     def initialize_handlers(self):
         self.console_formatter = self.get_console_formatter()
@@ -392,14 +415,23 @@ class ConsoleGridView:
 
         if self.use_ansi:
             self.ac_reset = self.ansi_formatter.get_ansi_format_code("reset") + self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
-            self.ac_title = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white") + self.ansi_formatter.get_ansi_format_code("bold")
-            self.ac_column_header = self.ansi_formatter.get_ansi_format_code("bg_light_grey") + self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
-            self.ac_row_header = self.ansi_formatter.get_ansi_format_code("bg_light_grey") + self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
+            #self.ac_title = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white") + self.ansi_formatter.get_ansi_format_code("bold")
+            self.set_title_colour("blue", "white")
+            self.ac_column_header = self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
+            self.ac_row_header = self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
             self.ac_data_cell = self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
             self.ac_empty_space = self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
 
-    def set_title_colour(self, foreground_colour_code_name, background_colour_code_name):
-        self.ac_title = self.ansi_formatter.get_ansi_format_code(f"bg_{background_colour_code_name}") + self.ansi_formatter.get_ansi_format_code(f"fg_{foreground_colour_code_name}") + self.ansi_formatter.get_ansi_format_code("bold")
+    @staticmethod
+    def terminal_is_wide_enough_for_grid(grid_width):
+        console_columns, console_rows = os.get_terminal_size(0)
+        if console_columns >= grid_width:
+            return True
+        return False
+
+    def set_title_colour(self, background_colour_code_name, foreground_colour_code_name):
+        if self.use_ansi:
+            self.ac_title = self.ansi_formatter.get_ansi_format_code(f"bg_{background_colour_code_name}") + self.ansi_formatter.get_ansi_format_code(f"fg_{foreground_colour_code_name}") + self.ansi_formatter.get_ansi_format_code("bold")
 
     # data_list should be a two-dimensional list
     # first dimension is rows
@@ -432,28 +464,53 @@ class ConsoleGridView:
                     max_width = len_row_header
             
             if max_width > 0:
+                # Avoid odd-numbered widths to make layout easier
+                if (max_width % 2) == 1:
+                    max_width += 1
                 # add one more column width value to account for the row headers
                 self.column_widths.append(0)
                 self.column_widths[0] = max_width
                 first_data_column_index = 1
 
+        # Check widths of column headers
+        for column_num in range(0, num_column_headers):
+            destination_column_width_index = first_data_column_index + column_num
+            column_width_for_this_row = len(self.column_headers[column_num])
+            # Avoid odd-numbered widths to make layout easier
+            if (column_width_for_this_row % 2) == 1:
+                column_width_for_this_row += 1
+            if column_width_for_this_row > self.column_widths[destination_column_width_index]:
+                self.column_widths[destination_column_width_index] = column_width_for_this_row
+
+        # Check widths of data as well
         for row_num in range(0, num_data_rows):
             for column_num in range(0, num_data_columns):
                 destination_column_width_index = first_data_column_index + column_num
                 column_width_for_this_row = len(data_list[row_num][column_num])
+                # Avoid odd-numbered widths to make layout easier
+                if (column_width_for_this_row % 2) == 1:
+                    column_width_for_this_row += 1
                 if column_width_for_this_row > self.column_widths[destination_column_width_index]:
                     self.column_widths[destination_column_width_index] = column_width_for_this_row
         
-        total_width = 0
         num_columns = len(self.column_widths)
+        # make column widths all even or all odd, if necessary
         for column_num in range(0, num_columns):
-            # Add three characters for padding/separator, except for leftmost columns
-            width_addition = 3
-            #if column_num == 0 or column_num == (num_columns - 1):
-            if column_num == 0:
-                width_addition = 2
-            self.column_widths[column_num] += width_addition
+            # # all even
+            # if (self.column_widths[column_num] % 2) == 1:
+                # self.column_widths[column_num] = self.column_widths[column_num] + 1
+            # all odd
+            if (self.column_widths[column_num] % 2) == 0:
+                self.column_widths[column_num] = self.column_widths[column_num] + 1
+        
+        total_width = 0        
+        for column_num in range(0, num_columns):
+            # Add 1 character padding on either side
+            self.column_widths[column_num] = self.column_widths[column_num] + 2
             total_width += self.column_widths[column_num]
+        
+        # Add length of separator times (number of columns - 1)
+        total_width += (len(self.column_separator) * (num_columns - 1))
         
         if total_width > self.max_table_width:
             raise LoggingException(f"The total width of the column headers for this table ({total_width}) exceeds the maximum width of the table ({self.max_table_width}). This class does not currently handle wrapping row or column headers.")
@@ -462,81 +519,105 @@ class ConsoleGridView:
         
         self.data = copy.deepcopy(data_list)
     
+    def get_padding_to_center_by_width(self, column_width, text_width):
+        column_padding_left = int(math.floor(float(column_width - text_width) / 2.0))
+        column_padding_right = column_width - (text_width + column_padding_left)
+        return column_padding_left, column_padding_right
+        
     def get_padding_to_center(self, column_width, text_to_center):        
         len_text_to_center = len(text_to_center)
-        column_padding_left = int(math.floor(float(column_width - len_text_to_center) / 2.0))
-        column_padding_right = column_width - (len_text_to_center + column_padding_left)
-        print(f"[get_padding_to_center] Debug: column_width = {column_width}, text_to_center = '{text_to_center}', len_text_to_center = {len_text_to_center}, column_padding_left = {column_padding_left}, column_padding_right = {column_padding_right}")
-        return column_padding_left, column_padding_right
-    
+        return self.get_padding_to_center_by_width(column_width, len_text_to_center)
+            
     def get_padding_to_center_by_column(self, first_data_column_index, column_num, text_to_center):
         column_width = self.column_widths[first_data_column_index + column_num]
         return self.get_padding_to_center(column_width, text_to_center)
     
+    def get_padding_to_left_align_by_width(self, column_width, text_width):        
+        column_padding_left = 1
+        column_padding_right = column_width - (text_width + 1)
+        return column_padding_left, column_padding_right
+    
+    def get_padding_to_left_align(self, column_width, text_to_align):        
+        len_text_to_align = len(text_to_align)
+        return self.get_padding_to_left_align_by_width(column_width, len_text_to_align)
+    
+    def get_padding_to_left_align_by_column(self, first_data_column_index, column_num, text_to_align):
+        column_width = self.column_widths[first_data_column_index + column_num]
+        return self.get_padding_to_left_align(column_width, text_to_align)
+    
+    def get_padding_to_right_align_by_width(self, column_width, text_width):        
+        column_padding_left = column_width - (text_width + 1)
+        column_padding_right = 1
+        return column_padding_left, column_padding_right
+    
+    def get_padding_to_right_align(self, column_width, text_to_align):        
+        len_text_to_align = len(text_to_align)
+        return self.get_padding_to_right_align_by_width(column_width, len_text_to_align)
+    
+    def get_padding_to_right_align_by_column(self, first_data_column_index, column_num, text_to_align):
+        column_width = self.column_widths[first_data_column_index + column_num]
+        return self.get_padding_to_right_align(column_width, text_to_align)
+    
     def render_table(self):
         console_columns, console_rows = os.get_terminal_size(0)
-        table_padding_total = console_columns - self.total_width
-        if table_padding_total < 0:
+        table_padding_left, table_padding_right = self.get_padding_to_center_by_width(console_columns, self.total_width)        
+        if table_padding_left < 0 or table_padding_right < 0:
             raise LoggingException(f"The width of the current terminal ({console_columns}) is less than the width of the table ({self.total_width}). This class does not currently handle wrapping row or column headers.")
-        table_padding_left = int(math.floor(float(table_padding_total) / 2.0))
         num_rows = len(self.data)
         num_data_columns = len(self.data[0])
         if num_rows < 1:
             raise LoggingException("Can't process an empty list of data.")
+        table_padding_spaces = " " * table_padding_left
         
         num_row_headers = len(self.row_headers)
         num_column_headers = len(self.column_headers)
         
-        # title_padding_left = int(math.floor(float(self.total_width - len(self.title)) / 2.0))
-        # tpl = " " * title_padding_left
-        # title_padding_right = self.total_width - title_padding_left
-        # tpr = " " * title_padding_right
         title_padding_left, title_padding_right = self.get_padding_to_center(self.total_width, self.title)
         tpl = " " * title_padding_left
         tpr = " " * title_padding_right
-        title_row = f"{self.ac_title}{tpl}{self.title}{tpr}{self.ac_reset}\n"
+        title_row = f"{self.ac_reset}{table_padding_spaces}{self.ac_title}{tpl}{self.title}{tpr}{self.ac_reset}\n"
         
-        header_row = ""
+        header_row = f"{self.ac_reset}{table_padding_spaces}"
         # If there are row headers, the upper-left cell is empty space
         
         first_data_column_index = 0
-        
+                
         add_separator = False
         if num_row_headers > 0:
-            hr_padding = " " * (self.column_widths[0] - 1)
-            header_row = f"{self.ac_empty_space}{hr_padding}"
+            hr_padding = " " * (self.column_widths[0])
+            #header_row = f"{header_row}{self.ac_empty_space}{hr_padding}"
+            header_row = f"{header_row}{self.ac_column_header}{hr_padding}"
             first_data_column_index = 1
             add_separator = True
-        header_row = f"{header_row}{self.ac_reset}{self.ac_column_header}"
+        header_row = f"{header_row}{self.ac_column_header}"
         
         # Add the column headers
-        
         for column_num in range(0, num_column_headers):
             if add_separator:
                 header_row = f"{header_row}{self.column_separator}"
             else:
                 add_separator = True
-            #column_padding_left = int(math.floor(float(self.column_widths[first_data_column_index + column_num] - len(self.column_headers[column_num]) - 2) / 2.0)) + 1
-            #column_padding_right = self.column_widths[first_data_column_index + column_num] - column_padding_left
             column_padding_left, column_padding_right = self.get_padding_to_center_by_column(first_data_column_index, column_num, self.column_headers[column_num])
             cpl = " " * column_padding_left
             cpr = " " * column_padding_right
             header_row = f"{header_row}{cpl}{self.column_headers[column_num]}{cpr}"
         
-        header_row = f"{header_row}\n"
+        header_row = f"{header_row}{self.ac_reset}\n"
         
         data_rows = ""
         
         # Add the data rows
         for row_num in range(0, num_rows):
-            current_row = ""
+            current_row = f"{self.ac_reset}{table_padding_spaces}"
             add_separator = False
             # if there is a row header, add it
             if num_row_headers > 0:
                 current_row_header = self.row_headers[row_num]
-                crh_left_padding = ((self.column_widths[0] - 2) - len(current_row_header)) + 1
-                crhlp = " " * crh_left_padding
-                padded_row_header = f"{crhlp}{current_row_header}"
+                #crh_left_padding = ((self.column_widths[0] - 2) - len(current_row_header)) + 1
+                crh_padding_left, crh_padding_right = self.get_padding_to_right_align_by_column(0, 0, current_row_header)
+                crhlp = " " * crh_padding_left
+                crhrp = " " * crh_padding_right
+                padded_row_header = f"{crhlp}{current_row_header}{crhrp}"
                 current_row = f"{current_row}{self.ac_reset}{self.ac_row_header}{padded_row_header}"
                 add_separator = True
             current_row = f"{current_row}{self.ac_reset}{self.ac_data_cell}"

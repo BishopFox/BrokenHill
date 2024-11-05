@@ -995,7 +995,18 @@ def main(attack_params, log_manager):
         abnormal_termination = True
     
     except Exception as e:
-        logger.critical(f"Broken Hill encountered an unhandled exception: {e}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback.format_exc()}")
+        # try/catch when populating these variables so that Broken Hill won't crash if processing the f-string fails
+        e_string = None
+        traceback_string = None
+        try:
+            e_string = f"{e}"
+        except Exception as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except Exception as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an unhandled exception: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
         abnormal_termination = True
 
     if not user_aborted and not abnormal_termination:
@@ -1030,6 +1041,8 @@ def main(attack_params, log_manager):
     if attack_state.persistable.attack_params.save_state:
         logger.info(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
     attack_state.write_persistent_state()
+    if attack_state.persistable.attack_params.log_file_path is not None:
+        logger.info(f"The log information for this attack has been written to '{attack_state.persistable.attack_params.log_file_path}'.")
     attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
     
     completed_all_iterations = True
@@ -1040,6 +1053,7 @@ def main(attack_params, log_manager):
     if attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
         completed_all_iterations = False
 
+    
     slm = attack_state.get_state_loading_message(completed_all_iterations)
     logger.info(slm)
     if not completed_all_iterations:
@@ -1582,7 +1596,9 @@ if __name__=='__main__':
     log_manager.attach_handlers(__name__)
     logger = logging.getLogger(__name__)
     logger.setLevel(log_manager.get_lowest_log_level())
-    logger.info(f"Log handlers are attached")    
+    logger.info(f"Log handlers are attached")
+    # Capture all Python warnings to avoid PyTorch (and similar) warnings from being displayed outside of the log handler
+    logging.captureWarnings(True)
     # END: any arguments related to logging need to be handled here
     
     cuda_available = torch.cuda.is_available()

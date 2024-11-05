@@ -6,6 +6,7 @@ import numpy
 import psutil
 import re
 import torch
+import traceback
 
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
@@ -527,8 +528,20 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - begin")
 
     if coordinate_gradient is not None:
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"coordinate_gradient.shape = {coordinate_gradient.shape}, coordinate_gradient = {coordinate_gradient}")
         if not_allowed_tokens is not None:
-            coordinate_gradient[:, not_allowed_tokens.to(coordinate_gradient.device)] = numpy.infty
+            not_allowed_tokens_gradient_device = None
+            try:
+                not_allowed_tokens_gradient_device = not_allowed_tokens.to(coordinate_gradient.device)
+            except Exception as e:
+                logger.error(f"Exception thrown when converting the token denylist to a tensor on the PyTorch device: {e}\n{traceback.format_exc()}\nThe list of adversarial content candidates generated during this stage will not respect the denylist.")
+                not_allowed_tokens_gradient_device = None
+            if not_allowed_tokens_gradient_device is not None:
+                try:
+                    coordinate_gradient[:, not_allowed_tokens_gradient_device] = numpy.infty
+                except Exception as e:
+                    logger.error(f"Exception thrown when applying the token denylist to the coordinate gradient: {e}\n{traceback.format_exc()}\nThe list of adversarial content candidates generated during this stage will likely not respect the denylist.")
 
         top_indices = (-coordinate_gradient).topk(attack_state.persistable.attack_params.topk, dim=1).indices
         if top_indices.shape[0] < 1:

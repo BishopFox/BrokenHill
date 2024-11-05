@@ -71,6 +71,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.model_name_regexes_to_test = None
         self.specific_model_names_to_skip = None
         self.model_name_regexes_to_skip = None
+        self.log_level = "debug"
+        self.console_level = "info"
     
     def get_process_timeout(self):
         if self.model_device == "cpu":
@@ -122,6 +124,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         for i in range(0, len(self.python_params)):
             result.append(self.python_params[i])
         result.append(self.broken_hill_path)
+        result.append("--log-level")
+        result.append(self.log_level)
+        result.append("--console-level")
+        result.append(self.console_level)
         if self.model_device is not None and self.model_device.strip() != "":
             result.append('--model-device')
             result.append(self.model_device)

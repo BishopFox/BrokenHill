@@ -80,6 +80,9 @@ class DecodingException(Exception):
 class EncodingException(Exception):
     pass
 
+class GenerationException(Exception):
+    pass
+
 class LossThresholdException(Exception):
     pass
 
@@ -1972,15 +1975,27 @@ class VolatileAttackState():
         input_ids_converted = input_ids_sliced.to(self.model.device).unsqueeze(0)
         attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
         
+        done_generating = False
         if self.persistable.attack_params.use_attention_mask:
-            result.output_token_ids = self.model.generate(input_ids_converted, 
-                                        attention_mask = attn_masks, 
-                                        generation_config = working_gen_config,
-                                        pad_token_id = self.tokenizer.pad_token_id)[0]
-        else:
-            result.output_token_ids = self.model.generate(input_ids_converted, 
-                                        generation_config = working_gen_config,
-                                        pad_token_id = self.tokenizer.pad_token_id)[0]
+            try:
+                result.output_token_ids = self.model.generate(input_ids_converted, 
+                                            attention_mask = attn_masks, 
+                                            generation_config = working_gen_config,
+                                            pad_token_id = self.tokenizer.pad_token_id)[0]
+                done_generating = True
+            except Exception as e:
+                done_generating = False
+                logger.error(f"Error generating content with attention mask: {e}\n{traceback.format_exc()}\nBroken Hill will attempt to generate the content without an attention mask.")
+        if not done_generating:
+            try:
+                result.output_token_ids = self.model.generate(input_ids_converted, 
+                                            generation_config = working_gen_config,
+                                            pad_token_id = self.tokenizer.pad_token_id)[0]
+            except Exception as e:
+                done_generating = False
+                error_message = f"Error generating content without attention mask: {e}\n{traceback.format_exc()}"
+                logger.error(error_message)
+                raise GenerationException(error_message)
         
         result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
         
@@ -2003,7 +2018,7 @@ class VolatileAttackState():
         
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"result_ar_info_data = {result_ar_info_data.to_json()}")
-            logger.debug(f"result_ar_info_data.decoded_generated_prompt_string = '{result_ar_info_data.decoded_generated_prompt_string}', \nresult_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_user_input_string = '{result_ar_info_data.decoded_user_input_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_generated_prompt_tokens = '{result_ar_info_data.decoded_generated_prompt_tokens}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_user_input_tokens = '{result_ar_info_data.decoded_user_input_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+            logger.debug(f"result_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
         
         jailbroken = False
         
@@ -2532,6 +2547,7 @@ class ResourceUtilizationData(JSONSerializableObject):
     def __init__(self):
         self.snapshots = []
         self.statistics = ResourceUtilizationStatistics()
+        self.minimum_terminal_width_for_grid = 80
 
     def to_dict(self):
         result = super(ResourceUtilizationData, self).properties_to_dict(self)
@@ -2799,7 +2815,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = new_message
         return found_data, message
 
-    def output_statistics(self, use_ansi = True, verbose = False):
+    def output_statistics_grid(self, use_ansi = True, verbose = False):
         message = "Resource utilization / performance statistics:"
         #if verbose:
         #    message = f"{message} (verbose)"
@@ -2816,9 +2832,9 @@ class ResourceUtilizationData(JSONSerializableObject):
         
         found_data = False
         row_headers_cpu_process_memory = [ 
-            "Virtual memory in use (bytes):",
-            "Physical memory in use (bytes):",
-            "Swap memory in use (bytes):"
+            "Virtual memory in use (bytes)",
+            "Physical memory in use (bytes)",
+            "Swap memory in use (bytes)"
             ]
         cgv = ConsoleGridView(use_ansi = use_ansi)
         cgv.column_headers = column_headers
@@ -2839,12 +2855,12 @@ class ResourceUtilizationData(JSONSerializableObject):
         
         found_data = False  
         row_headers_cpu_system_memory = [ 
-            "Memory in use (bytes):",
-            "Memory available (bytes):",
-            "Memory utilization:",
-            "Swap memory in use (bytes):",
-            "Swap memory available (bytes):",
-            "Swap memory utilization:"
+            "Memory in use (bytes)",
+            "Memory available (bytes)",
+            "Memory utilization",
+            "Swap memory in use (bytes)",
+            "Swap memory available (bytes)",
+            "Swap memory utilization"
             ]
         cgv = ConsoleGridView(use_ansi = use_ansi)
         cgv.column_headers = column_headers
@@ -2869,22 +2885,28 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = f"{message}{table_text}\n\n"
             found_data_overall = True
         
-        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):            
+        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+            # colour the two device-level tables in alternating pairs to make it easier to distinguish data when more than one CUDA device is present.
+            title_row_background_colour = "magenta"
+            #title_row_background_colour = "green"
+            title_row_foreground_colour = "white"
+            if (cuda_device_num % 2) == 1:
+                title_row_background_colour = "green"
+                #title_row_background_colour = "magenta"
+                title_row_foreground_colour = "white"
             found_data = False  
             cd = self.statistics.cuda_devices[cuda_device_num]
-            row_headers_cuda_process_memory = [ 
-                "Memory reserved by Broken Hill (bytes):",
-                "Memory utilization by Broken Hill:",
-                "Memory reserved and allocated (bytes):",
-                "Memory reserved but unallocated (bytes):",
-                "Reserved memory utilization by Broken Hill:",
-                "Memory in use system-wide (bytes):",
-                "Memory available system-wide (bytes):",
-                "Memory utilization system-wide:"
+            row_headers_cuda = [ 
+                "Memory reserved (bytes)",
+                "Memory utilization",
+                "Memory reserved and allocated",
+                "Memory reserved but unallocated",
+                "Reserved memory utilization"
                 ]
             cgv = ConsoleGridView(use_ansi = use_ansi)
+            cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
             cgv.column_headers = column_headers
-            cgv.row_headers = row_headers_cuda_process_memory
+            cgv.row_headers = row_headers_cuda
             current_stats = []
             dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
@@ -2896,6 +2918,23 @@ class ResourceUtilizationData(JSONSerializableObject):
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
             dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            if found_data:
+                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - Broken Hill Process"
+                cgv.set_data(current_stats)
+                table_text = cgv.render_table()
+                message = f"{message}{table_text}\n\n"
+                found_data_overall = True
+        
+            row_headers_cuda = [ 
+                "Memory in use (bytes)",
+                "Memory available (bytes)",
+                "Memory utilization"
+                ]
+            cgv = ConsoleGridView(use_ansi = use_ansi)
+            cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
+            cgv.column_headers = column_headers
+            cgv.row_headers = row_headers_cuda
+            current_stats = []
             dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
             dataset = cd.get_dataset("available_memory", raise_on_missing = False)
@@ -2903,7 +2942,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
             if found_data:
-                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name}"
+                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - System-Wide"
                 cgv.set_data(current_stats)
                 table_text = cgv.render_table()
                 message = f"{message}{table_text}\n\n"
@@ -2911,6 +2950,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         
         found_data = False
         cgv = ConsoleGridView(use_ansi = use_ansi)
+        cgv.set_title_colour("cyan", "white")
         cgv.column_headers = column_headers
         cgv.row_headers = [ "Seconds to process each iteration:" ]
         current_stats = []
@@ -2921,90 +2961,114 @@ class ResourceUtilizationData(JSONSerializableObject):
             cgv.set_data(current_stats)
             table_text = cgv.render_table()
             message = f"{message}{table_text}\n\n"
-            found_data_overall = True           
+            found_data_overall = True
         
-        # found_cpu_data = False        
-        # cpu_message = f"{message}\n\n  CPU:"
-        # cpu_message = f"{cpu_message}\n    Broken Hill process:"
-        # pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
-        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
-        # if verbose:
-            # ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
-        # pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
-        # if verbose or pswap.maximum > 0:
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
-        # cpu_message = f"{cpu_message}\n    System-wide:"
-        # sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
-        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
-        # if verbose:
-            # sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
-        # sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
-        # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
-        # sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
-        # if verbose or sys_swap_inuse.maximum > 0:
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
-        # if verbose:
-            # sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
-        # if verbose or sys_swap_inuse.maximum > 0:
-            # sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-            # found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
-        # if found_cpu_data:
-            # found_data = True
-            # message = cpu_message
-        
-        # found_cuda_data = False
-        # cuda_message = f"{message}\n\n  CUDA devices:"
-        # cuda_padding = '        '
-        # for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
-            # found_cuda_device_data = False
-            # cd = self.statistics.cuda_devices[cuda_device_num]
-            # cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
-            # cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
-            # cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
-            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
-            # cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
-            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
-            # if verbose:
-                # cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
-                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
-                # cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
-                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
-                # cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
-                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
-            # cuda_device_message = f"{cuda_device_message}\n      System-wide:"
-            # cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
-            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
-            # if verbose:
-                # cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
-                # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
-            # cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
-            # found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
-            
-            # if found_cuda_device_data:
-                # found_cuda_data = True
-                # cuda_message = f"{cuda_message}{cuda_device_message}"
-        
-        # if found_cuda_data:
-            # found_data = True
-            # message = cuda_message
-        
-        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
-        
-        #found_perf_data = False
-        #perf_message = f"{message}\n\n  Processing performance:"
-        #tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
-        #found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
-    
-        # if found_perf_data:
-            # found_data = True
-            # message = perf_message
-    
         if found_data_overall:
             logger.info(message)
-
+    
+    def output_statistics_plaintext(self, use_ansi = True, verbose = False):        
+        message = "Resource utilization / performance statistics:"
+        if verbose:
+            message = f"{message} (verbose)"
+        message = f"{message}\n\n"
+        
+        found_cpu_data = False        
+        cpu_message = f"{message}\n\n  CPU:"
+        cpu_message = f"{cpu_message}\n    Broken Hill process:"
+        pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
+        if verbose:
+            ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
+        pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        if verbose or pswap.maximum > 0:
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
+        cpu_message = f"{cpu_message}\n    System-wide:"
+        sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
+        if verbose:
+            sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
+        sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
+        sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        if verbose or sys_swap_inuse.maximum > 0:
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
+        if verbose:
+            sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
+        if verbose or sys_swap_inuse.maximum > 0:
+            sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
+        if found_cpu_data:
+            found_data = True
+            message = cpu_message
+        
+        found_cuda_data = False
+        cuda_message = f"{message}\n\n  CUDA devices:"
+        cuda_padding = '        '
+        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+            found_cuda_device_data = False
+            cd = self.statistics.cuda_devices[cuda_device_num]
+            cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
+            cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
+            cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
+            cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
+            if verbose:
+                cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
+                cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
+                cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
+            cuda_device_message = f"{cuda_device_message}\n      System-wide:"
+            cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
+            if verbose:
+                cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
+            cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
+            
+            if found_cuda_device_data:
+                found_cuda_data = True
+                cuda_message = f"{cuda_message}{cuda_device_message}"
+        
+        if found_cuda_data:
+            found_data = True
+            message = cuda_message
+        
+        #TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+        
+        found_perf_data = False
+        perf_message = f"{message}\n\n  Processing performance:"
+        tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
+    
+        if found_perf_data:
+            found_data = True
+            message = perf_message
+    
+        if found_data:
+            logger.info(message)
+    
+    def output_statistics(self, use_ansi = True, verbose = False):
+        # If there are at least 80 columns of terminal, try outputting in grid form first.
+        # If not, or grid errors out, output in plaintext instead.
+        grid_displayed = False
+        if ConsoleGridView.terminal_is_wide_enough_for_grid(self.minimum_terminal_width_for_grid):
+            try:
+                self.output_statistics_grid(use_ansi = use_ansi, verbose = verbose)
+                grid_displayed = True
+            except Exception as e:
+                logger.error(f"Exception thrown when trying to display statistics in grid form: {e}\n{traceback.format_exc()}\nFalling back to plaintext statistics output.")
+                grid_displayed = False
+        
+        if not grid_displayed:
+            self.output_statistics_plaintext(use_ansi = use_ansi, verbose = verbose)
+        
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
         self.snapshots.append(current_snapshot)

@@ -74,83 +74,115 @@ def is_phi_1_to_3_model(model):
 
 def get_embedding_layer(attack_state):
     use_default_logic = False
+    result = None
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"This model is an instance of the type '{type(attack_state.model).__name__}'")
-    if isinstance(attack_state.model, BartForCausalLM):
-        return attack_state.model.model.decoder.get_input_embeddings()
-    if isinstance(attack_state.model, BigBirdPegasusForCausalLM) or isinstance(attack_state.model, PegasusForCausalLM):
-        return attack_state.model.model.decoder.embed_tokens
-    if isinstance(attack_state.model, BlenderbotForCausalLM):
-        return attack_state.model.model.decoder.embed_tokens
-    if isinstance(attack_state.model, FalconForCausalLM):
-        return attack_state.model.get_input_embeddings()
-    if isinstance(attack_state.model, GemmaForCausalLM):
-        return attack_state.model.base_model.get_input_embeddings()
-    if isinstance(attack_state.model, Gemma2ForCausalLM):
-        return attack_state.model.base_model.get_input_embeddings()
-    if isinstance(attack_state.model, GPT2LMHeadModel):
-        return attack_state.model.transformer.wte
-    if isinstance(attack_state.model, GPTJForCausalLM):
-        return attack_state.model.transformer.wte
-    if isinstance(attack_state.model, GPTNeoForCausalLM):
-        return attack_state.model.base_model.wte
-    if isinstance(attack_state.model, GPTNeoXForCausalLM):
-        return attack_state.model.base_model.embed_in
-    if isinstance(attack_state.model, LlamaForCausalLM):
-        if hasattr(attack_state.model, "model"):
-            if hasattr(attack_state.model.model, "get_input_embeddings"):
-                return attack_state.model.model.get_input_embeddings()
-            if hasattr(attack_state.model.model, "embed_tokens"):
-                return attack_state.model.model.embed_tokens
-        if hasattr(attack_state.model, "embed_tokens"):
-            return attack_state.model.embed_tokens
-        if hasattr(attack_state.model, "get_input_embeddings"):
-            return attack_state.model.get_input_embeddings()
-    if isinstance(attack_state.model, MambaForCausalLM):
-        return attack_state.model.get_input_embeddings()
-    if isinstance(attack_state.model, MptForCausalLM):
-        #return attack_state.model.get_input_embeddings()
-        return attack_state.model.model.get_input_embeddings()
-    if isinstance(attack_state.model, OPTForCausalLM):
-        return attack_state.model.model.get_input_embeddings()
-    if isinstance(attack_state.model, peft.peft_model.PeftModelForCausalLM):
-        use_default_logic = True
-    if is_phi_1_to_3_model(attack_state.model):
-        return attack_state.model.model.embed_tokens
-    if isinstance(attack_state.model, RobertaForCausalLM):
-        return attack_state.model.get_input_embeddings()
-    if isinstance(attack_state.model, Qwen2ForCausalLM):
-        return attack_state.model.base_model.get_input_embeddings()
-    if isinstance(attack_state.model, StableLmForCausalLM):
-        return attack_state.model.base_model.embed_tokens
-    else:
-        result = None
-        result_name = None
-        if result is None and hasattr(attack_state.model, "get_input_embeddings"):
+    try:
+        if isinstance(attack_state.model, BartForCausalLM):
+            result = attack_state.model.model.decoder.get_input_embeddings()
+        if result is None and (isinstance(attack_state.model, BigBirdPegasusForCausalLM) or isinstance(attack_state.model, PegasusForCausalLM)):
+            result = attack_state.model.model.decoder.embed_tokens
+        if result is None and isinstance(attack_state.model, BlenderbotForCausalLM):
+            result = attack_state.model.model.decoder.embed_tokens
+        if result is None and isinstance(attack_state.model, FalconForCausalLM):
             result = attack_state.model.get_input_embeddings()
-            result_name = "attack_state.model.get_input_embeddings()"
-        if result is None and hasattr(attack_state.model, "model"):
-            if hasattr(attack_state.model.model, "get_input_embeddings"):
+        if result is None and isinstance(attack_state.model, GemmaForCausalLM):
+            result = attack_state.model.base_model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, Gemma2ForCausalLM):
+            result = attack_state.model.base_model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, GPT2LMHeadModel):
+            result = attack_state.model.transformer.wte
+        if result is None and isinstance(attack_state.model, GPTJForCausalLM):
+            result = attack_state.model.transformer.wte
+        if result is None and isinstance(attack_state.model, GPTNeoForCausalLM):
+            result = attack_state.model.base_model.wte
+        if result is None and isinstance(attack_state.model, GPTNeoXForCausalLM):
+            result = attack_state.model.base_model.embed_in
+        if result is None and isinstance(attack_state.model, LlamaForCausalLM):
+            if hasattr(attack_state.model, "model"):
+                if hasattr(attack_state.model.model, "get_input_embeddings"):
+                    result = attack_state.model.model.get_input_embeddings()
+                if result is None and hasattr(attack_state.model.model, "embed_tokens"):
+                    result = attack_state.model.model.embed_tokens
+            if result is None and hasattr(attack_state.model, "embed_tokens"):
+                result = attack_state.model.embed_tokens
+            if result is None and hasattr(attack_state.model, "get_input_embeddings"):
+                result = attack_state.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, MambaForCausalLM):
+            result = attack_state.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, MosaicGPT):
+            result = attack_state.model.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, MptForCausalLM):
+            #result = attack_state.model.get_input_embeddings()
+            result = attack_state.model.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, OPTForCausalLM):
+            result = attack_state.model.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, peft.peft_model.PeftModelForCausalLM):
+            use_default_logic = True
+        if result is None and is_phi_1_to_3_model(attack_state.model):
+            result = attack_state.model.model.embed_tokens
+        if result is None and isinstance(attack_state.model, RobertaForCausalLM):
+            result = attack_state.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, Qwen2ForCausalLM):
+            result = attack_state.model.base_model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, StableLmForCausalLM):
+            result = attack_state.model.base_model.embed_tokens
+    except Exception as e:
+        logger.error(f"Exception thrown when attempting to use model-class-specific logic: {e}\n{traceback.format_exc()}")
+        result = None
+    if result is not None:
+        return result
+    
+    result = None
+    result_name = None
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"Unrecognized model type '{type(attack_state.model).__name__}' - using default/fallback method for obtaining input embeddings.")
+    
+    if result is None and hasattr(attack_state.model, "get_input_embeddings"):
+        result_name = "attack_state.model.get_input_embeddings()"
+        try:
+            result = attack_state.model.get_input_embeddings()                
+        except Exception as e:
+            logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+            result = None
+            result_name = None
+    if result is None and hasattr(attack_state.model, "model"):
+        if hasattr(attack_state.model.model, "get_input_embeddings"):
+            result_name = "attack_state.model.model.get_input_embeddings()"
+            try:
                 result = attack_state.model.model.get_input_embeddings()
-                result_name = "attack_state.model.model.get_input_embeddings()"
-            if result is None and hasattr(attack_state.model.model, "embed_tokens"):
+            except Exception as e:
+                logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+                result = None
+                result_name = None
+        if result is None and hasattr(attack_state.model.model, "embed_tokens"):
+            result_name = "attack_state.model.model.embed_tokens"
+            try:
                 result = attack_state.model.model.embed_tokens
-                result_name = "attack_state.model.model.embed_tokens"
-        if result is None and hasattr(attack_state.model, "embed_tokens"):
+            except Exception as e:
+                logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+                result = None
+                result_name = None
+    if result is None and hasattr(attack_state.model, "embed_tokens"):            
+        result_name = "attack_state.model.embed_tokens"
+        try:
             result = attack_state.model.embed_tokens
-            result_name = "attack_state.model.embed_tokens"        
-        if result is not None:
-            if not use_default_logic:
-                logger.warning(f"unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
-            return result
-        
-        result_message = f"[get_embedding_layer] Error: unrecognized model type {type(attack_state.model)} "
-        if use_default_logic:
-            result_message = f"[get_embedding_layer] Error: model type {type(attack_state.model)} "
+        except Exception as e:
+            logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+            result = None
+            result_name = None
+    if result is not None:
+        if not use_default_logic:
+            logger.warning(f"unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")
+        return result
+    
+    result_message = f"Error: unrecognized model type {type(attack_state.model)} "
+    if use_default_logic:
+        result_message = f"Error: model type {type(attack_state.model)} "
 
-        result_message += "did not have an input embedding property in any of the default locations Broken Hill is configured to search for. Processing cannot continue."
-        
-        raise EmbeddingLayerNotFoundException(result_message)
+    result_message += "did not have an input embedding property or method in any of the default locations Broken Hill is configured to search for. Processing cannot continue."
+    
+    raise EmbeddingLayerNotFoundException(result_message)
 
 def get_embedding_matrix(attack_state):
     embedding_layer = get_embedding_layer(attack_state)
