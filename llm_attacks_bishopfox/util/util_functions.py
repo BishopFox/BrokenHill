@@ -745,7 +745,7 @@ def torch_dtype_from_string(string):
         return torch.int32
     if s == "int64":
         return torch.int64
-    raise Exception("Unrecognized PyTorch data type: '{string}'")
+    raise Exception(f"Unrecognized PyTorch data type: '{string}'")
 
 def torch_dtype_to_string(dtype):
     if dtype == torch.float16:
@@ -772,7 +772,7 @@ def torch_dtype_to_string(dtype):
         return "int32"
     if dtype == torch.int64:
         return "int64"
-    raise Exception("Unrecognized PyTorch data type: '{dtype}'")
+    raise Exception(f"Unrecognized PyTorch data type: '{dtype}'")
 
 def torch_dtype_to_bit_count(dtype):
     if dtype == torch.float16:
@@ -799,7 +799,7 @@ def torch_dtype_to_bit_count(dtype):
         return 32
     if dtype == torch.int64:
         return 64
-    raise Exception("Unrecognized PyTorch data type: '{dtype}'")
+    raise Exception(f"Unrecognized PyTorch data type: '{dtype}'")
 
 def get_log_level_names():
     return ["debug", "info", "warning", "error", "critical"]

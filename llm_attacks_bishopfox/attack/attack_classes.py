@@ -376,13 +376,13 @@ class AttackParams(JSONSerializableObject):
         self.conversation_template_messages = []
         # validate that the data is more or less as expected
         if not isinstance(message_list, list):
-            raise Exception("The conversation message data '{message_list}' was not in the form of a list.")
+            raise Exception(f"The conversation message data '{message_list}' was not in the form of a list.")
         for i in range(0, len(message_list)):
             message_data = message_list[i]
             if not isinstance(message_data, list):
-                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
+                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
             if len(message_data) != 2:
-                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
+                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
             self.conversation_template_messages.append(message_data)
     
     def get_known_template_names(self):
@@ -1772,7 +1772,7 @@ class VolatileAttackState():
                     try:
                         role_id_or_name = self.conversation_template.roles[role_id_or_name]
                     except Exception as e:
-                        raise Exception("Could not convert the role ID '{}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
+                        raise Exception(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
                 self.conversation_template.messages.append((role_id_or_name, message))
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")

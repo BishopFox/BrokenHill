@@ -1042,7 +1042,7 @@ def main(attack_params, log_manager):
         logger.info(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
     attack_state.write_persistent_state()
     if attack_state.persistable.attack_params.log_file_path is not None:
-        logger.info(f"The log information for this attack has been written to '{attack_state.persistable.attack_params.log_file_path}'.")
+        logger.info(f"This attack has been logged to '{attack_state.persistable.attack_params.log_file_path}'.")
     attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
     
     completed_all_iterations = True

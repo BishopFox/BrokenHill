@@ -403,7 +403,7 @@ class PromptAndInputIDCollection(JSONSerializableObject):
         # default to the range being the beginning of the base prompt ("goal") to the end of the adversarial content ("control")
         user_input_slice = self.slice_data.get_complete_user_input_slice()
         if user_input_slice.start is None or user_input_slice.stop is None:
-            raise PromptAndInputIDException(f"[get_user_input_token_ids] user_input_slice was {user_input_slice}, and neither start nor stop can be None for this function to succeed. self.slice_data.goal was {self.slice_data.goal}, self.slice_data.control was {self.slice_data.control}.")
+            raise PromptAndInputIDException(f"user_input_slice was {user_input_slice}, and neither start nor stop can be None for this function to succeed. self.slice_data.goal was {self.slice_data.goal}, self.slice_data.control was {self.slice_data.control}.")
         result = self.full_prompt_token_ids[user_input_slice]
         return result
     
@@ -467,9 +467,20 @@ class AdversarialContentManager:
             logger.debug(f"len(tokens) = {len(tokens)}, tokens = '{tokens}'")
         slice_info = self.get_slice_info(slice_data, tokens)
         slice_dictionary = slice_data.get_slice_dictionary()
-        for slice_name in slice_info.keys():
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"Slice '{slice_name}' = {slice_dictionary[slice_name]}, decoded tokens = '{slice_info[slice_name]}', tokens = {tokens[slice_dictionary[slice_name]]}")
+        location_name = ""
+        if source_method_name is not None:
+            location_name = f" ({source_method_name})"
+        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            slice_info_string = f"Current slice information{location_name}:\n"
+            for slice_name in slice_info.keys():
+                slice_info_string_addition = None
+                try:
+                    slice_info_string_addition = f"Slice '{slice_name}' = {slice_dictionary[slice_name]},\ndecoded tokens = '{slice_info[slice_name]}',\ntokens = {tokens[slice_dictionary[slice_name]]}\n"
+                except Exception as e:
+                    logger.error(f"Error getting slice '{slice_name}' information: {e}\n{traceback.format_exc()}")
+                if slice_info_string_addition is not None:
+                    slice_info_string = f"{slice_info_string}\n{slice_info_string_addition}\n"
+            logger.debug(slice_info_string)
 
     def get_slice_info_for_validation_check(self, slice_data, slice_dictionary, ordered_slice_list, slice_number):
         slice_name = ordered_slice_list[slice_number]
@@ -535,12 +546,12 @@ class AdversarialContentManager:
         if not found_at_least_one_slice:
             all_slices_are_not_none = False
         if len(invalid_slice_dictionary.keys()) > 0:
-            message = f"[{source_method_name}] Warning: one or more slices have None values instead of start or stop values. This generally indicates an issue with the tokenizing or parsing logic. The slice(s) with None values are: "
+            message = f"[{source_method_name}] One or more slices have None values instead of start or stop values. This generally indicates an issue with the tokenizing or parsing logic. The slice(s) with None values are: "
             for slice_name in invalid_slice_dictionary.keys():
                 sl = invalid_slice_dictionary[slice_name]
                 message += f"{slice_name}: {sl},"
             message = message[:-1]
-            logger.info(message)
+            logger.warning(message)
         
         if all_slices_are_not_none:
             nonsensical_slice_boilerplate = " This usually indicates a bug in the conversation-parsing logic of Broken Hill. Please contact a developer with reproduction steps if the issue has not already been reported."
@@ -722,7 +733,12 @@ class AdversarialContentManager:
                 python_tokenizer = True
 
         done_trying = False
+        done_trying_iteration_count = 0
+        done_trying_max_iterations = 3
         while not done_trying:
+            done_trying_iteration_count += 1
+            if done_trying_iteration_count > done_trying_max_iterations:
+                raise PromptGenerationException(f"More than {done_trying_max_iterations} iterations occurred in the tokenizer-based section of get_prompt. This should never occur.")
             if python_tokenizer:
                 done_trying = True
                 # TKTK: consider rewriting this to not use fschat at all.
@@ -928,7 +944,7 @@ class AdversarialContentManager:
                     base_prompt_end_index = base_prompt_start_index + len_base_prompt
                     encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, self.attack_state.persistable.attack_params.base_prompt)
                     if encoded_base_prompt is None or len(encoded_base_prompt) == 0:
-                        raise PromptGenerationException("encoded_base_prompt was {encoded_base_prompt}, cannot be None or zero-length.")
+                        raise PromptGenerationException(f"encoded_base_prompt was {encoded_base_prompt}, cannot be None or zero-length.")
                     
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
@@ -980,7 +996,7 @@ class AdversarialContentManager:
                     # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
                     
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
+                        logger.debug(f"Searching for last index of token conversation_template.roles[1] ('{conversation_template.roles[1]}') with length {len(conversation_template.roles[1])}.")
                     
                     last_token_index = result.prompt.rindex(conversation_template.roles[1])
                     
@@ -1004,7 +1020,7 @@ class AdversarialContentManager:
                         prompt_find_self_target_c2t = result.slice_data.assistant.stop
                     prompt_combined_c2t = None
                     add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
-                    while prompt_combined_c2 is None:
+                    while prompt_combined_c2t is None:
                         prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
                         add_length -= 1
                         if add_length < 0:
@@ -1045,19 +1061,20 @@ class AdversarialContentManager:
                         raise PromptGenerationException("Did not find a valid loss slice mode")
 
                     self.validate_slice_data('get_prompt (non-Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
+                    done_trying = True
                 # There are so many garbagey fast tokenizers, this is the only way I can think of to handle them: try the fast tokenizer first and then fail over to the Python tokenizer.
                 # I'd just use the Python tokenizer, but some models don't support it.
                 except Exception as e:
                     python_tokenizer = True
-                    logger.error(f"Exception thrown while using the fast tokenizer: {e}. Attempting to falling back to the Python tokenizer.")
+                    logger.error(f"Exception thrown while using the fast tokenizer: {e}\n{traceback.format_exc()}\nAttempting to falling back to the Python tokenizer.")
 
         # handle buggy conversation templates that always insert a conversation role header even when no conversation messages are specified, and even when there is no system prompt.
         # having an inaccurate slice for the user role *shouldn't* affect anything, but it's possible some other code could depend on it.
         user_input_slice = result.slice_data.get_complete_user_input_slice()
         if user_input_slice is None:
-            raise PromptGenerationException("[get_prompt] result.slice_data.get_complete_user_input_slice() returned None.")
+            raise PromptGenerationException("result.slice_data.get_complete_user_input_slice() returned None.")
         if user_input_slice.start is None or user_input_slice.stop is None:
-            raise PromptGenerationException(f"[get_prompt] result.slice_data.get_complete_user_input_slice() returned {user_input_slice}, and neither start nor stop can be None.")        
+            raise PromptGenerationException(f"result.slice_data.get_complete_user_input_slice() returned {user_input_slice}, and neither start nor stop can be None.")        
         user_role_length = 0
         if result.slice_data.user_role is not None:
             if result.slice_data.user_role.start is not None and result.slice_data.user_role.stop is not None:

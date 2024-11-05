@@ -28,10 +28,10 @@ from subprocess import TimeoutExpired
 logger = logging.getLogger(__name__)
 
 # 24 GiB of device memory == 25390809088
-# Largest model successfully tested so far with 24 GiB: 7642181880 (Microsoft Phi-3 / 3.5 Mini 128k)
+# Largest model successfully tested so far with 24 GiB: 3821079552 parameters (Microsoft Phi-3 / 3.5 Mini 128k)
 # This is not entirely accurate, because the file size doesn't take into account the weight format yet
 # Gives a threshold of about 1/3
-CUDA_CPU_SIZE_THRESHOLD = int(float(25390809088) / 3.2)
+CUDA_CPU_SIZE_THRESHOLD = int(float(25390809088) / 3.0)
 PYTHON_PROCESS_BUFFER_SIZE = 262144
 
 def main(test_params):
@@ -67,13 +67,6 @@ def main(test_params):
             model_data_type = model_info.data_type
         if model_info.data_type is None and model_data_type is not None:
             model_info.data_type = model_data_type
-
-        # re-do this using the improved logic, or maybe just leave it out now that it's in the main script
-        # model_parameter_count_string = ""
-        # model_parameter_count = model_info.get_parameter_count()
-        # if model_parameter_count is not None:
-            # model_parameter_count_string = f" [{model_parameter_count} parameters]"
-        #print(f"[{model_start_time_string}] Testing model {model_info.model_name}{model_parameter_count_string} ({model_info_num + 1} / {len_model_info_list_entries})")
         
         skip_message = ""
         
@@ -111,7 +104,14 @@ def main(test_params):
                     skip_model = True
         
         if not skip_model:
-            if model_info.size > CUDA_CPU_SIZE_THRESHOLD:
+            model_size = None
+            model_parameter_count = model_info.get_parameter_count()
+            if model_parameter_count is not None:
+                # TKTK: update this to handle different dtypes
+                model_size = model_parameter_count * 2
+            else:
+                model_size = model_info.size
+            if model_size is None or model_size > CUDA_CPU_SIZE_THRESHOLD:
                 if not test_params.perform_cpu_tests:
                     skip_message = "skipping this test because it would require CPU processing by PyTorch."
                     skip_model = True

@@ -43,7 +43,7 @@ for attribute_name in dir(transformers):
         # Add the class to this package's variables
         if hasattr(attribute, "__name__"):
             if "ForCausalLM" in attribute.__name__:
-                #print(f"[attack_manager.py] importing {attribute.__name__} from transformers")
+                #logger.debug(f"importing {attribute.__name__} from transformers")
                 globals()[attribute_name] = attribute
 
 # END: based loosely on https://julienharbulot.com/python-dynamical-import.html
