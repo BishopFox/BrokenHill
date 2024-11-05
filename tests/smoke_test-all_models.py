@@ -9,6 +9,7 @@ import re
 import selectors
 import subprocess
 import sys
+import traceback
 
 from llm_attacks_bishopfox.attack.attack_classes import AttackParams
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo

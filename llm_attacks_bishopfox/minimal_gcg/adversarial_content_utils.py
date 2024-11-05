@@ -719,314 +719,337 @@ class AdversarialContentManager:
             except:
                 python_tokenizer = True
 
-        if python_tokenizer:
-            # TKTK: consider rewriting this to not use fschat at all.
-            # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"Using Python tokenizer.")
-            # reset the conversation template (to get rid of the messages that have been added earlier in this function), but preserve any messages that are part of the template
-            conversation_template = self.conv_template.copy()
-            
-            # Figure out where the user role *starts* first
-            # ...by comparing the prompt with no additional messages to one that has a new empty user message added
-            prompt_with_no_additional_messages = conversation_template.get_prompt()
-            prompt_with_no_additional_messages_token_ids = self.attack_state.tokenizer(prompt_with_no_additional_messages).input_ids            
-            #conversation_template.append_message(conversation_template.roles[0], None)
-            conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-            current_prompt = conversation_template.get_prompt()
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"current_prompt = '{current_prompt}'")
-            user_role_prompt_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
-            user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids, log_manager = self.attack_state.log_manager)
-            if user_role_start_index is None:
-                logger.error(f"Did not find a non-matching element when comparing the strings '{prompt_with_no_additional_messages}' and '{current_prompt}', which were tokenized to the following IDs:\n{prompt_with_no_additional_messages_token_ids}\n{user_role_prompt_token_ids}")
+        done_trying = False
+        while not done_trying:
+            if python_tokenizer:
+                done_trying = True
+                # TKTK: consider rewriting this to not use fschat at all.
+                # Using apply_chat_template where available and including custom templates for models that don't include it might be easier.
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Using Python tokenizer.")
+                # reset the conversation template (to get rid of the messages that have been added earlier in this function), but preserve any messages that are part of the template
+                conversation_template = self.conv_template.copy()
+                
+                # Figure out where the user role *starts* first
+                # ...by comparing the prompt with no additional messages to one that has a new empty user message added
+                prompt_with_no_additional_messages = conversation_template.get_prompt()
+                prompt_with_no_additional_messages_token_ids = self.attack_state.tokenizer(prompt_with_no_additional_messages).input_ids            
+                #conversation_template.append_message(conversation_template.roles[0], None)
+                conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+                current_prompt = conversation_template.get_prompt()
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"current_prompt = '{current_prompt}'")
+                user_role_prompt_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
+                user_role_start_index = find_index_of_first_nonmatching_element(prompt_with_no_additional_messages_token_ids, user_role_prompt_token_ids, log_manager = self.attack_state.log_manager)
+                if user_role_start_index is None:
+                    logger.error(f"Did not find a non-matching element when comparing the strings '{prompt_with_no_additional_messages}' and '{current_prompt}', which were tokenized to the following IDs:\n{prompt_with_no_additional_messages_token_ids}\n{user_role_prompt_token_ids}")
 
-            # Detour into figuring out the base prompt / goal, adversarial content / control, and target output slices
-            # TKTK: update the remainder of this function to handle different placement of the adversarial content
-            #conversation_template.update_last_message(f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-            conversation_template.append_message(conversation_template.roles[1], self.attack_state.persistable.attack_params.target_output)
-            current_prompt = conversation_template.get_prompt()
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"current_prompt = '{current_prompt}'")
-            current_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
-            current_decoded_tokens = get_decoded_tokens(self.attack_state, current_token_ids)
+                # Detour into figuring out the base prompt / goal, adversarial content / control, and target output slices
+                # TKTK: update the remainder of this function to handle different placement of the adversarial content
+                #conversation_template.update_last_message(f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+                conversation_template.append_message(conversation_template.roles[1], self.attack_state.persistable.attack_params.target_output)
+                current_prompt = conversation_template.get_prompt()
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"current_prompt = '{current_prompt}'")
+                current_token_ids = self.attack_state.tokenizer(current_prompt).input_ids
+                current_decoded_tokens = get_decoded_tokens(self.attack_state, current_token_ids)
 
-            result.slice_data.goal = find_last_index_of_token(self.attack_state, 
-                self.trash_fire_tokens, 
-                self.attack_state.persistable.attack_params.base_prompt, 
-                current_token_ids, 
-                current_decoded_tokens, 
-                conversation_template = conversation_template, 
-                strip_leading_and_trailing_tokens = False, 
-                remove_empty_leading_and_trailing_tokens = False, 
-                remove_leading_and_trailing_trash_fire_tokens = False)
-            
-            # Can't do this optimization because the context of what appears before and after can change the tokens
-            # goal_slice_start = find_last_occurrence_of_array_in_array(self.base_prompt_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
-            # goal_slice_end = goal_slice_start + len(self.base_prompt_token_ids)
-            # result.slice_data.goal = slice(goal_slice_start, goal_slice_end)
-
-            self.validate_slice_data('get_prompt (Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"current_prompt = '{current_prompt}'")
-
-            if working_adversarial_content.as_string == "":
-                result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
-            else:
-                result.slice_data.control = find_last_index_of_token(self.attack_state, 
+                result.slice_data.goal = find_last_index_of_token(self.attack_state, 
                     self.trash_fire_tokens, 
-                    working_adversarial_content.as_string, 
+                    self.attack_state.persistable.attack_params.base_prompt, 
                     current_token_ids, 
                     current_decoded_tokens, 
                     conversation_template = conversation_template, 
                     strip_leading_and_trailing_tokens = False, 
                     remove_empty_leading_and_trailing_tokens = False, 
                     remove_leading_and_trailing_trash_fire_tokens = False)
-                # control_slice_start = find_last_occurrence_of_array_in_array(working_adversarial_content.token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
-                # control_slice_end = control_slice_start + len(working_adversarial_content.token_ids)
-                # result.slice_data.control = slice(control_slice_start, control_slice_end)
-
-            self.validate_slice_data('get_prompt (Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"current_prompt = '{current_prompt}'")
-
-            result.slice_data.target_output = find_last_index_of_token(self.attack_state, 
-                self.trash_fire_tokens, 
-                self.attack_state.persistable.attack_params.target_output, 
-                current_token_ids, 
-                current_decoded_tokens, 
-                conversation_template = conversation_template, 
-                strip_leading_and_trailing_tokens = False, 
-                remove_empty_leading_and_trailing_tokens = False, 
-                remove_leading_and_trailing_trash_fire_tokens = False)
-            
-            # Can't do this optimization because the context of what appears before and after can change the tokens
-            # target_slice_start = find_last_occurrence_of_array_in_array(self.target_output_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
-            # target_slice_end = goal_slice_start + len(self.target_output_token_ids)
-            # result.slice_data.target_output = slice(target_slice_start, target_slice_end)
-            
-            self.validate_slice_data('get_prompt (Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            # use the known locations of the base prompt, adversarial content, and target output slices to determine the remaining role indices
-            # this section should already handle alternative adversarial content placement more or less correctly, except if it's placed in the middle of the base prompt (or interleaved)
-            
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"current_prompt = '{current_prompt}'")
-                logger.debug(f"result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
-            
-            user_role_stop_index = result.slice_data.goal.start
-            if result.slice_data.control.start < user_role_stop_index:
-                user_role_stop_index = result.slice_data.control.start
-            
-            result.slice_data.user_role = slice(user_role_start_index, user_role_stop_index)
-            self.validate_slice_data('get_prompt (Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
-            
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
-            
-            assistant_role_start_index = result.slice_data.control.stop
-            if result.slice_data.goal.stop > assistant_role_start_index:
-                assistant_role_start_index = result.slice_data.goal.stop
-            
-            assistant_role_stop_index = result.slice_data.target_output.start
-            
-            result.slice_data.assistant_role = slice(assistant_role_start_index, assistant_role_stop_index)
-
-            self.validate_slice_data('get_prompt (Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
-
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
-                #result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
-                result.slice_data.loss = slice(result.slice_data.assistant_role.start, result.slice_data.target_output.stop)
-
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
-                len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
-                result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
                 
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
-                #result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(current_token_ids)) - 1)
-                result.slice_data.loss = slice(int(result.slice_data.target_output.start) + self.attack_state.persistable.attack_params.loss_slice_index_shift, min(int(result.slice_data.target_output.stop) + self.attack_state.persistable.attack_params.loss_slice_index_shift, len(current_token_ids)))
+                # Can't do this optimization because the context of what appears before and after can change the tokens
+                # goal_slice_start = find_last_occurrence_of_array_in_array(self.base_prompt_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
+                # goal_slice_end = goal_slice_start + len(self.base_prompt_token_ids)
+                # result.slice_data.goal = slice(goal_slice_start, goal_slice_end)
 
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
-                #result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(current_token_ids)))
-                result.slice_data.loss = slice(result.slice_data.target_output.start, result.slice_data.target_output.stop)
-            
-            if result.slice_data.loss is None:
-                raise PromptGenerationException("Did not find a valid loss slice mode")
+                self.validate_slice_data('get_prompt (Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            self.validate_slice_data('get_prompt (Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
-            
-        else:
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"Using fast tokenizer")
-            
-            # result.slice_data.user_role = slice(
-                # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0])),
-                # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0]) + len(conversation_template.roles[0]) + 1)
-            # )
-            last_token_index = result.prompt.rindex(conversation_template.roles[0])
-            #logger.debug(f"last_token_index = {last_token_index}")
-            
-            if last_token_index is None:
-                logger.warning(f"couldn't find conversation role 0 '{conversation_template.roles[0]}' in prompt '{result.prompt}'")
-            else:
-                if conversation_template.name in get_llama2_and_3_fschat_template_names():
-                    try:
-                        last_token_index_2 = result.prompt.rindex(conversation_template.roles[0], 0, last_token_index)
-                        #logger.debug(f"last_token_index_2 = {last_token_index_2}")
-                        if last_token_index_2 is not None:
-                            last_token_index = last_token_index_2
-                    except Exception as e:
-                        dummy = 1
-                        # last_token_index is already correct
-                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                            logger.debug(f"exception while getting second token index for user role using fast tokenizer: {e}")
-            
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"result.prompt = {result.prompt}")
-                logger.debug(f"last_token_index = {last_token_index}")
-                logger.debug(f"encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
-                decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state, encoded_conversation_template_prompt.input_ids)
-                logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
-            
-            user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"user_role_start_index = {user_role_start_index}")
-            user_role_end_index = encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[0]) + 1)
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"user_role_start_index = {user_role_start_index}")
-                logger.debug(f"user_role_end_index = {user_role_end_index}")
-            
-            result.slice_data.user_role = slice(
-                user_role_start_index,
-                user_role_end_index
-            )
-            
-            self.validate_slice_data('get_prompt (non-Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            result.slice_data.system = slice(0, result.slice_data.user_role.start)
-            
-            self.validate_slice_data('get_prompt (non-Python) - system', result.slice_data, current_token_ids, current_decoded_tokens)
-
-            # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
-            base_prompt_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.base_prompt)
-            len_base_prompt = len(self.attack_state.persistable.attack_params.base_prompt)
-            base_prompt_end_index = base_prompt_start_index + len_base_prompt
-            encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, self.attack_state.persistable.attack_params.base_prompt)
-            
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
-            base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
-            base_prompt_token_end_index = encoded_conversation_template_prompt.char_to_token(base_prompt_end_index)
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
-            if base_prompt_token_end_index is None:
-                # I don't know why some tokenizers return None for perfectly valid end indices here.
-                # I don't know anything anymore.
-                # This fallback approach is not guaranteed to be accurate, but should be nearly all of the time
-                base_prompt_token_end_index = base_prompt_token_start_index + len(encoded_base_prompt)
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
-            result.slice_data.goal = slice(              
-                base_prompt_token_start_index,
-                base_prompt_token_end_index
-            )
-            self.validate_slice_data('get_prompt (non-Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
-            
-            #If the adversarial content is an empty string, make the slice an empty slice right after the goal slice
-            if working_adversarial_content.as_string == "":
-                result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
-            else:
-                working_adversarial_content_start_index = result.prompt.rindex(working_adversarial_content.as_string)
-                len_working_adversarial_content = len(working_adversarial_content.as_string)
-                working_adversarial_content_end_index = working_adversarial_content_start_index + len_working_adversarial_content
+                    logger.debug(f"current_prompt = '{current_prompt}'")
+
+                if working_adversarial_content.as_string == "":
+                    result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
+                else:
+                    result.slice_data.control = find_last_index_of_token(self.attack_state, 
+                        self.trash_fire_tokens, 
+                        working_adversarial_content.as_string, 
+                        current_token_ids, 
+                        current_decoded_tokens, 
+                        conversation_template = conversation_template, 
+                        strip_leading_and_trailing_tokens = False, 
+                        remove_empty_leading_and_trailing_tokens = False, 
+                        remove_leading_and_trailing_trash_fire_tokens = False)
+                    # control_slice_start = find_last_occurrence_of_array_in_array(working_adversarial_content.token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
+                    # control_slice_end = control_slice_start + len(working_adversarial_content.token_ids)
+                    # result.slice_data.control = slice(control_slice_start, control_slice_end)
+
+                self.validate_slice_data('get_prompt (Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
+
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"current_prompt = '{current_prompt}'")
+
+                result.slice_data.target_output = find_last_index_of_token(self.attack_state, 
+                    self.trash_fire_tokens, 
+                    self.attack_state.persistable.attack_params.target_output, 
+                    current_token_ids, 
+                    current_decoded_tokens, 
+                    conversation_template = conversation_template, 
+                    strip_leading_and_trailing_tokens = False, 
+                    remove_empty_leading_and_trailing_tokens = False, 
+                    remove_leading_and_trailing_trash_fire_tokens = False)
+                
+                # Can't do this optimization because the context of what appears before and after can change the tokens
+                # target_slice_start = find_last_occurrence_of_array_in_array(self.target_output_token_ids, current_token_ids, log_manager = self.attack_state.log_manager)
+                # target_slice_end = goal_slice_start + len(self.target_output_token_ids)
+                # result.slice_data.target_output = slice(target_slice_start, target_slice_end)
+                
+                self.validate_slice_data('get_prompt (Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
+
+                # use the known locations of the base prompt, adversarial content, and target output slices to determine the remaining role indices
+                # this section should already handle alternative adversarial content placement more or less correctly, except if it's placed in the middle of the base prompt (or interleaved)
                 
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
-                working_adversarial_content_token_start_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_start_index)
-                working_adversarial_content_token_end_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_end_index)
+                    logger.debug(f"current_prompt = '{current_prompt}'")
+                    logger.debug(f"result.slice_data.goal.start = {result.slice_data.goal.start}, result.slice_data.control.start = {result.slice_data.control.start}")
+                
+                user_role_stop_index = result.slice_data.goal.start
+                if result.slice_data.control.start < user_role_stop_index:
+                    user_role_stop_index = result.slice_data.control.start
+                
+                result.slice_data.user_role = slice(user_role_start_index, user_role_stop_index)
+                self.validate_slice_data('get_prompt (Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
+                
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
-                if working_adversarial_content_token_end_index is None:
-                    working_adversarial_content_token_end_index = working_adversarial_content_token_start_index + len(working_adversarial_content.token_ids)
+                    logger.debug(f"result.slice_data.control.stop = {result.slice_data.control.stop}, result.slice_data.goal.stop = {result.slice_data.goal.stop}")
+                
+                assistant_role_start_index = result.slice_data.control.stop
+                if result.slice_data.goal.stop > assistant_role_start_index:
+                    assistant_role_start_index = result.slice_data.goal.stop
+                
+                assistant_role_stop_index = result.slice_data.target_output.start
+                
+                result.slice_data.assistant_role = slice(assistant_role_start_index, assistant_role_stop_index)
+
+                self.validate_slice_data('get_prompt (Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
+
+                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+
+                if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:                
+                    #result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
+                    result.slice_data.loss = slice(result.slice_data.assistant_role.start, result.slice_data.target_output.stop)
+
+                if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+                    len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
+                    result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
+                    
+                if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
+                    #result.slice_data.loss = slice(first_non_garbage_token - 1, min(last_non_garbage_token, len(current_token_ids)) - 1)
+                    result.slice_data.loss = slice(int(result.slice_data.target_output.start) + self.attack_state.persistable.attack_params.loss_slice_index_shift, min(int(result.slice_data.target_output.stop) + self.attack_state.persistable.attack_params.loss_slice_index_shift, len(current_token_ids)))
+
+                if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE:
+                    #result.slice_data.loss = slice(first_non_garbage_token, min(last_non_garbage_token, len(current_token_ids)))
+                    result.slice_data.loss = slice(result.slice_data.target_output.start, result.slice_data.target_output.stop)
+                
+                if result.slice_data.loss is None:
+                    raise PromptGenerationException("Did not find a valid loss slice mode")
+
+                self.validate_slice_data('get_prompt (Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
+                
+            else:
+                try:
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
-                result.slice_data.control = slice(
-                    working_adversarial_content_token_start_index,
-                    working_adversarial_content_token_end_index
-                )
-            self.validate_slice_data('get_prompt (non-Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
-            # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
-            
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
-            
-            last_token_index = result.prompt.rindex(conversation_template.roles[1])
-            
-            result.slice_data.assistant_role = slice(
-                encoded_conversation_template_prompt.char_to_token(last_token_index),
-                encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[1]) + 1)
-            )
-            
-            self.validate_slice_data('get_prompt (non-Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
+                        logger.debug(f"Using fast tokenizer")
+                    
+                    # result.slice_data.user_role = slice(
+                        # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0])),
+                        # encoded_conversation_template_prompt.char_to_token(result.prompt.find(conversation_template.roles[0]) + len(conversation_template.roles[0]) + 1)
+                    # )
+                    last_token_index = result.prompt.rindex(conversation_template.roles[0])
+                    #logger.debug(f"last_token_index = {last_token_index}")
+                    
+                    if last_token_index is None:
+                        logger.warning(f"couldn't find conversation role 0 '{conversation_template.roles[0]}' in prompt '{result.prompt}'")
+                    else:
+                        if conversation_template.name in get_llama2_and_3_fschat_template_names():
+                            try:
+                                last_token_index_2 = result.prompt.rindex(conversation_template.roles[0], 0, last_token_index)
+                                #logger.debug(f"last_token_index_2 = {last_token_index_2}")
+                                if last_token_index_2 is not None:
+                                    last_token_index = last_token_index_2
+                            except Exception as e:
+                                dummy = 1
+                                # last_token_index is already correct
+                                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"exception while getting second token index for user role using fast tokenizer: {e}")
+                    
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"result.prompt = {result.prompt}")
+                        logger.debug(f"last_token_index = {last_token_index}")
+                        logger.debug(f"encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
+                        decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state, encoded_conversation_template_prompt.input_ids)
+                        logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
+                    
+                    user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"user_role_start_index = {user_role_start_index}")
+                    if user_role_start_index is None:
+                        raise PromptGenerationException("user_role_start_index was None")
+                    user_role_end_index = encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[0]) + 1)
+                    if user_role_end_index is None:
+                        raise PromptGenerationException("user_role_end_index was None")
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"user_role_start_index = {user_role_start_index}")
+                        logger.debug(f"user_role_end_index = {user_role_end_index}")
+                    
+                    result.slice_data.user_role = slice(
+                        user_role_start_index,
+                        user_role_end_index
+                    )
+                    
+                    self.validate_slice_data('get_prompt (non-Python) - user_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
-            prompt_find_self_target = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"prompt_find_self_target = '{prompt_find_self_target}'")
-            prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
-            if isinstance(prompt_find_self_target_c2t, type(None)):
-                if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
-                prompt_find_self_target_c2t = result.slice_data.assistant.stop
-            prompt_combined_c2t = None
-            add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
-            while isinstance(prompt_combined_c2t, type(None)):
-                prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
-                add_length -= 1
-                if add_length < 0:
-                    prompt_combined_c2t = prompt_find_self_target_c2t
-                    break
-            # Subtract one more than the first valid value so that the length of the slice is correct
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
-            result.slice_data.target_output = slice(
-                prompt_find_self_target_c2t,
-                prompt_combined_c2t + 1
-            )
-            self.validate_slice_data('get_prompt (non-Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
+                    result.slice_data.system = slice(0, result.slice_data.user_role.start)
+                    
+                    self.validate_slice_data('get_prompt (non-Python) - system', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
-                result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
+                    # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
+                    base_prompt_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.base_prompt)
+                    len_base_prompt = len(self.attack_state.persistable.attack_params.base_prompt)
+                    base_prompt_end_index = base_prompt_start_index + len_base_prompt
+                    encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, self.attack_state.persistable.attack_params.base_prompt)
+                    if encoded_base_prompt is None or len(encoded_base_prompt) == 0:
+                        raise PromptGenerationException("encoded_base_prompt was {encoded_base_prompt}, cannot be None or zero-length.")
+                    
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"base_prompt_start_index = {base_prompt_start_index}, len_base_prompt = {len_base_prompt}, base_prompt_end_index = {base_prompt_end_index}")
+                    base_prompt_token_start_index = encoded_conversation_template_prompt.char_to_token(base_prompt_start_index)
+                    base_prompt_token_end_index = encoded_conversation_template_prompt.char_to_token(base_prompt_end_index)
+                    if base_prompt_token_start_index is None:
+                        raise PromptGenerationException("base_prompt_token_start_index was None") 
+                    if base_prompt_token_end_index is None:
+                        # I don't know why some tokenizers return None for perfectly valid end indices here.
+                        # I don't know anything anymore.
+                        #raise PromptGenerationException("base_prompt_token_end_index was None") 
+                        # This fallback approach is not guaranteed to be accurate, but should be nearly all of the time
+                        base_prompt_token_end_index = base_prompt_token_start_index + len(encoded_base_prompt)
+                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
+                    if base_prompt_token_end_index is None:
+                        
+                    result.slice_data.goal = slice(              
+                        base_prompt_token_start_index,
+                        base_prompt_token_end_index
+                    )
+                    self.validate_slice_data('get_prompt (non-Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
+                    
+                    #If the adversarial content is an empty string, make the slice an empty slice right after the goal slice
+                    if working_adversarial_content.as_string == "":
+                        result.slice_data.control = slice(result.slice_data.goal.stop, result.slice_data.goal.stop)
+                    else:
+                        working_adversarial_content_start_index = result.prompt.rindex(working_adversarial_content.as_string)
+                        len_working_adversarial_content = len(working_adversarial_content.as_string)
+                        working_adversarial_content_end_index = working_adversarial_content_start_index + len_working_adversarial_content
+                        
+                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"working_adversarial_content_start_index = {working_adversarial_content_start_index}, len_working_adversarial_content = {len_working_adversarial_content}, working_adversarial_content_end_index = {working_adversarial_content_end_index}")
+                        working_adversarial_content_token_start_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_start_index)
+                        if working_adversarial_content_token_start_index is None:
+                            raise PromptGenerationException("working_adversarial_content_token_start_index was None")
+                        working_adversarial_content_token_end_index = encoded_conversation_template_prompt.char_to_token(working_adversarial_content_end_index)
+                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"working_adversarial_content_token_start_index = {working_adversarial_content_token_start_index}, working_adversarial_content_token_end_index = {working_adversarial_content_token_end_index}")
+                        if working_adversarial_content_token_end_index is None:
+                            working_adversarial_content_token_end_index = working_adversarial_content_token_start_index + len(working_adversarial_content.token_ids)
+                            if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                logger.debug(f"Updated working_adversarial_content_token_end_index to {working_adversarial_content_token_end_index} using fallback logic because it was None")
+                        result.slice_data.control = slice(
+                            working_adversarial_content_token_start_index,
+                            working_adversarial_content_token_end_index
+                        )
+                    self.validate_slice_data('get_prompt (non-Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
+                    # TKTK: END: update the goal and control slice logic to handle different placement of the adversarial content
+                    
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"finding conversation_template.roles[1] = '{conversation_template.roles[1]}' with length {len(conversation_template.roles[1])}.")
+                    
+                    last_token_index = result.prompt.rindex(conversation_template.roles[1])
+                    
+                    result.slice_data.assistant_role = slice(
+                        encoded_conversation_template_prompt.char_to_token(last_token_index),
+                        encoded_conversation_template_prompt.char_to_token(last_token_index + len(conversation_template.roles[1]) + 1)
+                    )
+                    
+                    self.validate_slice_data('get_prompt (non-Python) - assistant_role', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
-                len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
-                result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
-                
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
-                result.slice_data.loss = slice(
-                    prompt_find_self_target_c2t + self.attack_state.persistable.attack_params.loss_slice_index_shift,
-                    (prompt_combined_c2t + 1) + self.attack_state.persistable.attack_params.loss_slice_index_shift
-                )
+                    self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
+                    prompt_find_self_target = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"prompt_find_self_target = '{prompt_find_self_target}'")
+                    prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
+                    if prompt_find_self_target_c2t is None:
+                        if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                        prompt_find_self_target_c2t = result.slice_data.assistant.stop
+                    prompt_combined_c2t = None
+                    add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
+                    while prompt_combined_c2 is None:
+                        prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
+                        add_length -= 1
+                        if add_length < 0:
+                            prompt_combined_c2t = prompt_find_self_target_c2t
+                            logger.debug(f"Gave up trying to find prompt_combined_c2t and set it to prompt_find_self_target_c2t ({prompt_find_self_target_c2t}).")
+                            break
+                    # Subtract one more than the first valid value so that the length of the slice is correct
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"prompt_find_self_target_c2t = '{prompt_find_self_target_c2t}', prompt_combined_c2t = '{prompt_combined_c2t}'")
+                    result.slice_data.target_output = slice(
+                        prompt_find_self_target_c2t,
+                        prompt_combined_c2t + 1
+                    )
+                    self.validate_slice_data('get_prompt (non-Python) - target_output', result.slice_data, current_token_ids, current_decoded_tokens)
 
-            if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE :
-                result.slice_data.loss = slice(
-                    prompt_find_self_target_c2t,
-                    prompt_combined_c2t + 1
-                )
-            
-            if result.slice_data.loss is None:
-                raise PromptGenerationException("Did not find a valid loss slice mode")
+                    if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"self.attack_state.persistable.attack_params.loss_slice_mode = {self.attack_state.persistable.attack_params.loss_slice_mode} result.slice_data.assistant_role.start = {result.slice_data.assistant_role.start}, result.slice_data.target_output.start = {result.slice_data.target_output.start}, result.slice_data.target_output.stop = {result.slice_data.target_output.stop}")
+                    if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+                        result.slice_data.loss = slice(result.slice_data.assistant_role.start, min(last_non_garbage_token, len(current_token_ids)))
 
-            self.validate_slice_data('get_prompt (non-Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
+                    if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_TRUNCATED_TARGET_SLICE:
+                        len_target_slice = result.slice_data.target_output.stop - result.slice_data.target_output.start
+                        result.slice_data.loss = slice(result.slice_data.assistant_role.start, (result.slice_data.assistant_role.start + len_target_slice))
+                        
+                    if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.INDEX_SHIFTED_TARGET_SLICE:
+                        result.slice_data.loss = slice(
+                            prompt_find_self_target_c2t + self.attack_state.persistable.attack_params.loss_slice_index_shift,
+                            (prompt_combined_c2t + 1) + self.attack_state.persistable.attack_params.loss_slice_index_shift
+                        )
+
+                    if self.attack_state.persistable.attack_params.loss_slice_mode == LossSliceMode.SAME_AS_TARGET_SLICE :
+                        result.slice_data.loss = slice(
+                            prompt_find_self_target_c2t,
+                            prompt_combined_c2t + 1
+                        )
+                    
+                    if result.slice_data.loss is None:
+                        raise PromptGenerationException("Did not find a valid loss slice mode")
+
+                    self.validate_slice_data('get_prompt (non-Python) - loss', result.slice_data, current_token_ids, current_decoded_tokens)
+                # There are so many garbagey fast tokenizers, this is the only way I can think of to handle them: try the fast tokenizer first and then fail over to the Python tokenizer.
+                # I'd just use the Python tokenizer, but some models don't support it.
+                except Exception as e:
+                    python_tokenizer = True
+                    logger.error(f"Exception thrown while using the fast tokenizer: {e}. Attempting to falling back to the Python tokenizer.")
 
         # handle buggy conversation templates that always insert a conversation role header even when no conversation messages are specified, and even when there is no system prompt.
         # having an inaccurate slice for the user role *shouldn't* affect anything, but it's possible some other code could depend on it.

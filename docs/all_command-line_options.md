@@ -517,7 +517,7 @@ If this value is specified, candidate adversarial strings will be filtered out i
 
 Enable the check from Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson's code that attempts to keep the number of tokens consistent between each adversarial string. This will cause all candidates to be excluded for some models, such as StableLM 2.
 
-If you want to limit the number of tokens (e.g. to prevent the attack from wasting time on single-token strings or to avoid out-of-memory conditions), using  `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` in combination with `--add-token-when-no-candidates-returned` or `--delete-token-when-no-candidates-returned` may be more effective.
+For a more flexible (but also more complex) approach, use `--adversarial-candidate-filter-tokens-min` and `--adversarial-candidate-filter-tokens-max` in combination with `--add-token-when-no-candidates-returned` or `--delete-token-when-no-candidates-returned`.
 
 ## Controlling the data that's used to calculate loss at every iteration
 

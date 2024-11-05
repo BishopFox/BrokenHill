@@ -32,6 +32,8 @@ This is the most significant update to Broken Hill since its public release in S
     * [NeuralDaredevil-7B](https://huggingface.co/mlabonne/NeuralDaredevil-7B)
   * Mixtral
     * [Mixtral-8x7B-Instruct-v0.1](https://huggingface.co/MistralAI/Mixtral-8x7B-Instruct-v0.1)
+  * Orca-2
+    * [Orca-2-7b](https://huggingface.co/Microsoft/Orca-2-7b)
   * RedPajama-INCITE
     * [RedPajama-INCITE-7B-Chat](https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Chat)
     * [RedPajama-INCITE-Chat-3B-v1](https://huggingface.co/togethercomputer/RedPajama-INCITE-Chat-3B-v1)
@@ -43,11 +45,15 @@ This is the most significant update to Broken Hill since its public release in S
 * Added support for the following models derived from model families already supported by Broken Hill:
   * Gemma-derived models
     * [Vikhr-Gemma-2B-instruct](https://huggingface.co/Vikhrmodels/Vikhr-Gemma-2B-instruct)
+  * Llama-derived models
+    * [Llama-68M-Chat-v1](https://huggingface.co/meta-llama/Felladrin/Llama-68M-Chat-v1)
   * Llama-2-derived models
+    * [Meta-Llama-Guard-2-8B](https://huggingface.co/meta-llama/Meta-Llama-Guard-2-8B)
     * [Swallow-7b-instruct-hf](https://huggingface.co/tokyotech-llm/Swallow-7b-instruct-hf)
 	* [Swallow-MS-7b-instruct-v0.1](https://huggingface.co/tokyotech-llm/Swallow-MS-7b-instruct-v0.1)
     * [youri-7b-chat](https://huggingface.co/rinna/youri-7b-chat) (derived from Llama-2)
   * Llama-3-derived models
+    * [Llama-Guard-3-8B](https://huggingface.co/meta-llama/Llama-Guard-3-8B)
     * [Llama-3-Swallow-8B-Instruct-v0.1](tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1)
     * [llama-3-youko-8b-instruct](https://huggingface.co/rinna/llama-3-youko-8b-instruct) (derived from Llama-3)
   * OpenAssistant (and derived) fine-tuned variations of [Eleuther AI's Pythia model family](https://github.com/EleutherAI/pythia)

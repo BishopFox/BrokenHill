@@ -561,7 +561,8 @@
 			"template": "phi3",
 			"size": 14784589056,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--trust-remote-code" ],
+			"comment": "Not sure why this variation still needs --trust-remote-code"
 		},
 		{
 			"model_name": "Phi-3-medium-128k-instruct",

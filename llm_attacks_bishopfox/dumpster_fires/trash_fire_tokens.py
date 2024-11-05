@@ -118,9 +118,10 @@ def get_encoded_token(attack_state, token, exterminate_all_cowboy_nonsense = Fal
         logger.debug(f"Encoding token '{token}'")
     result = None
     try:
-        # If skip_special_tokens=True is enabled here, some(? all?) tokenizers will log a warning message about it
-        result = attack_state.tokenizer.encode(token, skip_special_tokens=True)
-        #result = attack_state.tokenizer.encode(token)
+        # If skip_special_tokens=True is enabled here, some(? all?) tokenizers will log a warning message about it.
+        # Some will even error out! Unbelievable. Why write a compatibility layer and then glue incompatible options for different models on top of it?
+        #result = attack_state.tokenizer.encode(token, skip_special_tokens=True)
+        result = attack_state.tokenizer.encode(token)
         result = None
         if exterminate_all_cowboy_nonsense:
             result = encode_string_for_real_without_any_cowboy_funny_business(attack_state, token)

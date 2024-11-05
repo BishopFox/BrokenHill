@@ -17,6 +17,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [Mistral](#mistral)
   * [Mixtral](#mixtral)
   * [MPT](#mpt)
+  * [Orca](#orca)
   * [Phi-2](#phi-2)
   * [Phi-3](#phi-3)
   * [Pythia](#pythia)
@@ -197,6 +198,7 @@ Broken Hill can successfully load the original Llama model, but we haven't been 
 #### Specific models tested using Broken Hill:
 
 * [llama-7b](https://huggingface.co/huggyllama/llama-7b)
+* [Llama-68M-Chat-v1](https://huggingface.co/meta-llama/Felladrin/Llama-68M-Chat-v1)
 
 ### Llama-2
 
@@ -220,6 +222,7 @@ Until this issue is resolved, Broken Hill will report one or more warnings when 
 ##### Specific models tested using Broken Hill:
 
 * [Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
+* [Meta-Llama-Guard-2-8B](https://huggingface.co/meta-llama/Meta-Llama-Guard-2-8B)
 
 #### Other third-party variations
 
@@ -275,6 +278,7 @@ For maximum accuracy during your testing, you may want to replicate this, and ca
 
 * [Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
 * [Meta-Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct)
+* [Llama-Guard-3-8B](https://huggingface.co/meta-llama/Llama-Guard-3-8B)
 
 #### Other third-party variations
 
@@ -362,6 +366,19 @@ These models are derived from Mistral (and other models), and their chat format 
 #### Specific models tested using Broken Hill:
 
 * [mpt-7b-chat](https://huggingface.co/mosaicml/mpt-7b-chat)
+
+### Orca-2
+
+* Conversation template name: `zero_shot`
+* [Microsoft's Orca-2-7b model at Hugging Face](https://huggingface.co/Microsoft/Orca-2-7b)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Specific models tested using Broken Hill:
+
+* [Orca-2-7b](https://huggingface.co/Microsoft/Orca-2-7b)
 
 ### Phi-2
 
