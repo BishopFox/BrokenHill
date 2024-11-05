@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import traceback
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present

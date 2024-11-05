@@ -1,6 +1,7 @@
 #!/bin/env python
 
 import logging
+import traceback
 
 from enum import auto
 from enum import IntFlag

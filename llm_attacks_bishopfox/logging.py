@@ -8,6 +8,7 @@ import math
 import os
 import sys
 import time
+import traceback
 
 from llm_attacks_bishopfox.util.util_functions import strip_ansi_codes
 

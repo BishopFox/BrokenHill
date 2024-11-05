@@ -4,6 +4,8 @@ import copy
 import logging
 import sys
 import torch
+import traceback
+
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 import fastchat as fschat
 import fastchat.conversation as fschat_conversation

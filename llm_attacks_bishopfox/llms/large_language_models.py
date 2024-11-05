@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import torch
+import traceback
 
 from enum import IntFlag
 #from enum import StrEnum
@@ -277,7 +278,7 @@ class LargeLanguageModelInfo(JSONSerializableObject):
         if self.parameter_count is not None:
             return self.parameter_count
         if self.parameter_info_collection is None:
-            return None        
+            return None
         return self.parameter_info_collection.total_parameter_count
     
     def to_dict(self):

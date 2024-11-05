@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shlex
+import traceback
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfo

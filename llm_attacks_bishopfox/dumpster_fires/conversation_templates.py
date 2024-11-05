@@ -2,6 +2,7 @@
 
 import json
 import logging
+import traceback
 
 # IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
 import fastchat as fschat

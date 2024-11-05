@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import torch
+import traceback
 
 from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
 

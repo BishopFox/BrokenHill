@@ -2,6 +2,7 @@
 
 import logging
 import statistics
+import traceback
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 
