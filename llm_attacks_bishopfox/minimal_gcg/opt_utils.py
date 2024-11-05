@@ -397,7 +397,16 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         logger.debug(f"Getting logits")
     logits = None
     try:
-        logits = attack_state.model(inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
+        handled_logits_call = False
+        # MosiacGPT doesn't currently support the inputs_embeds keyword
+        # if attack_state.model_type_name == "MosaicGPT":
+            # try:
+                # logits = attack_state.transformer(inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
+                # handled_logits_call = True
+            # except Exception as e:
+                # handled_logits_call = False
+        if not handled_logits_call:
+            logits = attack_state.model(inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
     # TKTK: is there a way to limit this up front to just the user input/adversarial content and the messages that follow? That should reduce device memory consumption considerably.
     #logits = attack_state.model(inputs_embeds=full_embeds).logits
     except Exception as e:
@@ -529,11 +538,13 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
 
     if coordinate_gradient is not None:
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"coordinate_gradient.shape = {coordinate_gradient.shape}, coordinate_gradient = {coordinate_gradient}")
+            logger.debug(f"coordinate_gradient.shape = {coordinate_gradient.shape}, coordinate_gradient = {coordinate_gradient}, len(not_allowed_tokens) = {len(not_allowed_tokens)}")
         if not_allowed_tokens is not None:
             not_allowed_tokens_gradient_device = None
             try:
                 not_allowed_tokens_gradient_device = not_allowed_tokens.to(coordinate_gradient.device)
+                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"not_allowed_tokens_gradient_device = {not_allowed_tokens_gradient_device}")
             except Exception as e:
                 logger.error(f"Exception thrown when converting the token denylist to a tensor on the PyTorch device: {e}\n{traceback.format_exc()}\nThe list of adversarial content candidates generated during this stage will not respect the denylist.")
                 not_allowed_tokens_gradient_device = None

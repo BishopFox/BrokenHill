@@ -76,9 +76,6 @@ def is_phi_1_to_3_model(model):
 def get_embedding_layer(attack_state):
     use_default_logic = False
     result = None
-    model_type_name = f"{type(attack_state.model).__name__}"
-    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug(f"This model is an instance of the type '{model_type_name}'")
     try:
         if isinstance(attack_state.model, BartForCausalLM):
             result = attack_state.model.model.decoder.get_input_embeddings()
@@ -113,8 +110,8 @@ def get_embedding_layer(attack_state):
         if result is None and isinstance(attack_state.model, MambaForCausalLM):
             result = attack_state.model.get_input_embeddings()
         #if result is None and isinstance(attack_state.model, MosaicGPT):
-        if result is None and model_type_name == "MosaicGPT":
-            result = attack_state.model.model.get_input_embeddings()
+        if result is None and attack_state.model_type_name == "MosaicGPT":
+            result = attack_state.model.transformer.wte
         if result is None and isinstance(attack_state.model, MptForCausalLM):
             #result = attack_state.model.get_input_embeddings()
             result = attack_state.model.model.get_input_embeddings()
@@ -174,6 +171,24 @@ def get_embedding_layer(attack_state):
             logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
             result = None
             result_name = None
+    if result is None and hasattr(attack_state.model, "transformer"):
+        if hasattr(attack_state.model.transformer, "wte"):
+            result_name = "attack_state.model.transformer.wte"
+            try:
+                result = attack_state.model.transformer.wte
+            except Exception as e:
+                logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+                result = None
+                result_name = None
+    if result is None and hasattr(attack_state.model, "base_model"):
+        if hasattr(attack_state.model.base_model, "wte"):
+            result_name = "attack_state.model.base_model.wte"
+            try:
+                result = attack_state.model.base_model.wte
+            except Exception as e:
+                logger.error(f"Exception thrown when attempting to use {result_name}: {e}\n{traceback.format_exc()}")
+                result = None
+                result_name = None
     if result is not None:
         if not use_default_logic:
             logger.warning(f"unrecognized model type {type(attack_state.model)} - using {result_name} as embedding layer - this may cause unexpected behaviour.")

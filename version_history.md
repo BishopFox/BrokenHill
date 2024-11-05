@@ -65,6 +65,7 @@ This is the most significant update to Broken Hill since its public release in S
   * `gptneox`
   * `mistral`
   * `mistral-nemo`
+  * `mpt-redpajama`
   * `solar`
   * `vikhr`
 * System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.

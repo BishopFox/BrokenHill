@@ -70,11 +70,11 @@ This document describes high-level results of testing the GCG attack using vario
 
 Broken Hill includes a custom `gemma` chat template because `fschat` seems to go back and forth between including one and not including one, and the current version the last time I checked added a spurious extra `\n<end_of_turn>` to the end of the conversation.
 
-####$ Special considerations
+#### Special considerations
 
 Gemma is strongly conditioned to avoid discussing certain topics. We'll be adding a separate discussion about this.
 
-####$ Specific models tested using Broken Hill:
+#### Specific models tested using Broken Hill:
 
 * [gemma-2b-it](https://huggingface.co/google/gemma-2b-it)
 * [gemma-1.1-2b-it](https://huggingface.co/google/gemma-1.1-2b-it)
@@ -361,7 +361,16 @@ These models are derived from Mistral (and other models), and their chat format 
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 
-`fschat` includes a template for MPT, but for some reason there are two templates named `mpt-7b-chat` and `mpt-30b-chat`, which are identical except for the system prompt. Broken Hill includes a shortcut template definition that points to `mpt-7b-chat`.
+`fschat` includes a template for MPT, but for some reason there are two templates named `mpt-7b-chat` and `mpt-30b-chat`, which are completely different. Broken Hill includes a shortcut template definition for `mpt` that points to `mpt-7b-chat`.
+
+#### Special considerations
+
+One might assume that - because Broken Hill supports a model named `MPT` - it would also support the very similarly named model [mpt-1b-redpajama-200b-dolly](https://huggingface.co/mosaicml/mpt-1b-redpajama-200b-dolly). That assumption would be incorrect. `mpt-1b-redpajama-200b-dolly` has its own custom template in Broken Hill (`mpt-redpajama` - because it uses a completely different conversation format), but a GCG attack cannot currently be performed against it because the interface for the model doesn't support generation using an `inputs_embeds` keyword (or equivalent): 
+
+"inputs_embeds is not implemented for MosaicGPT yet"
+		-- `mosaic_gpt.py`:400
+
+Maybe someday someone will add that model to the Transformers library and give it the appropriate code.
 
 #### Specific models tested using Broken Hill:
 

@@ -1195,6 +1195,8 @@ class VolatileAttackState():
         self.model_weight_storage_dtype = None
         self.model_weight_storage_string = None        
         self.model_device = None
+        self.model_type_name = None
+        self.tokenizer_type_name = None
         self.gradient_device = None
         self.forward_device = None
         self.token_denylist_as_cpu_tensor = None
@@ -1594,7 +1596,9 @@ class VolatileAttackState():
             else:
                 logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
         
-        logger.info(f"This model is an instance of the type '{type(model).__name__}', and the tokenizer is an instance of the type '{type(tokenizer).__name__}'")
+        self.model_type_name = f"{type(model).__name__}"
+        self.tokenizer_type_name = f"{type(tokenizer).__name__}"
+        logger.info(f"This model is an instance of the type '{self.model_type_name}', and the tokenizer is an instance of the type '{self.tokenizer_type_name}'")
         
         return model, tokenizer
 

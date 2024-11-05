@@ -174,11 +174,11 @@
 			"peft_path": null,
 			"template": "zero_shot",
 			"size": 1625222120,
-			"data_type": "",
+			"data_type": "float32",
 			"parameter_count": 254083072,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens-final", "128" ],
-			"comment": "Add data_type."
+			"comment": ""
 		},
 		{
 			"model_name": "blenderbot-3B",
@@ -191,11 +191,11 @@
 			"peft_path": null,
 			"template": "zero_shot",
 			"size": 5474698716,
-			"data_type": "",
+			"data_type": "float32",
 			"parameter_count": 2538583040,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens", "32", "--max-new-tokens-final", "32" ],
-			"comment": "Add data_type."
+			"comment": ""
 		},
 		{
 			"model_name": "opt-2.7b",
@@ -737,12 +737,13 @@
 			"model_path": "mosaicml/mpt-1b-redpajama-200b-dolly",
 			"tokenizer_path": null,
 			"peft_path": null,
-			"template": "mpt",
+			"template": "mpt-redpajama",
 			"size": 5245893681,
 			"data_type": "float32",
 			"parameter_count": 1311442944,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--trust-remote-code" ]
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--trust-remote-code" ],
+			"comment": "Cannot perform a GCG attack on this model because 'inputs_embeds is not implemented for MosaicGPT yet' (mosaic_gpt.py:400)"
 		},
 		{
 			"model_name": "mpt-7b-chat",

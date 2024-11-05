@@ -309,6 +309,9 @@ def main(attack_params, log_manager):
     
     try:
         attack_state.load_model()
+        
+        if attack_state.model_type_name == "MosaicGPT":
+            logger.warning("This model is of type MosaicGPT. At the time this version of Broken Hill was made, MosaicGPT did not support the 'inputs_embeds' keyword when calling the forward method. If that is still the case when you are reading this message, Broken Hill will likely crash during the GCG attack.")
 
         # only build the token allowlist and denylist if this is a new run.
         # If the state has been loaded, the lists are already populated.

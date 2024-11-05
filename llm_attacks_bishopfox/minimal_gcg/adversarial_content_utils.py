@@ -167,8 +167,15 @@ def get_mistralnemo_conversation_template():
     return conv_template
 
 def get_mpt_conversation_template():
+    # Note the mpt-7b-chat template in fschat will work for regular MPT, but not mpt-1b-redpajama-200b-dolly, which needs the completely different mpt-30b-instruct instead. Yippie-kai-yei, sheriff!
     conv_template = fschat_conversation.get_conv_template("mpt-7b-chat").copy()
+    #conv_template = fschat_conversation.get_conv_template("mpt-30b-instruct").copy()
     conv_template.name = "mpt"
+    return conv_template
+    
+def get_mpt_redpajama_conversation_template():
+    conv_template = fschat_conversation.get_conv_template("mpt-30b-instruct").copy()
+    conv_template.name = "mpt-redpajama"
     return conv_template
 
 def get_phi2_conversation_template():
@@ -282,6 +289,7 @@ def get_custom_conversation_templates():
     result.append(get_llama2_conversation_template())
     result.append(get_mistralnemo_conversation_template())
     result.append(get_mpt_conversation_template())
+    result.append(get_mpt_redpajama_conversation_template())
     result.append(get_phi2_conversation_template())
     result.append(get_phi3_conversation_template())
     result.append(get_qwen_conversation_template())
