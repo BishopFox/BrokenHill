@@ -430,7 +430,7 @@ def main(attack_params, log_manager):
                     if attack_state.persistable.main_loop_iteration_number > 0:
                         if attack_state.persistable.attack_params.reencode_adversarial_content_every_iteration:
                             reencoded_token_ids = attack_state.tokenizer.encode(attack_state.persistable.current_adversarial_content.as_string)
-                            attack_state.persistable.current_adversarial_content = AdversarialContent.from_token_ids(attack_state.tokenizer, attack_state.trash_fire_token_treasury, reencoded_token_ids)
+                            attack_state.persistable.current_adversarial_content = AdversarialContent.from_token_ids(attack_state, attack_state.trash_fire_token_treasury, reencoded_token_ids)
                     
                     attack_state.adversarial_content_manager.adversarial_content = attack_state.persistable.current_adversarial_content
                                        
@@ -1030,7 +1030,7 @@ def main(attack_params, log_manager):
     if attack_state.persistable.attack_params.save_state:
         logger.info(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
     attack_state.write_persistent_state()
-    attack_state.persistable.performance_data.output_statistics(verbose = attack_state.persistable.attack_params.verbose_statistics)
+    attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
     
     completed_all_iterations = True
     if user_aborted:
@@ -1818,8 +1818,6 @@ if __name__=='__main__':
         logger.warning(f"--loss-slice-is-target-slice was specified. This will prevent the GCG attack from working correctly. Expect poor results.")
 
     attack_params.loss_slice_index_shift = args.loss_slice_index_shift
-    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug(f"attack_params.loss_slice_index_shift = {attack_params.loss_slice_index_shift}")
 
     # if not isinstance(args.mellowmax, type(None)) and args.mellowmax == True:
         # attack_params.loss_algorithm = LossAlgorithm.MELLOWMAX  

@@ -347,7 +347,7 @@ class LargeLanguageModelInfoList(JSONSerializableObject):
         try:
             file_content = load_json_from_file(file_path, failure_is_critical = True)
         except Exception as e:
-            raise LargeLanguageModelException(f"Could not load JSON data from the file '{file_path}': {e}\n{traceback.format_exc()")
+            raise LargeLanguageModelException(f"Could not load JSON data from the file '{file_path}': {e}\n{traceback.format_exc()}")
         if file_content is None:
             raise LargeLanguageModelException(f"Found no content in the file '{file_path}'")
         return LargeLanguageModelInfoList.from_dict(file_content)

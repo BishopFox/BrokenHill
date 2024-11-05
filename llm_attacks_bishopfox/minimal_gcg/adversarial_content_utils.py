@@ -272,7 +272,7 @@ def get_custom_conversation_templates():
     result.append(get_mistral_conversation_template())
 
     result.append(get_blenderbot_conversation_template())
-    result.append(get_daredevil_conversation_template())
+    #result.append(get_daredevil_conversation_template())
     result.append(get_felladrin_llama_conversation_template())
     result.append(get_gemma_conversation_template())
     result.append(get_gptneox_conversation_template())
@@ -944,12 +944,10 @@ class AdversarialContentManager:
                             logger.debug(f"updated base_prompt_token_end_index to {base_prompt_token_end_index} using fallback logic because it was None")
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"base_prompt_token_start_index = {base_prompt_token_start_index}, base_prompt_token_end_index = {base_prompt_token_end_index}")
-                    if base_prompt_token_end_index is None:
-                        
                     result.slice_data.goal = slice(              
                         base_prompt_token_start_index,
                         base_prompt_token_end_index
-                    )
+                        )
                     self.validate_slice_data('get_prompt (non-Python) - goal', result.slice_data, current_token_ids, current_decoded_tokens)
                     
                     #If the adversarial content is an empty string, make the slice an empty slice right after the goal slice

@@ -50,6 +50,7 @@ from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_de
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
 from llm_attacks_bishopfox.llms.large_language_models import print_model_parameter_info
+from llm_attacks_bishopfox.logging import ConsoleGridView
 #from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
 from llm_attacks_bishopfox.statistics.statistical_tools import StatisticsCube
 from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
@@ -1655,7 +1656,7 @@ class VolatileAttackState():
                 logger.debug(f"Getting max effective token value for model and tokenizer.")
         
             self.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer(self, "--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
-            self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
+            self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer(self, "--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
         except Exception as e:
             raise AttackInitializationException(f"Error loading model: {e}\n{traceback.format_exc()}")
 
@@ -1798,7 +1799,7 @@ class VolatileAttackState():
             logger.debug(f"Setting initial adversarial content.")
         self.persistable.initial_adversarial_content = None
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
-            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
             single_token_id = None
@@ -1819,19 +1820,19 @@ class VolatileAttackState():
             for i in range(0, self.persistable.attack_params.initial_adversarial_token_count):
                 self.persistable.attack_params.initial_adversarial_token_ids.append(single_token_id)
             
-            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
 
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
-            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
             token_ids = get_random_token_ids(numpy_random_generator, self.persistable.token_allow_and_deny_lists, self.persistable.attack_params.initial_adversarial_token_count)
-            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self.tokenizer, self.trash_fire_token_treasury, token_ids)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, token_ids)
         
         post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
         
         if self.persistable.attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
-            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
         
         # This should never actually happen, but just in case
         if self.persistable.initial_adversarial_content is None:
@@ -1893,7 +1894,7 @@ class VolatileAttackState():
         empty_output_during_jailbreak_self_tests = False
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"Testing for jailbreak with no adversarial content")
-        empty_adversarial_content = AdversarialContent.from_string(self.tokenizer, self.trash_fire_token_treasury, "")
+        empty_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
             1.0,
@@ -2798,7 +2799,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = new_message
         return found_data, message
 
-    def output_statistics(self, verbose = False):
+    def output_statistics(self, use_ansi = True, verbose = False):
         message = "Resource utilization / performance statistics:"
         #if verbose:
         #    message = f"{message} (verbose)"
@@ -2819,7 +2820,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             "Physical memory in use (bytes):",
             "Swap memory in use (bytes):"
             ]
-        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv = ConsoleGridView(use_ansi = use_ansi)
         cgv.column_headers = column_headers
         cgv.row_headers = row_headers_cpu_process_memory
         current_stats = []
@@ -2845,7 +2846,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             "Swap memory available (bytes):",
             "Swap memory utilization:"
             ]
-        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv = ConsoleGridView(use_ansi = use_ansi)
         cgv.column_headers = column_headers
         cgv.row_headers = row_headers_cpu_system_memory
         current_stats = []
@@ -2855,7 +2856,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
         dataset = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
         found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset,  "{0:.2f}%")
-         dataset = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        dataset = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
         found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
         dataset = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
         found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
@@ -2876,25 +2877,25 @@ class ResourceUtilizationData(JSONSerializableObject):
                 "Memory utilization by Broken Hill:",
                 "Memory reserved and allocated (bytes):",
                 "Memory reserved but unallocated (bytes):",
-                "Reserved memory utilization by Broken Hill:"
+                "Reserved memory utilization by Broken Hill:",
                 "Memory in use system-wide (bytes):",
                 "Memory available system-wide (bytes):",
                 "Memory utilization system-wide:"
                 ]
-            cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+            cgv = ConsoleGridView(use_ansi = use_ansi)
             cgv.column_headers = column_headers
             cgv.row_headers = row_headers_cuda_process_memory
             current_stats = []
             dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
             dataset = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
-            found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
             dataset = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-             dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+            dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
             dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
-            found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
             dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
             dataset = cd.get_dataset("available_memory", raise_on_missing = False)
@@ -2902,14 +2903,14 @@ class ResourceUtilizationData(JSONSerializableObject):
             dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
             found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
             if found_data:
-                cgv.title = "CUDA Device {cuda_device_num}: {cd.cube_name}"
+                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name}"
                 cgv.set_data(current_stats)
                 table_text = cgv.render_table()
                 message = f"{message}{table_text}\n\n"
                 found_data_overall = True
         
         found_data = False
-        cgv = ConsoleGridView(use_ansi = self.attack_params.console_ansi_format)
+        cgv = ConsoleGridView(use_ansi = use_ansi)
         cgv.column_headers = column_headers
         cgv.row_headers = [ "Seconds to process each iteration:" ]
         current_stats = []
@@ -2997,9 +2998,9 @@ class ResourceUtilizationData(JSONSerializableObject):
         #tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
         #found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
     
-        if found_perf_data:
-            found_data = True
-            message = perf_message
+        # if found_perf_data:
+            # found_data = True
+            # message = perf_message
     
         if found_data_overall:
             logger.info(message)

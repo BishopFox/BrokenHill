@@ -1,11 +1,13 @@
 #!/bin/env python
 
 import copy
+import datetime
 import enum
 import logging
 import math
 import os
 import sys
+import time
 
 from llm_attacks_bishopfox.util.util_functions import strip_ansi_codes
 
@@ -80,6 +82,25 @@ class ANSIFormatter():
         result["bg_cyan"] = "46"
         result["bg_light_grey"] = "47"
         
+        # the following codes are not universally supported
+        result["fg_bright_black"] = "90"
+        result["fg_bright_red"] = "91"
+        result["fg_bright_green"] = "92"
+        result["fg_bright_yellow"] = "93"
+        result["fg_bright_blue"] = "94"
+        result["fg_bright_magenta"] = "95"
+        result["fg_bright_cyan"] = "96"
+        result["fg_bright_white"] = "97"
+        
+        result["bg_bright_black"] = "100"
+        result["bg_bright_red"] = "101"
+        result["bg_bright_green"] = "102"
+        result["bg_bright_yellow"] = "103"
+        result["bg_bright_blue"] = "104"
+        result["bg_bright_magenta"] = "105"
+        result["bg_bright_cyan"] = "106"
+        result["bg_bright_white"] = "107"
+        
         return result    
         
     def get_ansi_format_code(self, code_name):
@@ -118,9 +139,11 @@ class BrokenHillLogFormatter(logging.Formatter):
         # self.ac_warning = self.ansi_formatter.get_ansi_format_code("fg_yellow")
         # self.ac_error = self.ansi_formatter.get_ansi_format_code("fg_red")
         # self.ac_critical = self.ansi_formatter.get_ansi_format_code("fg_red") + self.ansi_formatter.get_ansi_format_code("blink_slow")
-        self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white")
-        self.ac_info = self.ansi_formatter.get_ansi_format_code("bg_green") + self.ansi_formatter.get_ansi_format_code("fg_black")
-        self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        #self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_debug = self.ansi_formatter.get_ansi_format_code("bg_magenta") + self.ansi_formatter.get_ansi_format_code("bg_bright_magenta") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_info = self.ansi_formatter.get_ansi_format_code("bg_green") + self.ansi_formatter.get_ansi_format_code("bg_bright_green") + self.ansi_formatter.get_ansi_format_code("fg_black")
+        #self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("fg_white")
+        self.ac_warning = self.ansi_formatter.get_ansi_format_code("bg_brown") + self.ansi_formatter.get_ansi_format_code("bg_bright_yellow") + self.ansi_formatter.get_ansi_format_code("fg_black")
         self.ac_error = self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
         self.ac_critical = self.ansi_formatter.get_ansi_format_code("blink_slow") + self.ansi_formatter.get_ansi_format_code("bg_red") + self.ansi_formatter.get_ansi_format_code("fg_white")
         self.ac_separators = self.ansi_formatter.get_ansi_format_code("fg_light_grey") + self.ansi_formatter.get_ansi_format_code("faint")
@@ -162,7 +185,7 @@ class BrokenHillLogFormatter(logging.Formatter):
 # custom formatTime that uses ISO date/time formatting with milliseconds field
 # BEGIN: based on https://stackoverflow.com/a/77821614
     def formatTime(self, record, datefmt = None):
-        if datefmt = None:
+        if datefmt is None:
             result = datetime.fromtimestamp(record.created).astimezone().isoformat(timespec='milliseconds')
         else:
             # BEGIN: borrowed from https://github.com/python/cpython/blob/eac41c5ddfadf52fbd84ee898ad56aedd5d90a41/Lib/logging/__init__.py#L648C9-L655C17
@@ -370,8 +393,8 @@ class ConsoleGridView:
         if self.use_ansi:
             self.ac_reset = self.ansi_formatter.get_ansi_format_code("reset") + self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
             self.ac_title = self.ansi_formatter.get_ansi_format_code("bg_blue") + self.ansi_formatter.get_ansi_format_code("fg_white") + self.ansi_formatter.get_ansi_format_code("bold")
-            self.ac_column_header = self.ansi_formatter.get_ansi_format_code("bg_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
-            self.ac_row_header = self.ansi_formatter.get_ansi_format_code("bg_light_grey") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
+            self.ac_column_header = self.ansi_formatter.get_ansi_format_code("bg_light_grey") + self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
+            self.ac_row_header = self.ansi_formatter.get_ansi_format_code("bg_light_grey") + self.ansi_formatter.get_ansi_format_code("bg_bright_white") + self.ansi_formatter.get_ansi_format_code("fg_black") + self.ansi_formatter.get_ansi_format_code("bold")
             self.ac_data_cell = self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
             self.ac_empty_space = self.ansi_formatter.get_ansi_format_code("bg_black") + self.ansi_formatter.get_ansi_format_code("fg_white")
 
@@ -387,11 +410,11 @@ class ConsoleGridView:
         num_row_headers = len(self.row_headers)
         num_data_rows = len(data_list)
         if num_data_rows != num_row_headers:
-            raise LoggingException(f"The number of rows in the specified data ({num_data_rows}) does not equal the number of column headers configured for this ConsoleGridView ({num_row_headers}).")
+            raise LoggingException(f"The number of rows in the specified data ({num_data_rows}) does not equal the number of column headers configured for this ConsoleGridView ({num_row_headers}).\nRow headers: {self.row_headers}\ndata_list: {data_list}")
         num_data_columns = len(data_list[0])
         num_column_headers = len(self.column_headers)
         if num_data_columns != num_column_headers:
-            raise LoggingException(f"The number of columns in the specified data ({num_data_columns}) does not equal the number of column headers configured for this ConsoleGridView ({len_column_headers}).")
+            raise LoggingException(f"The number of columns in the specified data ({num_data_columns}) does not equal the number of column headers configured for this ConsoleGridView ({num_column_headers}). ")
         # reset all column widths to zero
         self.column_widths = []
         for column_num in range(0, num_data_columns):
@@ -439,13 +462,18 @@ class ConsoleGridView:
         
         self.data = copy.deepcopy(data_list)
     
-    def get_padding_to_center(self, first_data_column_index, column_num, text_to_center):
-        column_width = self.column_widths[first_data_column_index + column_num]
-        column_padding_left = int(math.floor(float(column_width - len(text_to_center) - 2) / 2.0)) + 1
-        column_padding_right = column_width - column_padding_left - 1
+    def get_padding_to_center(self, column_width, text_to_center):        
+        len_text_to_center = len(text_to_center)
+        column_padding_left = int(math.floor(float(column_width - len_text_to_center) / 2.0))
+        column_padding_right = column_width - (len_text_to_center + column_padding_left)
+        print(f"[get_padding_to_center] Debug: column_width = {column_width}, text_to_center = '{text_to_center}', len_text_to_center = {len_text_to_center}, column_padding_left = {column_padding_left}, column_padding_right = {column_padding_right}")
         return column_padding_left, column_padding_right
     
-    def render_table(self)
+    def get_padding_to_center_by_column(self, first_data_column_index, column_num, text_to_center):
+        column_width = self.column_widths[first_data_column_index + column_num]
+        return self.get_padding_to_center(column_width, text_to_center)
+    
+    def render_table(self):
         console_columns, console_rows = os.get_terminal_size(0)
         table_padding_total = console_columns - self.total_width
         if table_padding_total < 0:
@@ -459,11 +487,13 @@ class ConsoleGridView:
         num_row_headers = len(self.row_headers)
         num_column_headers = len(self.column_headers)
         
-        title_padding_left = int(math.floor(float(self.total_width - len(self.title)) / 2.0))
+        # title_padding_left = int(math.floor(float(self.total_width - len(self.title)) / 2.0))
+        # tpl = " " * title_padding_left
+        # title_padding_right = self.total_width - title_padding_left
+        # tpr = " " * title_padding_right
+        title_padding_left, title_padding_right = self.get_padding_to_center(self.total_width, self.title)
         tpl = " " * title_padding_left
-        title_padding_right = self.total_width - title_padding_left
         tpr = " " * title_padding_right
-        
         title_row = f"{self.ac_title}{tpl}{self.title}{tpr}{self.ac_reset}\n"
         
         header_row = ""
@@ -473,7 +503,7 @@ class ConsoleGridView:
         
         add_separator = False
         if num_row_headers > 0:
-            hr_padding = " " * self.column_widths[0]
+            hr_padding = " " * (self.column_widths[0] - 1)
             header_row = f"{self.ac_empty_space}{hr_padding}"
             first_data_column_index = 1
             add_separator = True
@@ -483,15 +513,15 @@ class ConsoleGridView:
         
         for column_num in range(0, num_column_headers):
             if add_separator:
-                    current_row = f"{current_row}{self.column_separator}"
-                else:
-                    add_separator = True
+                header_row = f"{header_row}{self.column_separator}"
+            else:
+                add_separator = True
             #column_padding_left = int(math.floor(float(self.column_widths[first_data_column_index + column_num] - len(self.column_headers[column_num]) - 2) / 2.0)) + 1
             #column_padding_right = self.column_widths[first_data_column_index + column_num] - column_padding_left
-            column_padding_left, column_padding_right = get_padding_to_center(first_data_column_index, column_num, self.column_headers[column_num])
+            column_padding_left, column_padding_right = self.get_padding_to_center_by_column(first_data_column_index, column_num, self.column_headers[column_num])
             cpl = " " * column_padding_left
             cpr = " " * column_padding_right
-            header_row = f"{header_row}{self.column_separator}{cpl}{self.column_headers[column_num]}{cpr}"
+            header_row = f"{header_row}{cpl}{self.column_headers[column_num]}{cpr}"
         
         header_row = f"{header_row}\n"
         
@@ -516,10 +546,10 @@ class ConsoleGridView:
                 else:
                     add_separator = True
                 current_cell_text = self.data[row_num][column_num]
-                column_padding_left, column_padding_right = get_padding_to_center(first_data_column_index, column_num, current_cell_text)
+                column_padding_left, column_padding_right = self.get_padding_to_center_by_column(first_data_column_index, column_num, current_cell_text)
                 cpl = " " * column_padding_left
                 cpr = " " * column_padding_right
-                current_row = f"{current_row}{self.column_separator}{cpl}{current_cell_text}{cpr}"            
+                current_row = f"{current_row}{cpl}{current_cell_text}{cpr}"            
             data_rows = f"{data_rows}{current_row}\n"
         
         if data_rows != "":

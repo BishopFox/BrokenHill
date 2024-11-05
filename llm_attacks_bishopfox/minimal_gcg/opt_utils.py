@@ -670,7 +670,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"adversarial_candidate '{new_adversarial_token_ids_as_list}' contains a token ID that is outside the valid range for this tokenizer (min = 0, max = {attack_state.tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
             else:
-                new_candidate = AdversarialContent.from_token_ids(attack_state.tokenizer, attack_state.adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
+                new_candidate = AdversarialContent.from_token_ids(attack_state, attack_state.adversarial_content_manager.trash_fire_tokens, new_adversarial_token_ids_as_list)
                 result.append_if_new(new_candidate)
     return result
 
@@ -825,7 +825,7 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                     decoded_str = decoded_str.replace("\n", attack_state.persistable.attack_params.candidate_replace_newline_characters)
                     decoded_str = decoded_str.replace("\r", attack_state.persistable.attack_params.candidate_replace_newline_characters)
                     if decoded_str != adversarial_candidate.as_string:
-                        adversarial_candidate = AdversarialContent.from_string(attack_state.tokenizer, attack_state.adversarial_content_manager.trash_fire_tokens, decoded_str)
+                        adversarial_candidate = AdversarialContent.from_string(attack_state, attack_state.adversarial_content_manager.trash_fire_tokens, decoded_str)
                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"appending '{adversarial_candidate_message_represenation}' to candidate list.\n")
                 result.append_if_new(adversarial_candidate)

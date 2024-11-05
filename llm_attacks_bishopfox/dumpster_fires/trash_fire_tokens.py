@@ -157,14 +157,14 @@ def encode_string_for_real_without_any_cowboy_funny_business(attack_state, strin
     not_the_same_string_at_all_encoded = attack_state.tokenizer.encode(not_the_same_string_at_all)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug("not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
-    start_index = find_index_of_first_nonmatching_element(string_encoded, not_the_same_string_at_all_encoded, log_manager = self.attack_state.log_manager)
+    start_index = find_index_of_first_nonmatching_element(string_encoded, not_the_same_string_at_all_encoded, log_manager = attack_state.log_manager)
     # Second, check for any ever-burning beacons of waste at the end of the result
     # make a string that is the same as the input, but has more characters at the end
     string_with_chaff = f"{string} 1987"
     string_with_chaff_encoded = attack_state.tokenizer.encode(string_with_chaff)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug("string_with_chaff_encoded = {string_with_chaff_encoded}")
-    stop_index = find_index_of_first_nonmatching_element(string_encoded, string_with_chaff_encoded, log_manager = self.attack_state.log_manager)
+    stop_index = find_index_of_first_nonmatching_element(string_encoded, string_with_chaff_encoded, log_manager = attack_state.log_manager)
     result = string_encoded[start_index:stop_index]
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug("input = '{string}', result = {result}")
@@ -428,7 +428,7 @@ def find_last_index_of_token(attack_state, trash_fire_tokens, string_to_search_f
     return find_index_of_token(attack_state, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = start_index, stop_index = stop_index, conversation_template = conversation_template, find_last = True, strip_leading_and_trailing_tokens = strip_leading_and_trailing_tokens, remove_empty_leading_and_trailing_tokens = remove_empty_leading_and_trailing_tokens, remove_leading_and_trailing_trash_fire_tokens = remove_leading_and_trailing_trash_fire_tokens)
 
 # This actually returns a slice that describes the start and end indices in the token array
-def find_index_of_token(attack_state, tokenizer, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, find_last = False, strip_leading_and_trailing_tokens = False, remove_empty_leading_and_trailing_tokens = True, remove_leading_and_trailing_trash_fire_tokens = True):  
+def find_index_of_token(attack_state, trash_fire_tokens, string_to_search_for, tokens, decoded_tokens, start_index = 0, stop_index = None, conversation_template = None, find_last = False, strip_leading_and_trailing_tokens = False, remove_empty_leading_and_trailing_tokens = True, remove_leading_and_trailing_trash_fire_tokens = True):  
     if string_to_search_for == "":
         raise TrashFireTokenException(f"Error: cannot search for empty string '{string_to_search_for}' in tokens = '{tokens}'")
     # decoded_tokens = get_decoded_tokens(attack_state, tokens)
@@ -436,7 +436,7 @@ def find_index_of_token(attack_state, tokenizer, trash_fire_tokens, string_to_se
         # raise TrashFireTokenException(f"Error: got zero-length array '{decoded_tokens}' for tokens = '{tokens}'")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"decoded_tokens = '{decoded_tokens}' for tokens = '{tokens}'")
-    #string_tokens = encode_string_for_real_without_any_cowboy_funny_business(attack_state.tokenizer, string_to_search_for)
+    #string_tokens = encode_string_for_real_without_any_cowboy_funny_business(attack_state, string_to_search_for)
     string_token_variations = []
     # did you know!
     # one of the reasons this function is in the trash_fire_tokens.py file instead of somewhere else is because some tokenizers (I'm looking at *you*, Gemma and Llama-3!) will tokenize the strings "this", " this", "this ", etc. to different values.
@@ -449,7 +449,7 @@ def find_index_of_token(attack_state, tokenizer, trash_fire_tokens, string_to_se
         string_variations = add_value_to_list_if_not_already_present(string_variations, f" {smv} ")
     for i in range(0, len(string_variations)):
         sv = string_variations[i]
-        sv_encoded = encode_string_for_real_without_any_cowboy_funny_business(attack_state.tokenizer, sv)
+        sv_encoded = encode_string_for_real_without_any_cowboy_funny_business(attack_state, sv)
         string_token_variations.append(sv_encoded)
     
     failure_messages = []
