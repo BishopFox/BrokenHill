@@ -68,6 +68,7 @@ This is the most significant update to Broken Hill since its public release in S
   * `mpt-redpajama`
   * `solar`
   * `vikhr`
+* [Added a walkthrough/comparison of using Broken Hill's rollback feature to jailbreak Phi-3, with some statistics and analysis of effectiveness versus a few other configurations](docs/examples/death_threat-phi3.md).
 * System resource utilization information is now collected at many more locations in the code than previous versions, but the default behaviour is to only display it at a few key steps.
   * Use `--verbose-resource-info` to display the data every time it's collected. This is probably only useful when debugging Broken Hill.
   * The resource utilization information is used to compile and display statistical information at the end of a test.

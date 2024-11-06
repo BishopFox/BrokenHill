@@ -37,36 +37,33 @@ Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. 
 ## Features
 
 * Extensive command-line interface
-* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090 ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)):
-  * Bart
-  * BigBird / BigBirdPegasus
+* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090 ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)). Some highlights:
+  * Azurro's APT family
   * Falcon
-  * Gemma
+  * Gemma (including third-party derivatives, such as `Vikhr-Gemma-2B-instruct`)
   * Gemma 2
-  * GPT-2
-  * GPT-J
-  * GPT-Neo
-  * GPT-NeoX
   * Guanaco
-  * Llama (if you have an accurate conversation template)
-  * Llama-2
-  * Llama-3
-  * Mamba
+  * Llama (including third-party derivatives such as `Llama-68M-Chat-v1`)
+  * Llama-2 (including first- and third-party derivatives, such as Meta-Llama-Guard-2, Swallow, and Youri)
+  * Llama-3 (including first- and third-party derivatives, such as Llama-Guard-3, Swallow, and Youko)
   * MPT
+  * Mamba
+  * Mistral (including derived third-party models such as Intel's Neural Chat)
+  * Mixtral
   * OPT
-  * Pegasus
-  * Phi-1
-  * Phi-2
-  * Phi-3
-  * Pythia
-  * RoBERTa
-  * Qwen
-  * Qwen 2
+  * Orca-2
+  * Phi-1 through Phi-3.5
+  * Pythia (including derived third-party models such as the Pythia-based subset of the OpenAssistant models)
+  * Qwen 1, 1.5, and 2
+  * RedPajama-INCITE
+  * SOLAR
   * SmolLM
-  * StableLM
-  * StableLM 2
+  * Snowflake Arctic
+  * StableLM 1 and 2
   * TinyLlama
   * Vicuna
+  * Vikhr
+  
 * Results can be output in JSON format for filtering/analysis
 * The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Self-tests to help validate that that the attack is configured correctly and will produce useful results

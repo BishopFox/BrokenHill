@@ -7,14 +7,16 @@ This example assumes you've already walked through at least one of the previous 
 ## Table of contents
 
 1. [Introduction](#introduction)
-2. [](#)
-3. [](#)
-4. [](#)
-5. [](#)
-6. [](#)
-7. [](#)
+2. [Test 1: Evolution of adversarial content using only the loss value](#test-1-evolution-of-adversarial-content-using-only-the-loss-value)
+3. [Test 2: Evolution of adversarial content using loss value and jailbreak count](#test-2-evolution-of-adversarial-content-using-loss-value-and-jailbreak-count)
+4. [Test 3: Evolution using only loss, but re-encoding adversarial content at every iteration, consistent token count](#test-3-evolution-using-only-loss-but-re-encoding-adversarial-content-at-every-iteration-consistent-token-count)
+5. [Test 4: Evolution using loss and jailbreak count, and re-encoding adversarial content at every iteration, consistent token count](#test-4-evolution-using-loss-and-jailbreak-count-and-re-encoding-adversarial-content-at-every-iteration-consistent-token-count)
+6. [Test 5: Evolution using only loss, but re-encoding adversarial content at every iteration, 16 - 36 tokens](#test-5-evolution-using-only-loss-but-re-encoding-adversarial-content-at-every-iteration-16---36-tokens)
+7. [Test 6: Evolution using loss and jailbreak count, and re-encoding adversarial content at every iteration, 16 - 36 tokens](#test-6-evolution-using-loss-and-jailbreak-count-and-re-encoding-adversarial-content-at-every-iteration-16---36-tokens)
 8. [Comparison of results](#comparison-of-results)
+7. [Testing successful content in ollama](#testing-successful-content-in-ollama)
 9. [Conclusions](#conclusions)
+10. [I conjure forlorn specters dancing on the razor's edge](#i-conjure-forlorn-specters-dancing-on-the-razors-edge)
 
 ## Introduction
 
