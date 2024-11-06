@@ -13,6 +13,38 @@ If you are already testing using [models with sizes in-line with the values in t
 * If you're specifying a non-default value for `--batch-size-get-logits`, stop doing that.
 * Examine the length of the system prompt (if any) and template messages (if any). During the gradient-generation phase of the GCG attack, calculations are performed using data derived from the *entire* conversation, including the system prompt and template messages. Lengthy messages of either kind can consume significant amounts of CUDA device memory.
 
+## Dependency order conflict when installing using setup.py
+
+If you are trying to install Broken Hill version 0.33 or older, or are installing 0.34 or newer using `setup.py` instead of the recommended method, you may receive an error like the following:
+
+```
+Collecting flash-attn==2.6.3 (from llm_attacks_bishopfox==0.0.2)
+  Downloading flash_attn-2.6.3.tar.gz (2.6 MB)
+...omitted for brevity...
+  error: subprocess-exited-with-error
+...omitted for brevity...
+      ModuleNotFoundError: No module named 'torch'
+```
+
+This is because `flash-attn` and `causal-conv1d` have dependencies on `torch` that may not be declared properly, and they won't install if you don't already have `torch` installed system-wide or in the virtual environment. Comment out these lines in `requirements.txt`:
+
+```
+flash_attn==2.6.3
+causal-conv1d==1.4.0
+```
+
+Re-run the installation:
+
+```
+$ bin/pip install ./BrokenHill/
+```
+
+Uncomment the lines in `requirements.txt` that you commented out previously, then run the installation one more time:
+
+```
+$ bin/pip install ./BrokenHill/
+```
+
 ## TypeError: Couldn't build proto file into descriptor pool
 
 Sometimes, everything will seem to be working fine, and then the next time you run Broken Hill, you'll get an error like this:

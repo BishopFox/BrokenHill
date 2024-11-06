@@ -1204,7 +1204,21 @@ class VolatileAttackState():
         self.jailbreak_detector = LLMJailbreakDetector()        
     
     def write_persistent_state(self):
-        self.update_persistable_data()
+        try:
+            self.update_persistable_data()
+        except (Exception, RuntimeError) as e:
+            e_string = None
+            traceback_string = None
+            finished_successfully = False
+            try:
+                e_string = f"{e}"
+            except (Exception, RuntimeError) as e:
+                e_string = "[Unable to convert exception to a string]"
+            try:
+                traceback_string = f"{traceback.format_exc()}"
+            except (Exception, RuntimeError) as e:
+                traceback_string = "[Unable to convert traceback to a string]"
+            logger.error(f"Broken Hill encountered an unhandled exception when trying to update persistable data: {e_string}. The exception details will be displayed below this message for troubleshooting purposes. If this is an error such as 'CUDA error: device-side assert triggered', and the attack itself resulted in a similar error, this behaviour is expected. Broken Hill will do its best to preserve the attack state despite the error.\n{traceback_string}")
         if self.persistable.attack_params.save_state:
             safely_write_text_output_file(self.persistable.attack_params.state_file, self.persistable.to_json())
     

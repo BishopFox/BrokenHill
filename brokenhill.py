@@ -997,33 +997,63 @@ def main(attack_params, log_manager):
         logger.critical(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback.format_exc()}")
         abnormal_termination = True
     
-    except Exception as e:
+    except (Exception, RuntimeError) as e:
         # try/catch when populating these variables so that Broken Hill won't crash if processing the f-string fails
         e_string = None
         traceback_string = None
         try:
             e_string = f"{e}"
-        except Exception as e:
+        except (Exception, RuntimeError) as e:
             e_string = "[Unable to convert exception to a string]"
         try:
             traceback_string = f"{traceback.format_exc()}"
-        except Exception as e:
+        except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception during the GCG attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
         abnormal_termination = True
+
+    finished_successfully = True
 
     if not user_aborted and not abnormal_termination:
         logger.info(f"Main loop complete")
     
-    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"after main loop completion")
-
-    if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
-        logger.info(f"Writing PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
+    try:
+        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"after main loop completion")
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False        
         try:
-            torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
-            logger.info(f"Wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
-        except Exception as e:
-            logger.error(f"Couldn't write PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}': {e}")
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an exception when trying to collect the final set of performance statistics: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+
+    try:
+        if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+            logger.info(f"Writing PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
+            try:
+                torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
+                logger.info(f"Wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
+            except Exception as e:
+                logger.error(f"Couldn't write PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}': {e}")
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False
+        try:
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an exception when trying to write the CUDA profile data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
@@ -1032,34 +1062,93 @@ def main(attack_params, log_manager):
     attack_state.persistable.overall_result_data.end_date_time = end_ts
     attack_state.persistable.overall_result_data.elapsed_time_string = total_elapsed_string
     # collect the stats now so that they're in the files that are written
-    logger.info(f"Processing resource-utilization data.")
-    attack_state.persistable.performance_data.populate_statistics()
-    logger.info(f"Processing performance data.")
-    attack_state.persistable.performance_data.populate_performance_statistics(attack_state)
-    #if attack_state.persistable.attack_params.json_output_file is not None:
-    #    safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
-    if attack_state.persistable.attack_params.json_output_file is not None:
-        logger.info(f"Writing final version of result data to '{attack_state.persistable.attack_params.json_output_file}'.")
-    attack_state.write_output_files()
-    if attack_state.persistable.attack_params.save_state:
-        logger.info(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
-    attack_state.write_persistent_state()
+    try:
+        logger.info(f"Processing resource-utilization data.")
+        attack_state.persistable.performance_data.populate_statistics()
+        logger.info(f"Processing performance data.")
+        attack_state.persistable.performance_data.populate_performance_statistics(attack_state)
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False
+        try:
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to process performance data: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+
+    try:
+        if attack_state.persistable.attack_params.json_output_file is not None:
+            logger.info(f"Writing final version of result data to '{attack_state.persistable.attack_params.json_output_file}'.")
+        attack_state.write_output_files()
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False
+        try:
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write result data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+    
+    try:
+        if attack_state.persistable.attack_params.save_state:
+            logger.info(f"Writing final version of state data to '{attack_state.persistable.attack_params.state_file}'.")
+        attack_state.write_persistent_state()
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False
+        try:
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write the attack state to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+    
     if attack_state.persistable.attack_params.log_file_path is not None:
-        logger.info(f"This attack has been logged to '{attack_state.persistable.attack_params.log_file_path}'.")
-    attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
+            logger.info(f"This attack has been logged to '{attack_state.persistable.attack_params.log_file_path}'.")
+    try:
+        attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
+    except (Exception, RuntimeError) as e:
+        e_string = None
+        traceback_string = None
+        finished_successfully = False
+        try:
+            e_string = f"{e}"
+        except (Exception, RuntimeError) as e:
+            e_string = "[Unable to convert exception to a string]"
+        try:
+            traceback_string = f"{traceback.format_exc()}"
+        except (Exception, RuntimeError) as e:
+            traceback_string = "[Unable to convert traceback to a string]"
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to generate a performance report for the attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
     
     completed_all_iterations = True
     if user_aborted:
+        finished_successfully = False
         completed_all_iterations = False
     if abnormal_termination:
+        finished_successfully = False
         completed_all_iterations = False
     if attack_state.persistable.main_loop_iteration_number < attack_state.persistable.attack_params.max_iterations:
+        finished_successfully = False
         completed_all_iterations = False
-
     
     slm = attack_state.get_state_loading_message(completed_all_iterations)
     logger.info(slm)
-    if not completed_all_iterations:
+    if not finished_successfully:
         sys.exit(1)
     sys.exit(0)
 

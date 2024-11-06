@@ -123,6 +123,9 @@ def get_embedding_layer(attack_state):
             result = attack_state.model.model.embed_tokens
         if result is None and isinstance(attack_state.model, RobertaForCausalLM):
             result = attack_state.model.get_input_embeddings()
+        # for Qwen 1.8B, maybe other oddball Qwen variations
+        if result is None and "QWenLMHeadModel" in attack_state.model_type_name:
+            result = attack_state.model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, Qwen2ForCausalLM):
             result = attack_state.model.base_model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, StableLmForCausalLM):

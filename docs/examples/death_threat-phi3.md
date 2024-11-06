@@ -255,7 +255,7 @@ adversarial content at every iteration, and also requiring a consistent token co
 
 <img src="images/death_threat-phi3-jailbreak_count_and_loss-06.PNG" alt="[ Graph of loss value versus jailbreak count using the rollback feature and re-encoding the adversarial content at every iteration, and allowing the adversarial token count to vary from 16 to 36 ]">
 
-
+Finally, take a look at the (arguably) best overall variation out of the six tests:
 
 <img src="images/death_threat-phi3-jailbreak_count_and_loss-02.PNG" alt="[ Graph of loss value versus jailbreak count using the rollback feature but not re-encoding the adversarial content ]">
 

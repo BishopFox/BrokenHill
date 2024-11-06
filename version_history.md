@@ -77,6 +77,7 @@ This is the most significant update to Broken Hill since its public release in S
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Greatly improved error handling throughout.
 * Added automated testing to make validating additional models and families easier and avoid regression bugs.
+* Added a `pyproject.toml` file to keep `pip` from complaining (mostly) with newer versions of Python.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
 * Added the following additional [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
   * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.  

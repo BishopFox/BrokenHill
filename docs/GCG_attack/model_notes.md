@@ -144,11 +144,7 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [Pythia](#pythia) models
 
 ##### Special considerations
 
-Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors). If you receive a "Can't load tokenizer" error, try explicitly specifying the path to the GPT-NeoX 20B tokenizer, e.g. `--tokenizer LLMs/EleutherAI/gpt-neox-20b`
-
-##### Specific models tested using Broken Hill:
-
-* [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors)
+Some models based on GPT-NeoX do not include their own tokenizer, e.g. [tiny-random-GPTNeoXForCausalLM-safetensors](https://huggingface.co/trl-internal-testing/tiny-random-GPTNeoXForCausalLM-safetensors). If you receive a "Can't load tokenizer" error, try explicitly specifying the path to the GPT-NeoX 20B tokenizer, e.g. `--tokenizer LLMs/EleutherAI/gpt-neox-20b`. However, `tiny-random-GPTNeoXForCausalLM-safetensors` specifically will still cause Broken Hill to crash, so don't use that model unless your goal is to make Broken Hill crash.
 
 ### Guanaco
 
@@ -415,11 +411,22 @@ Broken Hill includes a custom `phi2` chat template because `fschat` does not cur
 
 Broken Hill includes a custom `phi3` chat template because `fschat` does not currently include one.
 
-Phi-3 is one of the most frequent test candidates when developing Broken Hill. Everything should work as expected. 
+#### Special considerations
+
+##### Phi-3-small-128k-instruct
+
+The `Phi-3-small-128k-instruct` version of Phi-3 requires `--trust-remote-code`, even though other versions of the model (such as `Phi-3-medium-128k-instruct`) no longer require it. Additionally, that version will cause Broken Hill to crash when processed on the CPU instead of a CUDA device, with the following error:
+
+```
+Pointer argument (at 0) cannot be accessed from Triton (cpu tensor?)
+```
+
+We're researching a workaround for this, but because CPU processing is so slow, most likely the only people impacted are us, when we run the model test script.
 
 #### Specific models tested using Broken Hill:
 
-* [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct)
+* [Phi-3-mini-128k-instruct](https://huggingface.co/Microsoft/Phi-3-mini-128k-instruct)
+* [Phi-3-medium-128k-instruct](https://huggingface.co/Microsoft/Phi-3-medium-128k-instruct)
 
 #### Specific models tested using tool output in `ollama`:
 

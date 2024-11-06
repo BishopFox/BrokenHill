@@ -18,7 +18,8 @@
 ## Prerequisites
 
 * You should run Broken Hill on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).
-* Your Linux system should have some sort of reasonably modern Nvidia GPU. Using Broken Hill against most popular/common LLMs will require at least 24GiB of VRAM. [It has been tested on an RTX 4090, but other Nvidia GPUs with 24GiB or more of VRAM should work at least as well](other_graphics_hardware.md).
+* Your Linux system should have some sort of reasonably modern Nvidia GPU. Using Broken Hill against most popular/common LLMs will require at least 24 GiB of VRAM. [It has been tested on an RTX 4090, but other Nvidia GPUs with 24 GiB or more of VRAM should work at least as well](other_graphics_hardware.md).
+  * [You can still test smaller models on Nvidia GPUs with 8 or 16 GiB of VRAM. See the memory requirements document for guidelines](memory_requirements.md).
 * You should have your Linux system set up with a working, reasonbly current version of [Nvidia's drivers and the CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). One way to validate that the drivers and toolkit are working correctly is to try running [hashcat](https://hashcat.net/) in benchmarking mode. If you get results that are more or less like the results other hashcat users report for the same hardware, your drivers are probably working more or less correctly. If you see warnings or errors about the driver, "NVIDIA CUDA library", or "NVIDIA RTC library", you should troubleshoot those and get `hashcat` running without errors before proceeding.
 
 ## Setup
@@ -31,43 +32,30 @@ $ python -m venv ./
 $ bin/pip install ./BrokenHill/
 ```
 
-Note: if this is a brand new installation, you may receive an error like the following:
+### `fschat` library
+
+The `pyproject.toml`-based configuration introduced in Broken Hill 0.34 automatically installs the `fschat` Python library from source to pick up newer conversation templates and other definitions, because as of this writing, the main branch of `fschat` has the same version number as the latest version in PyPi, but the code has been updated significantly for almost a year after the last PyPi release. If you want to install from PyPi instead, comment out this line in `pyproject.toml`:
 
 ```
-Collecting flash-attn==2.6.3 (from llm_attacks_bishopfox==0.0.2)
-  Downloading flash_attn-2.6.3.tar.gz (2.6 MB)
-...omitted for brevity...
-  error: subprocess-exited-with-error
-...omitted for brevity...
-      ModuleNotFoundError: No module named 'torch'
+  "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat",
 ```
 
-This is because `flash-attn` and `causal-conv1d` have dependencies on `torch` that may not be declared properly, and they won't install if you don't already have `torch` installed system-wide or in the virtual environment. Comment out these lines in `requirements.txt`:
+...and uncomment this line:
 
 ```
-flash_attn==2.6.3
-causal-conv1d==1.4.0
+#  "fschat==0.2.36",
 ```
 
-Re-run the installation:
+...then re-run `bin/pip install ./BrokenHill/`.
+
+### `flash_attn` library
+
+Some models will encourage you to install the `flash_attn` library. Broken Hill does not do this by default because some features of that library only support CUDA devices, and will cause Broken Hill to crash with arcane, obscure errors if - for example - it is used on a CPU device for testing purposes.
+
+If you are only going to be using Broken Hill in the recommended configuration (CUDA hardware only), you can run `bin/pip install flash_attn`, or uncomment the following line in `pyproject.toml` before running `bin/pip install ./BrokenHill/`:
 
 ```
-$ bin/pip install ./BrokenHill/
-```
-
-Uncomment the lines in `requirements.txt` that you commented out previously, then run the installation one more time:
-
-```
-$ bin/pip install ./BrokenHill/
-```
-
-Highly recommended additional step: install the `fschat` Python library from source to pick up newer conversation templates:
-
-```
-git clone https://github.com/lm-sys/FastChat.git
-cd FastChat
-../bin/pip install -e ".[model_worker,webui]"
-cd ..
+#  "flash_attn==2.6.3",
 ```
 
 ## Use
@@ -99,6 +87,7 @@ cd ..
 
 * [Convince Phi-2 to provide devious machine-generated plans for the annihilation of the human race](examples/annihilation-phi2.md)
 * [Convince Qwen 1.5 to produce hallucinated, dangerous instructions for allegedly creating controlled substances](examples/controlled_substances-qwen1.5.md)
+* [Convince Phi-3 to write a convincing anonymous death threat, while learning more about some advanced features specific to Broken Hill](examples/death_threat-phi3.md)
 
 ### Bypassing instructions provided in a system prompt
 

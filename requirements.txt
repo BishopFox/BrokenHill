@@ -8,7 +8,7 @@ transformers==4.44.2
 ml_collections==0.1.1
 # tested with fschat 0.2.20, 0.2.36, installing from source is highly recommended, however
 fschat==0.2.36
-# tested with psutil 6.0.0
+# tested with psutil 6.0.0
 psutil==6.0.0
 # tested with pandas 2.2.2
 pandas==2.2.2
