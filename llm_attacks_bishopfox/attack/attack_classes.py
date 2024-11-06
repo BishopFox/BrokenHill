@@ -499,8 +499,8 @@ class AttackParams(JSONSerializableObject):
         # the PyTorch device where the 'forward' operation should be performed
         self.forward_device = 'cuda'
         
-        # enable torch.nn.DataParallel for the model (and any other places where it needs to be enabled explicitly)
-        self.torch_dataparallel = False
+        # enable torch.nn.DataParallel for the model
+        self.torch_dataparallel_model = False
         
         # back-end to use if CUDA is not available
         self.device_fallback = 'cpu'
@@ -1535,7 +1535,7 @@ class VolatileAttackState():
                     use_cache = self.persistable.attack_params.use_cache
                 ).to(self.model_device).eval()                
         
-        if self.persistable.attack_params.torch_dataparallel:
+        if self.persistable.attack_params.torch_dataparallel_model:
             try:
                 model = torch.nn.DataParallel(model)
             except Exception as e:

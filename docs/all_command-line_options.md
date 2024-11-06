@@ -1,23 +1,5 @@
 # All command-line options
 
-## --device <string>
-
-The PyTorch device to use for all elements of the attack. Defaults to `cuda`. Equivalent to specifying `--model-device` and `--gradient-device` with the same value.
-
-Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended in most cases. For example, using `cpu` option will make the attack run about 100 times slower.
-
-## --model-device <string>
-
-*Experimental* The PyTorch device to use for the LLM model and most of the other operations, with the exception of the gradient.
-
-## --gradient-device <string>
-
-*Experimental* The PyTorch device to use for the gradient used in the GCG attack. The gradient is one of the largest elements of the GCG attack, and gradient-related operations represent a large fraction of GCG processing. Handling it on a separate device from the other elements *may* allow larger models to be tested on some devices with limited CUDA device memory more efficiently than processing everything on the CPU.
-
-## --forward-device <string>
-
-*Experimental* The PyTorch device to use for aggregation of logits values during the 'forward' operation. This operation consumes more memory than any other part of the GCG attack, but is not computationally intensive, so it may be a good candidate to offload to the CPU.
-
 ## --model <string>
 
 The path to the directory containing the LLM you want to test against.
@@ -35,6 +17,38 @@ An optional parameter used to specify a path to the base directory for a PEFT pr
 *Experimental* Specify the type to load the model's data as. `as-is` will load the data in its native format.  The default is `float16`, which was the historical behaviour inherited from [the proof-of-concept written by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/).
 
 Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.
+
+## Specifying PyTorch devices
+
+### --device <string>
+
+The PyTorch device to use for all elements of the attack. Defaults to `cuda`. Equivalent to specifying `--model-device`, `--gradient-device`, and `--forward-device` with the same value.
+
+Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended in most cases. For example, using `cpu` option will make the attack run about 100 times slower.
+
+### --model-device <string>
+
+*Experimental* The PyTorch device to use for the LLM model and most of the other operations, with the exception of the gradient.
+
+### --gradient-device <string>
+
+*Experimental* The PyTorch device to use for the gradient used in the GCG attack. The gradient is one of the largest elements of the GCG attack, and gradient-related operations represent a large fraction of GCG processing. Handling it on a separate device from the other elements *may* allow larger models to be tested on some devices with limited CUDA device memory more efficiently than processing everything on the CPU.
+
+### --forward-device <string>
+
+*Experimental* The PyTorch device to use for aggregation of logits values during the 'forward' operation. This operation consumes more memory than any other part of the GCG attack, but is not computationally intensive, so it may be a good candidate to offload to the CPU.
+
+## PyTorch device options
+
+### --torch-dp-model
+
+*Untested* Enables the PyTorch `DataParallel` feature for the model, which should allow utilizing multiple CUDA devices at once. 
+
+Based on [the `torch.nn.DataParallel.html` documentation](https://pytorch.org/docs/stable/generated/torch.nn.DataParallel.html), [the `torch.nn.parallel.DistributedDataParallel` documentation](https://pytorch.org/docs/stable/notes/ddp.html#ddp), and [the PyTorch tutorial for DataParallel](https://pytorch.org/tutorials/beginner/blitz/data_parallel_tutorial.html), this seems unlikely to allow larger models to be loaded, but should improve processing times on systems with multiple CUDA devices.
+
+Broken Hill uses `DataParallel` instead of `DistributedDataParallel`, because `DataParallel` requires a minor change to the model-loading logic, versus more significant development implied by [the `torch.nn.parallel.DistributedDataParallel` documentation](https://pytorch.org/docs/stable/notes/ddp.html#ddp).
+
+We don't currently have a system with multiple CUDA devices to test this feature on, so it's very possible it will just cause Broken Hill to crash.
 
 ## Saving and reusing Broken Hill options
 

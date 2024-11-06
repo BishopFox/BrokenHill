@@ -690,6 +690,7 @@
 			"template": "mistral-nemo",
 			"size": 24495604224,
 			"data_type": "bfloat16",
+			"parameter_count": 12247782400,
 			"safe_tensors": true,
 			"custom_options": [],
 			"comment": "Add parameter_count"
@@ -716,9 +717,10 @@
 			"template": "mistral",
 			"size": 14483498040,
 			"data_type": "bfloat16",
+			"parameter_count": 7241732096,
 			"safe_tensors": true,
 			"custom_options": [],
-			"comment": "Add parameter_count"
+			"comment": "This model is excruciatingly slow using CPU processing. It takes ~2 hours to run the jailbreak checks, and another ~8 hours just to reach the end of the first iteration (no gradient/adversarial content generation)."
 		},
 		{
 			"model_name": "NeuralDaredevil-7B",
@@ -728,6 +730,8 @@
 			"peft_path": null,
 			"template": "mistral",
 			"size": 14483497728,
+			"data_type": "float16",
+			"parameter_count": 7241732096,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -753,6 +757,8 @@
 			"peft_path": null,
 			"template": "mpt",
 			"size": 13298639462,
+			"data_type": "bfloat16",
+			"parameter_count": 6649286656,
 			"safe_tensors": false,
 			"custom_options": []
 		},

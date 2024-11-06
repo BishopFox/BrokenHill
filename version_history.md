@@ -78,7 +78,7 @@ This is the most significant update to Broken Hill since its public release in S
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
 * Greatly improved error handling throughout.
 * Added automated testing to make validating additional models and families easier and avoid regression bugs.
-* Added a `pyproject.toml` file to keep `pip` from complaining (mostly) with newer versions of Python.
+* Replaced `requirements.txt` and `setup.py` with a `pyproject.toml` file to keep `pip` from complaining with newer versions of Python.
 * Added yet another method for finding a list of tokens within a larger list of tokens after observing additional possible encoding variations by some LLMs. This allows some scenarios to be tested that would previously cause Broken Hill to crash, such as `--target-output` values beginning with "Wonderful" for Phi-3.
 * Added the following additional [options, which are discussed in more detail in the "All command-line options" document](docs/all_command-line_options.md):
   * `--performance-output-file`, which writes resource/performance data at key stages in JSON format to the specified file to help tune memory utilization and other factors.  
@@ -90,6 +90,7 @@ This is the most significant update to Broken Hill since its public release in S
   * *Experimental* `--model-device`, `--gradient-device`, and `--forward-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
   * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
+  * *Experimental* `--torch-dp-model`, which may allow Broken Hill to utilize multiple CUDA devices at once. We don't have a system with more than one CUDA device to try it out on, so it might also just result in a crash.
 * Changed the default value for `--batch-size-get-logits` from 1 to 512, based on analysis of CUDA memory profile information.
   * This significantly improves performance in some cases, and seems to use approximately the same amount of memory as a value of 1.
   * If you are trying to minimize CUDA device memory utilization as much as possible, you can still try reducing this value to 1 manually.

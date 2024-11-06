@@ -1272,9 +1272,9 @@ if __name__=='__main__':
     parser.add_argument("--forward-device", type = str, 
         help="Experimental: The device to use for PyTorch aggregation of logits values during the 'forward' operation ('cuda', 'cuda:0', etc.).")
     
-    parser.add_argument("--torch-dataparallel", type = str2bool, nargs='?',
+    parser.add_argument("--torch-dp-model", type = str2bool, nargs='?',
         const=True,
-        help="Experimental: Enables the PyTorch 'DataParallel' feature, which should allow utilizing multiple CUDA devices at once.")
+        help="Untested: Enables the PyTorch 'DataParallel' feature for the model, which should allow utilizing multiple CUDA devices at once.")
 
     parser.add_argument("--self-test", type = str2bool, nargs='?',
         const=True,
@@ -1741,8 +1741,8 @@ if __name__=='__main__':
         logger.critical(f"--device can only be specified if none of --model-device, --gradient-device, and --forward-device are specified.")
         sys.exit(1)
 
-    if args.torch_dataparallel:
-        attack_params.torch_dataparallel = True
+    if args.torch_dp_model:
+        attack_params.torch_dataparallel_model = True
 
     if cuda_available:
         if len(attack_params.get_non_cuda_devices()) > 0:

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import selectors
+import signal
 import subprocess
 import sys
 import traceback
@@ -317,6 +318,9 @@ if __name__=='__main__':
         smoke_test_params.perform_cuda_tests = False
     
     smoke_test_params.ignore_jailbreak_test_results = True
+    # CPU tests are even more excruciatingly slow if debug information is generated
+    smoke_test_params.console_level = "info"
+    smoke_test_params.log_level = "info"
     
     if args.include_model:
         for elem in args.include_model:

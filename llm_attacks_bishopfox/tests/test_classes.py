@@ -187,7 +187,6 @@ class BrokenHillTestParams(JSONSerializableObject):
             result.append(self.get_torch_cuda_output_path())        
             result.append('--log')
             result.append(self.get_log_path())
-        
         for i in range(0, len(self.custom_options)):
             result.append(self.custom_options[i])
                
