@@ -914,14 +914,15 @@ class AdversarialContentManager:
                                 dummy = 1
                                 # last_token_index is already correct
                                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"exception while getting second token index for user role using fast tokenizer: {e}")
+                                    logger.debug(f"Exception while getting second token index for user role using fast tokenizer: {e}")
                     
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"result.prompt = {result.prompt}")
                         logger.debug(f"last_token_index = {last_token_index}")
                         logger.debug(f"encoded_conversation_template_prompt = {encoded_conversation_template_prompt}")
-                        decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state, encoded_conversation_template_prompt.input_ids)
-                        logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
+                        if self.attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                            decoded_encoded_conversation_template_prompt = get_decoded_tokens(self.attack_state, encoded_conversation_template_prompt.input_ids)
+                            logger.debug(f"decoded_encoded_conversation_template_prompt = {decoded_encoded_conversation_template_prompt}")
                     
                     user_role_start_index = encoded_conversation_template_prompt.char_to_token(last_token_index)
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -1094,8 +1095,9 @@ class AdversarialContentManager:
 
         if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"conversation_template (after modifications) = '{conversation_template}'")
-            final_decoded_toks = get_decoded_tokens(self.attack_state, current_token_ids)
-            logger.debug(f"current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
+            if self.attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                final_decoded_toks = get_decoded_tokens(self.attack_state, current_token_ids)
+                logger.debug(f"current_token_ids (after parsing) = '{current_token_ids}', final_decoded_toks = '{final_decoded_toks}'")
         
         if remove_tokens_after_target_output:
             current_token_ids = current_token_ids[:result.slice_data.target_output.stop]

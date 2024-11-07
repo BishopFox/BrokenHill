@@ -14,6 +14,7 @@ This is the most significant update to Broken Hill since its public release in S
   * Log to a file using `--log <path>`.
   * Set the message level to include in console output using `--console-level` (default: `info`).
   * Set the message level to include in log file output using `--log-level` (default: `info`).
+  * Enable some extra debug logging when necessary with `--debugging-tokenizer-calls`.
 * Added support for the following models and families. The linked models are specific versions tested, but other models from the same series or family should also work just fine. We'll be testing more of them over time.
   * [Azurro's APT family](https://huggingface.co/Azurro)
       * [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)

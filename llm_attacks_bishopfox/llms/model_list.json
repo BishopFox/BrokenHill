@@ -760,7 +760,8 @@
 			"data_type": "bfloat16",
 			"parameter_count": 6649286656,
 			"safe_tensors": false,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "About 2.5 hours before finishing the first jailbreak test during startup, but only another five minutes before finishing the second jailbreak test. Then about 2.5 hours to perform the jailbreak test during the first iteration. Can startup time be optimized by leaving out the token denylist?"
 		},
 		{
 			"model_name": "gpt2",

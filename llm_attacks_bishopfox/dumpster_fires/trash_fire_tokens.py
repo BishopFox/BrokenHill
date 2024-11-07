@@ -80,22 +80,24 @@ def get_decoded_token(attack_state, token):
         wrap_in_list = True
     if wrap_in_list:
         token_to_decode = [ token ]
-        #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        #    logger.debug(f"converted '{token}' to '{token_to_decode}'")
-    #result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=False)
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                logger.debug(f"converted '{token}' to '{token_to_decode}'")
     try:
         #result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=True)
-        result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=False)
+        result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens = False)
     except Exception as e:
         logger.error(f"Error decoding token {token_to_decode}: {e}\n{traceback.format_exc()}")
         result = None
-    #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-    #    logger.debug(f"decoded token '{token}' to '{result}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            logger.debug(f"decoded token '{token}' to '{result}'")
     return result
 
 def get_decoded_tokens(attack_state, tokens, recursively_process_arrays = False):
-    #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-    #    logger.debug(f"decoding tokens '{tokens}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            logger.debug(f"decoding tokens '{tokens}'")
     decoded_tokens = []
     token_list = tokens
     if isinstance(tokens, torch.Tensor):
@@ -110,13 +112,15 @@ def get_decoded_tokens(attack_state, tokens, recursively_process_arrays = False)
     else:
         dt = get_decoded_token(attack_state, tokens)
         decoded_tokens.append(dt)
-    #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-    #    logger.debug(f"decoded tokens '{tokens}' to '{decoded_tokens}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            logger.debug(f"decoded tokens '{tokens}' to '{decoded_tokens}'")
     return decoded_tokens
 
 def get_encoded_token(attack_state, token, exterminate_all_cowboy_nonsense = False):
-    #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-    #    logger.debug(f"Encoding token '{token}'")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            logger.debug(f"Encoding token '{token}'")
     result = None
     try:
         # If skip_special_tokens=True is enabled here, some(? all?) tokenizers will log a warning message about it.
@@ -705,12 +709,9 @@ def get_nonmatching_token_list(tokenizer, tokenizer_vocabulary_decoded, filter_r
         if not isinstance(dt, type(None)):
             if not filter_regex.search(dt):
                 nonmatching_tokens.append(i)
-                #logger.debug(f"excluding '{dt}' because it did not match the specified regular expression.")
-                #if "#" in dt:
-                #    logger.debug(f"excluding '{dt}' because it did not match the specified regular expression.")
-            #else:
-            #    if "#" in dt:
-            #        logger.debug(f"not excluding '{dt}' because it matched the specified regular expression.")
+                # if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    # if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                        # logger.debug(f"excluding '{dt}' because it did not match the specified regular expression.")                
     
     return nonmatching_tokens
 

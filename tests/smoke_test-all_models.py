@@ -18,6 +18,7 @@ from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelI
 from llm_attacks_bishopfox.logging import BrokenHillLogManager
 from llm_attacks_bishopfox.tests.test_classes import BrokenHillTestParams
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
@@ -117,11 +118,14 @@ def main(test_params):
                     skip_message = "skipping this test because it would require CPU processing by PyTorch."
                     skip_model = True
                 model_test_params.model_device = "cpu"
-                model_test_params.gradient_device = "cuda"
-                model_test_params.forward_device = "cpu"
+                model_test_params.gradient_device = "cpu"
+                model_test_params.forward_device = "cpu"               
                 model_test_params.custom_options.append("--batch-size-get-logits")
                 model_test_params.custom_options.append("512")
             else:
+                # CUDA tests with a denylist are fine
+                denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
+                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, denylist_options)
                 if not test_params.perform_cuda_tests:
                     skip_message = "skipping this test because it would be processed on a CUDA device."
                     skip_model = True
@@ -319,8 +323,13 @@ if __name__=='__main__':
     
     smoke_test_params.ignore_jailbreak_test_results = True
     # CPU tests are even more excruciatingly slow if debug information is generated
-    smoke_test_params.console_level = "info"
-    smoke_test_params.log_level = "info"
+    # Hopefully fixed now that there's a separate flag for debug logs that require encoding/decoding
+    #smoke_test_params.console_level = "info"
+    #smoke_test_params.log_level = "info"
+    
+    # Remove all of the extra options that require building a denylist here
+    # Because it's easier to re-add them to the CUDA model test configs in the main loop instead of trying to remove them from the CPU model test configs there.
+    smoke_test_params.custom_options = [ "--no_ansi" ]
     
     if args.include_model:
         for elem in args.include_model:

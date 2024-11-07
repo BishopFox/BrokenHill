@@ -260,9 +260,10 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"input_id_data.slice_data.control = {input_id_data.slice_data.control}")
         logger.debug(f"input_token_ids_gradient_device = {input_token_ids_gradient_device}")
-        input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state, input_token_ids_gradient_device)
-        logger.debug(f"input_token_ids_gradient_device_decoded = {input_token_ids_gradient_device_decoded}")
-        logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
+        if self.attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state, input_token_ids_gradient_device)
+            logger.debug(f"input_token_ids_gradient_device_decoded = {input_token_ids_gradient_device_decoded}")
+            logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
     
     if input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0] < 1:
         raise GradientCreationException(f"Can't create a gradient when the adversarial content ('control') slice of the input ID data has no content.")
@@ -737,23 +738,23 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                 else:
                     include_candidate = False
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to the current adversarial content value '{attack_state.persistable.current_adversarial_content.get_short_description()}'.")
+                        logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to the current adversarial content value '{attack_state.persistable.current_adversarial_content.get_short_description()}'.")
                     filtered_due_to_already_being_tested.append(adversarial_candidate)
                 if include_candidate:
                     if adversarial_candidate_message_represenation.strip() == "":
                         include_candidate = False
                         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                            logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it is an empty string, or equivalent to an empty string.")
+                            logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because it is an empty string, or equivalent to an empty string.")
                         filtered_due_to_empty_string.append(adversarial_candidate)
                 if include_candidate:
                     if attack_state.persistable.tested_adversarial_content.contains_adversarial_content(adversarial_candidate):
                         include_candidate = False
                         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                            logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to a previous adversarial value.")
+                            logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because it was equivalent to a previous adversarial value.")
                         filtered_due_to_already_being_tested.append(adversarial_candidate)
                     else:
                         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                            logger.debug(f"candidate '{adversarial_candidate.get_short_description()}' is not equivalent to any previous adversarial values.")
+                            logger.debug(f"Candidate '{adversarial_candidate.get_short_description()}' is not equivalent to any previous adversarial values.")
                 if include_candidate:
                     if include_candidate:
                         
@@ -763,13 +764,13 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                             if candidate_token_count < attack_state.persistable.attack_params.candidate_filter_tokens_min:
                                 include_candidate = False
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was less than the minimum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_min}).")
+                                    logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was less than the minimum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_min}).")
                                 filtered_due_to_insufficient_token_count.append(adversarial_candidate)
                         if not isinstance(attack_state.persistable.attack_params.candidate_filter_tokens_max, type(None)):
                             if candidate_token_count > attack_state.persistable.attack_params.candidate_filter_tokens_max:
                                 include_candidate = False
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_max}).")
+                                    logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was greater than the maximum value specified ({attack_state.persistable.attack_params.candidate_filter_tokens_max}).")
                                 filtered_due_to_excessive_token_count.append(adversarial_candidate)
                         if attack_state.persistable.attack_params.attempt_to_keep_token_count_consistent:
                             # Test whether or not the candidate can be decoded to a string, then re-encoded to token IDs without changing the number of tokens
@@ -779,7 +780,7 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                             if len(reencoded_candidate_token_ids) != candidate_token_count:
                                 include_candidate = False
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{attack_state.persistable.current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
+                                    logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because its token count ({candidate_token_count}) was not equal to the length of '{attack_state.persistable.current_adversarial_content.get_short_description()}' ({current_adversarial_content_token_count}).")
                                 filtered_due_to_nonmatching_token_count.append(adversarial_candidate)
 
                     if include_candidate:
@@ -802,7 +803,7 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
                             else:
                                 include_candidate = False
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_state.persistable.attack_params.candidate_filter_regex}'.")
+                                    logger.debug(f"Rejecting candidate '{adversarial_candidate_message_represenation}' because '{adversarial_candidate.as_string}' failed to pass the regular expression filter '{attack_state.persistable.attack_params.candidate_filter_regex}'.")
                                 filtered_due_to_not_matching_regex.append(adversarial_candidate)
                         if include_candidate and not isinstance(attack_state.persistable.attack_params.candidate_filter_repetitive_tokens, type(None)) and attack_state.persistable.attack_params.candidate_filter_repetitive_tokens > 0:
                             token_counts = {}
@@ -948,9 +949,10 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after recreating nested_ids")
 
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        decoded_test_ids = get_decoded_tokens(attack_state, test_ids)
-        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating decoded_test_ids")
-        logger.debug(f"test_ids = '{test_ids}'\n decoded_test_ids = '{decoded_test_ids}'")
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            decoded_test_ids = get_decoded_tokens(attack_state, test_ids)
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating decoded_test_ids")
+            logger.debug(f"test_ids = '{test_ids}'\n decoded_test_ids = '{decoded_test_ids}'")
 
     if not(test_ids[0].shape[0] == number_of_adversarial_token_ids):
         raise ValueError((
@@ -1072,8 +1074,8 @@ def target_loss(attack_state, logits, ids, input_id_data):
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "target_loss - after recreating ids_sliced")
     
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        ids_sliced_decoded = get_decoded_tokens(attack_state, ids_sliced)
-        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            ids_sliced_decoded = get_decoded_tokens(attack_state, ids_sliced)
             logger.debug(f"calculating loss. logits_sliced = '{logits_sliced}', logits_sliced_transposed = '{logits_sliced_transposed}', ids_sliced = '{ids_sliced}', ids_sliced_decoded = '{ids_sliced_decoded}'")
 
     got_loss = False

@@ -440,19 +440,20 @@ def main(attack_params, log_manager):
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_id_data")
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
+                        logger.debug(f"Calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
                     input_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_id_data")
                     
                     # Only perform this work if the results will actually be logged
                     decoded_loss_slice = None
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        decoded_input_tokens = get_decoded_tokens(attack_state, input_id_data.input_token_ids)
-                        decoded_full_prompt_token_ids = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids)
-                        decoded_control_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
-                        decoded_target_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
-                        decoded_loss_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
-                        logger.debug(f"decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
+                        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                            decoded_input_tokens = get_decoded_tokens(attack_state, input_id_data.input_token_ids)
+                            decoded_full_prompt_token_ids = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids)
+                            decoded_control_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.control])
+                            decoded_target_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.target_output])
+                            decoded_loss_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
+                            logger.debug(f"decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
                     decoded_loss_slice_string = get_escaped_string(attack_state.tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     
@@ -583,7 +584,7 @@ def main(attack_params, log_manager):
                                                 logger.info(f"{standard_explanation_intro} Because the option to add an additional token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                         else:
                                             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                                logger.debug(f"the option to add an additional token is disabled.")
+                                                logger.debug(f"The option to add an additional token is disabled.")
                                         
                                         if not something_has_changed:
                                             if attack_state.persistable.attack_params.delete_token_when_no_candidates_returned:
@@ -609,7 +610,7 @@ def main(attack_params, log_manager):
                                                     logger.info(f"{standard_explanation_intro} Because the option to delete a random token is enabled, the current adversarial content has been modified from {current_short_description} to {new_short_description}.")
                                             else:
                                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                                    logger.debug(f"the option to delete a random token is disabled.")
+                                                    logger.debug(f"The option to delete a random token is disabled.")
                                         
                                         if not something_has_changed:
                                             new_new_adversarial_value_candidate_count = attack_state.persistable.attack_params.new_adversarial_value_candidate_count + attack_state.persistable.original_new_adversarial_value_candidate_count
@@ -634,7 +635,7 @@ def main(attack_params, log_manager):
                                                 something_has_changed = True
                                             else:
                                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                                    logger.debug(f"not increasing the --batch-size-new-adversarial-tokens value.")
+                                                    logger.debug(f"Not increasing the --batch-size-new-adversarial-tokens value.")
                                         
                                         if not something_has_changed:
                                             new_topk = attack_state.persistable.attack_params.topk + attack_state.persistable.original_topk
@@ -659,7 +660,7 @@ def main(attack_params, log_manager):
                                                 something_has_changed = True
                                             else:
                                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                                    logger.debug(f"not increasing the --topk value.")
+                                                    logger.debug(f"Not increasing the --topk value.")
                                         
                                         if not something_has_changed:
                                             raise GradientSamplingException(f"{standard_explanation_intro} This may be due to excessive post-generation filtering options. Because the 'topk' value has already reached or exceeded the specified maximum ({attack_state.persistable.attack_params.max_topk}), and no other options for increasing the number of potential candidates is possible in the current configuration, Broken Hill will now exit. {standard_explanation_outro}\n{traceback.format_exc()}")
@@ -757,7 +758,8 @@ def main(attack_params, log_manager):
                             attack_state.persistable.current_adversarial_content = best_new_adversarial_content
                             logger.info(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {attack_state.persistable.current_adversarial_content.original_loss}")
                             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                logger.debug(f"decoded_loss_slice = '{decoded_loss_slice}'")
+                                if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                                    logger.debug(f"decoded_loss_slice = '{decoded_loss_slice}'")
                                 logger.debug(f"input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
                                 logger.debug(f"input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
                         
@@ -908,7 +910,7 @@ def main(attack_params, log_manager):
                                 rollback_triggered = True
                             else:
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {attack_state.persistable.best_loss_value} and threshold {attack_state.persistable.attack_params.rollback_on_loss_threshold}.")
+                                    logger.debug(f"Rollback not triggered by current loss value {attack_results_current_iteration.loss} versus current best value {attack_state.persistable.best_loss_value} and threshold {attack_state.persistable.attack_params.rollback_on_loss_threshold}.")
                         if attack_state.persistable.attack_params.rollback_on_jailbreak_count_decrease:
                             if (attack_results_current_iteration.jailbreak_detection_count + attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold) < attack_state.persistable.best_jailbreak_count:
                                 if attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold == 0:
@@ -918,7 +920,7 @@ def main(attack_params, log_manager):
                                 rollback_triggered = True
                             else:
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {attack_state.persistable.best_jailbreak_count} and threshold {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold}.")
+                                    logger.debug(f"Rollback not triggered by current jailbreak count {attack_results_current_iteration.jailbreak_detection_count} versus current best value {attack_state.persistable.best_jailbreak_count} and threshold {attack_state.persistable.attack_params.rollback_on_jailbreak_count_threshold}.")
                         # TKTK: if use of a threshold has allowed a score to drop below the last best value for x iterations, roll all the way back to the adversarial value that resulted in the current best value
                         # maybe use a tree model, with each branch from a node allowed to decrease 50% the amount of the previous branch, and too many failures to reach the value of the previous branch triggers a rollback to that branch
                         # That would allow some random exploration of various branches, at least allowing for the possibility of discovering a strong value within them, but never getting stuck for too long
@@ -1660,6 +1662,9 @@ if __name__=='__main__':
     parser.add_argument("--third-party-module-level", type = str,
         choices = get_log_level_names(),
         help=f"Set the default logging level for messages generated by third-party modules. The default is 'warning' because PyTorch in particular is very chatty when set to 'info' or below.")
+    parser.add_argument("--debugging-tokenizer-calls", type = str2bool, nargs='?',
+        const=True,
+        help="Enable extra debug log entries that requires making calls to the tokenizer to encode, decode, etc.")
     parser.add_argument("--no-ansi", type = str2bool, nargs='?',
         const=True,
         help="Do not use ANSI formatting codes to colourize console output")
@@ -1678,6 +1683,8 @@ if __name__=='__main__':
         attack_params.console_output_level = log_level_name_to_log_level(args.console_level)
     if args.third_party_module_level:
         attack_params.third_party_module_output_level = log_level_name_to_log_level(args.third_party_module_level)
+    if args.debugging_tokenizer_calls:
+        attack_params.generate_debug_logs_requiring_extra_tokenizer_calls = True
     if args.no_ansi:
         attack_params.console_ansi_format = False
     

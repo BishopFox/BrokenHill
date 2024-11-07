@@ -113,8 +113,7 @@ def get_embedding_layer(attack_state):
         if result is None and attack_state.model_type_name == "MosaicGPT":
             result = attack_state.model.transformer.wte
         if result is None and isinstance(attack_state.model, MptForCausalLM):
-            #result = attack_state.model.get_input_embeddings()
-            result = attack_state.model.model.get_input_embeddings()
+            result = attack_state.model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, OPTForCausalLM):
             result = attack_state.model.model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, peft.peft_model.PeftModelForCausalLM):

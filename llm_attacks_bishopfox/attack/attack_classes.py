@@ -851,7 +851,8 @@ class AttackParams(JSONSerializableObject):
         self.log_file_output_level = logging.INFO
         self.console_ansi_format = True
         self.log_file_ansi_format = False
-
+        # If this option is set to False, logging operations that require their own call to the tokenizer to encode or decode tokens will be avoided
+        self.generate_debug_logs_requiring_extra_tokenizer_calls = False
         # Workaround for overly-chatty-by-default PyTorch (and other) code
         self.third_party_module_output_level = logging.WARNING
 
