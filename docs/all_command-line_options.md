@@ -373,13 +373,17 @@ Broken Hill manages adversarial content as token IDs by default, and does not ex
 
 ### --temperature <floating-point number>
 
-'Temperature' value to pass to the model. Use the default value (1.0) for deterministic results. Higher values are likely to cause more "creative" or "colourful" output. [This value is discussed in detail in the "'Temperature' in Broken Hill and LLMs in general" document](temperature.md).
+If --random-seed-comparisons is specified, the 'Temperature' value to pass to all of the randomized instances of the LLM. Use the default value (1.0) for deterministic results. Higher values are likely to cause more "creative" or "colourful" output. [This value is discussed in detail in the "'Temperature' in Broken Hill and LLMs in general" document](temperature.md).
 
 You don't need to set this value very high to get a wide variety of output. 1.001 to 1.01 is probably sufficient unless you want the LLM to really start going off the rails. 
 
 ### --temperature-range <floating-point number> <floating-point number>
 
-Specify the low and high end (inclusive) of a range of [temperature values](temperature.md) to pass to the model, when using --random-seed-comparisons. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.
+If --random-seed-comparisons is specified, specifies the low and high end (inclusive) of a range of [temperature values](temperature.md) to pass to the model. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.
+
+### --do-sample
+
+Enables the `do_sample` option for the primary (or only) LLM instance, instead of only the additional instances used in `--random-seed-comparisons` mode. This option is included for development and testing only. Please do not file an issue if it doesn't do what you expect.
 
 ### --topk <positive integer> and --max-topk <positive integer>
 
@@ -682,6 +686,10 @@ If this option is not specified, the "end of string" token will be used.
 ### --missing-pad-token-padding-side [left/right]
 
 If the tokenizer is missing a padding token definition, use the specified padding side for the replacement. Must be one of `left` or `right`. Default: `left`.
+
+### --padding-side
+
+Force the tokenizer to always used the specified padding side, even if it has a padding token defined already. Must be one of 'left' or 'right'.
 
 ### --trust-remote-code
 

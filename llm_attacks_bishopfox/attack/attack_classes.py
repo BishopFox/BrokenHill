@@ -603,6 +603,9 @@ class AttackParams(JSONSerializableObject):
         # If the tokenizer does not have a padding token defined, pad from the following side.
         # default is 'left' because the most common / default replacement padding token is EOS, and padding with that on the right will cause the model to not generate any text at all.
         self.missing_pad_token_padding_side = "left"
+        
+        # If this value is not None, force the tokenizer to use the specified padding side. Overrides the missing pad token padding side value.
+        self.padding_side = None
 
         # Options that control detection of a successful jailbreak
         self.jailbreak_detection_rule_set = None      
@@ -620,6 +623,9 @@ class AttackParams(JSONSerializableObject):
         self.random_seed_scoring_mode = OverallScoringFunction.MEDIAN
 
         # values that can greatly influence model behaviour
+        # enable do_sample in all calls to model.generate, even for the "canonical" instance
+        # This is included for development/debugging only.
+        self.always_do_sample = False
         # temperature range begin
         self.model_temperature_range_begin = 1.0
         # temperature range end (inclusive)
@@ -1581,6 +1587,9 @@ class VolatileAttackState():
                 logger.error(f"Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
                 raise e
         
+        if self.persistable.attack_params.padding_side is not None:
+            tokenizer.padding_side = self.persistable.attack_params.padding_side
+        
         if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
             if 'oasst-sft-6-llama-30b' in tokenizer_path_to_load:
                 tokenizer.bos_token_id = 1
@@ -1600,8 +1609,9 @@ class VolatileAttackState():
                 
         if not tokenizer.pad_token:
             # pad from the left side by default, because the default / most common replacement (EOS) will cause the model to not generate anything at all if the data is padded from the right
-            tokenizer.padding_side = self.persistable.attack_params.missing_pad_token_padding_side
-            side_message = f" The padding side has been set to '{self.persistable.attack_params.missing_pad_token_padding_side}'. If you encounter errors or unexpected results, try using the other padding side mode."
+            if self.persistable.attack_params.padding_side is None:
+                tokenizer.padding_side = self.persistable.attack_params.missing_pad_token_padding_side
+                side_message = f" The padding side has been set to '{self.persistable.attack_params.missing_pad_token_padding_side}'. If you encounter errors or unexpected results, try using the other padding side mode."
             if self.persistable.attack_params.missing_pad_token_replacement is not None:
                 pad_token_id, pad_token = get_missing_pad_token_replacement(tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
                 if pad_token_id is not None and pad_token is not None:
@@ -1918,9 +1928,14 @@ class VolatileAttackState():
             logger.debug(f"Testing for jailbreak with no adversarial content")
         empty_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, "")
         jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
+        temperature = 1.0
+        do_sample = False
+        if self.persistable.attack_params.always_do_sample:
+            temperature = self.persistable.attack_params.model_temperature_range_begin
+            do_sample = True
         nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
-            1.0,
-            do_sample = False)
+            temperature,
+            do_sample = do_sample)
         
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after generating no-adversarial-content jailbreak test data")
         
@@ -1941,8 +1956,8 @@ class VolatileAttackState():
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"Testing for jailbreak when the LLM is prompted with the target string")
         target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
-            1.0,
-            do_sample = False,
+            temperature,
+            do_sample = do_sample,
             include_target_content = True)
         
         self.persistable.performance_data.collect_torch_stats(self, location_description = "after generating ideal jailbreak test data")
@@ -1970,18 +1985,27 @@ class VolatileAttackState():
     def generate(self, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
         working_gen_config = gen_config
         # Copy the generation config to avoid changing the original
+        # See https://github.com/huggingface/transformers/blob/1cf17077bf2d4affed31387c0943251a4ba8fab7/src/transformers/generation/configuration_utils.py#L96 for a list of fields
+        # 
         if gen_config is None:
             working_gen_config = GenerationConfig.from_dict(config_dict = self.model.generation_config.to_dict())
         else:
             working_gen_config = GenerationConfig.from_dict(config_dict = gen_config.to_dict())
         
-        if temperature != 1.0 and do_sample:
+        effective_do_sample = do_sample
+        if self.persistable.attack_params.always_do_sample:
+            effective_do_sample = True
+        
+        if temperature != 1.0 and effective_do_sample:
             working_gen_config.do_sample = True
             working_gen_config.temperature = temperature
         if self.persistable.attack_params.display_full_failed_output or generate_full_output:
             working_gen_config.max_new_tokens = self.persistable.attack_params.full_decoding_max_new_tokens
         else:
             working_gen_config.max_new_tokens = self.persistable.attack_params.generation_max_new_tokens
+
+        # TKTK: probably remove this temporary debugging-related content
+        working_gen_config.max_length = working_gen_config.max_new_tokens + input_token_id_data.get_input_ids_length()
 
         result = GenerationResults()
         result.max_new_tokens = working_gen_config.max_new_tokens
@@ -1994,22 +2018,32 @@ class VolatileAttackState():
         input_ids_converted = input_ids_sliced.to(self.model.device).unsqueeze(0)
         attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
         
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Using the model to generate output with working_gen_config = {working_gen_config},\npad_token_id = {self.tokenizer.pad_token_id},\ninput_token_id_data.input_token_ids = {input_token_id_data.input_token_ids}\ninput_ids = {input_ids},\ninput_ids_sliced = {input_ids_sliced},\ninput_ids_converted = {input_ids_converted},\nattn_masks = {attn_masks}")
+            if self.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                decoded_input_token_ids = get_decoded_tokens(self, input_token_id_data.input_token_ids)
+                logger.debug(f"input_token_id_data.input_token_ids (decoded) = {decoded_input_token_ids}")
+        
         done_generating = False
+        output_token_ids_full = None
+            
         if self.persistable.attack_params.use_attention_mask:
             try:
-                result.output_token_ids = self.model.generate(input_ids_converted, 
+                output_token_ids_full = self.model.generate(input_ids_converted, 
                                             attention_mask = attn_masks, 
                                             generation_config = working_gen_config,
-                                            pad_token_id = self.tokenizer.pad_token_id)[0]
+                                            pad_token_id = self.tokenizer.pad_token_id)
+                result.output_token_ids = output_token_ids_full[0]
                 done_generating = True
             except Exception as e:
                 done_generating = False
                 logger.error(f"Error generating content with attention mask: {e}\n{traceback.format_exc()}\nBroken Hill will attempt to generate the content without an attention mask.")
         if not done_generating:
             try:
-                result.output_token_ids = self.model.generate(input_ids_converted, 
+                output_token_ids_full = self.model.generate(input_ids_converted, 
                                             generation_config = working_gen_config,
                                             pad_token_id = self.tokenizer.pad_token_id)[0]
+                result.output_token_ids = output_token_ids_full[0]
             except Exception as e:
                 done_generating = False
                 error_message = f"Error generating content without attention mask: {e}\n{traceback.format_exc()}"
@@ -2021,7 +2055,11 @@ class VolatileAttackState():
         result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
         
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+            logger.debug(f"output_token_ids_full = {output_token_ids_full}, result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+            if self.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                output_token_ids_decoded = get_decoded_tokens(self, result.output_token_ids)
+                output_token_ids_full_decoded = get_decoded_tokens(self, output_token_ids_full)
+                logger.debug(f"output_token_ids_decoded = {output_token_ids_decoded}\noutput_token_ids_full_decoded = {output_token_ids_full_decoded}")
         
         return result
         

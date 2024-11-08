@@ -30,6 +30,8 @@ dependencies = [
   "torch==2.4.0",
 # tested with transformers 4.28.1, 4.42.4, 4.44.2
   "transformers==4.44.2",
+# undeclared requirement for transformers 4.44.2, can probably be removed once Transformers is upgraded
+  "expecttest>=0.2.1",
 # tested with ml-collections 0.1.1
   "ml_collections==0.1.1",
 # tested with fschat 0.2.20, 0.2.36

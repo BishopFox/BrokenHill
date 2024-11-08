@@ -20,7 +20,9 @@ This is the most significant update to Broken Hill since its public release in S
       * [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
       * [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
       * [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
-      * [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)  
+      * [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
+  * GLM-4
+    * [glm-4-9b-chat](https://huggingface.co/THUDM/glm-4-9b-chat)
   * GPT-NeoX
     * [gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b)
   * Mamba
@@ -92,6 +94,7 @@ This is the most significant update to Broken Hill since its public release in S
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
   * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
   * *Experimental* `--torch-dp-model`, which may allow Broken Hill to utilize multiple CUDA devices at once. We don't have a system with more than one CUDA device to try it out on, so it might also just result in a crash.
+  * `--padding-side` `left` or `right`, which forces the tokenizer to use the specified padding side, whether or not a padding token has been defined.
 * Changed the default value for `--batch-size-get-logits` from 1 to 512, based on analysis of CUDA memory profile information.
   * This significantly improves performance in some cases, and seems to use approximately the same amount of memory as a value of 1.
   * If you are trying to minimize CUDA device memory utilization as much as possible, you can still try reducing this value to 1 manually.

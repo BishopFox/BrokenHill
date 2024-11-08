@@ -80,9 +80,9 @@ def get_decoded_token(attack_state, token):
         wrap_in_list = True
     if wrap_in_list:
         token_to_decode = [ token ]
-        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
-                logger.debug(f"converted '{token}' to '{token_to_decode}'")
+        #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        #    if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+        #        logger.debug(f"converted '{token}' to '{token_to_decode}'")
     try:
         #result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens=True)
         result = attack_state.tokenizer.decode(token_to_decode, skip_special_tokens = False)
@@ -91,13 +91,13 @@ def get_decoded_token(attack_state, token):
         result = None
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
-            logger.debug(f"decoded token '{token}' to '{result}'")
+            logger.debug(f"decoded token ID '{token}' to '{result}'")
     return result
 
 def get_decoded_tokens(attack_state, tokens, recursively_process_arrays = False):
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
-            logger.debug(f"decoding tokens '{tokens}'")
+            logger.debug(f"decoding token IDs '{tokens}'")
     decoded_tokens = []
     token_list = tokens
     if isinstance(tokens, torch.Tensor):
@@ -114,13 +114,13 @@ def get_decoded_tokens(attack_state, tokens, recursively_process_arrays = False)
         decoded_tokens.append(dt)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
-            logger.debug(f"decoded tokens '{tokens}' to '{decoded_tokens}'")
+            logger.debug(f"decoded token IDs '{tokens}' to '{decoded_tokens}'")
     return decoded_tokens
 
 def get_encoded_token(attack_state, token, exterminate_all_cowboy_nonsense = False):
-    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
-            logger.debug(f"Encoding token '{token}'")
+    # if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        # if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            # logger.debug(f"Encoding token '{token}'")
     result = None
     try:
         # If skip_special_tokens=True is enabled here, some(? all?) tokenizers will log a warning message about it.
@@ -136,6 +136,9 @@ def get_encoded_token(attack_state, token, exterminate_all_cowboy_nonsense = Fal
             logger.warning(f"the tokenizer returned None when asked to encode the token '{token}'. This usually indicates a bug.")
     except Exception as e:
         logger.error(f"Error encoding token {token}: {e}\n{traceback.format_exc()}")
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+            logger.debug(f"Encoded text '{token}' to token IDs {result}")
     return result
 
 def get_encoded_tokens(attack_state, tokens, exterminate_all_cowboy_nonsense = False):
@@ -153,7 +156,7 @@ def encode_string_for_real_without_any_cowboy_funny_business(attack_state, strin
         return []
     string_encoded = attack_state.tokenizer.encode(string)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug("string_encoded = {string_encoded}")
+        logger.debug(f"string_encoded = {string_encoded}")
     # First, strip any leading dumpster inferno content
     # make a single-character string that definitely does not start with the same character as the input string
     not_the_same_string_at_all = "A"
@@ -161,18 +164,18 @@ def encode_string_for_real_without_any_cowboy_funny_business(attack_state, strin
         not_the_same_string_at_all = "B"
     not_the_same_string_at_all_encoded = attack_state.tokenizer.encode(not_the_same_string_at_all)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug("not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
+        logger.debug(f"not_the_same_string_at_all_encoded = {not_the_same_string_at_all_encoded}")
     start_index = find_index_of_first_nonmatching_element(string_encoded, not_the_same_string_at_all_encoded, log_manager = attack_state.log_manager)
     # Second, check for any ever-burning beacons of waste at the end of the result
     # make a string that is the same as the input, but has more characters at the end
     string_with_chaff = f"{string} 1987"
     string_with_chaff_encoded = attack_state.tokenizer.encode(string_with_chaff)
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug("string_with_chaff_encoded = {string_with_chaff_encoded}")
+        logger.debug(f"string_with_chaff_encoded = {string_with_chaff_encoded}")
     stop_index = find_index_of_first_nonmatching_element(string_encoded, string_with_chaff_encoded, log_manager = attack_state.log_manager)
     result = string_encoded[start_index:stop_index]
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug("input = '{string}', result = {result}")
+        logger.debug(f"input = '{string}', result = {result}")
     return result
 
 # # Gets the decoded string version of a set of token IDs, *without* any extra refuse conflagration tokens included, FOR REAL

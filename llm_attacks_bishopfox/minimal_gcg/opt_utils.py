@@ -260,7 +260,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"input_id_data.slice_data.control = {input_id_data.slice_data.control}")
         logger.debug(f"input_token_ids_gradient_device = {input_token_ids_gradient_device}")
-        if self.attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+        if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
             input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state, input_token_ids_gradient_device)
             logger.debug(f"input_token_ids_gradient_device_decoded = {input_token_ids_gradient_device_decoded}")
             logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
@@ -406,6 +406,19 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
                 # handled_logits_call = True
             # except Exception as e:
                 # handled_logits_call = False
+        # The ChatGLM forward function (/huggingface/modules/transformers_modules/glm-4-9b-chat/modeling_chatglm.py:856) accepts inputs_embeds as an alternative to input_ids, but it tries to use the input_ids.shape property to define the batch size and sequence length. So this workaround passes the input_token_ids_model_device even though those token IDs won't actually be used. Oh, and it has to wrap it in another array, because for some reason that's what the forward function expects.
+        if attack_state.model_type_name == "ChatGLMForConditionalGeneration":
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Using workaround for bug in ChatGLM forward function")
+            try:
+                #wrapped_input_token_ids = torch.tensor([input_token_ids_model_device.tolist()], device = attack_state.model_device)
+                #wrapped_input_token_ids = input_token_ids_model_device.unsqueeze(1)
+                wrapped_input_token_ids = input_token_ids_model_device.unsqueeze(0)
+                logits = attack_state.model(wrapped_input_token_ids, inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
+                handled_logits_call = True
+            except Exception as e:
+                handled_logits_call = False
+                logger.error(f"Exception thrown while attempting workaround for ChatGLM bug: {e}\n{traceback.format_exc()} - Broken Hill will attempt to call the model normally instead.")
         if not handled_logits_call:
             logits = attack_state.model(inputs_embeds = full_embeds).logits.to(attack_state.gradient_device)
     # TKTK: is there a way to limit this up front to just the user input/adversarial content and the messages that follow? That should reduce device memory consumption considerably.
@@ -539,13 +552,13 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
 
     if coordinate_gradient is not None:
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"coordinate_gradient.shape = {coordinate_gradient.shape}, coordinate_gradient = {coordinate_gradient}, len(not_allowed_tokens) = {len(not_allowed_tokens)}")
+            logger.debug(f"coordinate_gradient.shape = {coordinate_gradient.shape}, coordinate_gradient = {coordinate_gradient}")
         if not_allowed_tokens is not None:
             not_allowed_tokens_gradient_device = None
             try:
                 not_allowed_tokens_gradient_device = not_allowed_tokens.to(coordinate_gradient.device)
                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"not_allowed_tokens_gradient_device = {not_allowed_tokens_gradient_device}")
+                    logger.debug(f"len(not_allowed_tokens) = {len(not_allowed_tokens)}, not_allowed_tokens_gradient_device = {not_allowed_tokens_gradient_device}")
             except Exception as e:
                 logger.error(f"Exception thrown when converting the token denylist to a tensor on the PyTorch device: {e}\n{traceback.format_exc()}\nThe list of adversarial content candidates generated during this stage will not respect the denylist.")
                 not_allowed_tokens_gradient_device = None

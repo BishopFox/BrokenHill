@@ -109,6 +109,19 @@ Gemma 2 is strongly conditioned to avoid discussing certain topics. We'll be add
 * [gemma-2-2b](https://huggingface.co/google/gemma-2b)
 * [gemma-2-2b-it](https://huggingface.co/google/gemma-2b-it)
 
+### GLM-4
+
+* Conversation template name: `chatglm3`
+* [Zhipu AI's GLM-4-9B-Chat page at Hugging Face](https://huggingface.co/THUDM/glm-4-9b-chat/blob/main/README_en.md)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Specific models tested using Broken Hill:
+
+* [glm-4-9b-chat](https://huggingface.co/THUDM/glm-4-9b-chat)
+
 ### GPT-NeoX
 
 As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [Pythia](#pythia) models, Eleuther AI only publishes GPT-NeoX as base models, and (as of this writing) all GPT-NeoX variations fine-tuned for chat have been published by unrelated third parties.

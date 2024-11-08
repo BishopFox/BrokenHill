@@ -120,8 +120,6 @@ def main(test_params):
                 model_test_params.model_device = "cpu"
                 model_test_params.gradient_device = "cpu"
                 model_test_params.forward_device = "cpu"               
-                model_test_params.custom_options.append("--batch-size-get-logits")
-                model_test_params.custom_options.append("512")
             else:
                 # CUDA tests with a denylist are fine
                 denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
@@ -294,7 +292,7 @@ if __name__=='__main__':
     parser.add_argument("--include-model", action='append', nargs='*', required=False,
         help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
     parser.add_argument("--skip-model", action='append', nargs='*', required=False,
-        help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to test multiple models, e.g. --include-model gemma-2-2b-it --include-model Phi-3-mini-128k-instruct")
+        help=f"Test models from the list of all models only if they match one or more entries specified using this option. May be specified multiple times to exclude multiple models, e.g. --skip-model gemma-2-2b-it --skip-model Phi-3-mini-128k-instruct")
     args = parser.parse_args()
 
     faux_attack_params = AttackParams()
@@ -329,7 +327,7 @@ if __name__=='__main__':
     
     # Remove all of the extra options that require building a denylist here
     # Because it's easier to re-add them to the CUDA model test configs in the main loop instead of trying to remove them from the CPU model test configs there.
-    smoke_test_params.custom_options = [ "--no_ansi" ]
+    smoke_test_params.custom_options = [ "--no-ansi" ]
     
     if args.include_model:
         for elem in args.include_model:

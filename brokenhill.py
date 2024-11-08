@@ -759,6 +759,7 @@ def main(attack_params, log_manager):
                             logger.info(f"Loss value for the new adversarial value in relation to '{decoded_loss_slice_string}'\nWas: {attack_data_previous_iteration.loss}\nNow: {attack_state.persistable.current_adversarial_content.original_loss}")
                             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                                 if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                                    # this is in this block because the variable will be None if the previous check of the same type was bypassed
                                     logger.debug(f"decoded_loss_slice = '{decoded_loss_slice}'")
                                 logger.debug(f"input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss] = '{input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]}'")
                                 logger.debug(f"input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss] = '{input_id_data_gcg_ops.full_prompt_token_ids[input_id_data_gcg_ops.slice_data.loss]}'")
@@ -1322,15 +1323,6 @@ if __name__=='__main__':
         default = attack_params.max_topk,
         help=f"The maximum number to allow --topk to grow to when no candidates are found in a given iteration. Default: {attack_params.max_topk}.")
 
-    parser.add_argument("--temperature", type=numeric_string_to_float,
-        default=None,
-        help=f"'Temperature' value to pass to the model for all instances of the LLM")
-
-    parser.add_argument("--temperature-range", type=numeric_string_to_float,
-        nargs = 2,
-        default=None,
-        help=f"Specify the low and high end (inclusive) of a range of temperature values to pass to the model, when using --random-seed-comparisons. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.")
-
     parser.add_argument("--random-seed-numpy", type=numeric_string_to_int,
         default=attack_params.numpy_random_seed,
         help=f"Random seed for NumPy")
@@ -1472,6 +1464,19 @@ if __name__=='__main__':
 
     parser.add_argument("--random-seed-comparisons", type=numeric_string_to_int, default = attack_params.random_seed_comparisons,
         help=f"If this value is greater than zero, at each iteration, Broken Hill will test results using the specified number of additional random seed values, to attempt to avoid focusing on fragile results. The sequence of random seeds is hardcoded to help make results deterministic.")
+    
+    parser.add_argument("--temperature", type=numeric_string_to_float,
+        default=None,
+        help=f"If --random-seed-comparisons is specified, the 'Temperature' value to pass to all of the randomized instances of the LLM.")
+
+    parser.add_argument("--temperature-range", type=numeric_string_to_float,
+        nargs = 2,
+        default=None,
+        help=f"If --random-seed-comparisons is specified, the low and high end (inclusive) of a range of temperature values to pass to the model. The instance of the LLM used with the first random seed will be assigned the low temperature value. The instance of the LLM used with the last random seed will be assigned the high temperature value. If there are more than two instances of the LLM, the remaining instances will be assigned temperature values evenly distributed between the low and high values.")
+
+    parser.add_argument("--do-sample", type = str2bool, nargs='?',
+        const=True,
+        help="Enables the 'do_sample' option for the primary (or only) LLM instance, instead of only the additional instances used in --random-seed-comparisons mode. This option is included for development and testing only. Please do not file an issue if it doesn't do what you expect.")
     
     # not currently used - see discussion in attack_classes.py
     #parser.add_argument("--scoring-mode", type = str, default="median", choices=[ "median", "average", "minimum", "maximum" ],
@@ -1621,6 +1626,9 @@ if __name__=='__main__':
         default = attack_params.missing_pad_token_padding_side,
         choices = [ "left", "right" ],
         help=f"If the tokenizer is missing a padding token definition, use the specified padding side for the replacement. Must be one of 'left' or 'right'. Default: left.")
+    parser.add_argument("--padding-side", type = str,
+        choices = [ "left", "right" ],
+        help=f"Force the tokenizer to always used the specified padding side, even if it has a padding token defined already. Must be one of 'left' or 'right'.")
     parser.add_argument("--json-output-file", type = str,
         help=f"Write detailed result data in JSON format to the specified file.")
     parser.add_argument("--performance-output-file", type = str,
@@ -1952,6 +1960,9 @@ if __name__=='__main__':
     if args.temperature_range:
         attack_params.model_temperature_range_begin, attack_params.model_temperature_range_end = args.temperature_range
 
+    if args.do_sample:
+        attack_params.always_do_sample = True
+
     attack_params.numpy_random_seed = args.random_seed_numpy
 
     attack_params.torch_manual_seed = args.random_seed_torch
@@ -2155,6 +2166,9 @@ if __name__=='__main__':
         attack_params.missing_pad_token_replacement = args.missing_pad_token_replacement
 
     attack_params.missing_pad_token_padding_side = args.missing_pad_token_padding_side
+
+    if args.padding_side:
+        attack_params.padding_side = args.padding_side
 
     if args.exclude_whitespace_tokens:
         attack_params.exclude_whitespace_tokens = True
