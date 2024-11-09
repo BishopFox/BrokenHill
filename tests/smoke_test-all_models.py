@@ -119,7 +119,9 @@ def main(test_params):
                     skip_model = True
                 model_test_params.model_device = "cpu"
                 model_test_params.gradient_device = "cpu"
-                model_test_params.forward_device = "cpu"               
+                model_test_params.forward_device = "cpu"
+                default_data_type_options = [ "--model-data-type", "default" ]
+                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, default_data_type_options)
             else:
                 # CUDA tests with a denylist are fine
                 denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]

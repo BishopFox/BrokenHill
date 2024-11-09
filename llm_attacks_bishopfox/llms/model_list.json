@@ -1199,7 +1199,7 @@
 			"data_type": "float32",
 			"parameter_count": 99545,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [ "--model-data-type", "default" ]
 		},
 		{
 			"model_name": "SOLAR-10.7B-Instruct-v1.0",

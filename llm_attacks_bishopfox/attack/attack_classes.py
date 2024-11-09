@@ -25,7 +25,6 @@ from transformers import AutoTokenizer
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
-from llm_attacks_bishopfox.base.attack_manager import get_effective_max_token_value_for_model_and_tokenizer
 from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
 from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
 from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
@@ -134,7 +133,10 @@ class SystemMessageMode(StrEnum):
     MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
 
 class ModelDataFormatHandling(StrEnum):
-    AS_IS = 'as_is'
+    # TORCH_DEFAULT will not set model_dtype at all. Currently this causes PyTorch to load the model in float32 form
+    DEFAULT = 'default'
+    # TORCH_AUTO will pass model_type = "auto", which causes PyTorch to autodetect the model's native weight format and use that
+    AUTO = 'auto'
     FORCE_FLOAT16 = 'force_float16'
     FORCE_BFLOAT16 = 'force_bfloat16'
     FORCE_FLOAT32 = 'force_float32'
@@ -146,7 +148,8 @@ def get_missing_pad_token_names():
     result = [  "unk", 
                 "bos",
                 "eos",
-                "default" ]
+                "default",
+                "none" ]
     return result
 
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
@@ -161,6 +164,9 @@ def get_missing_pad_token_replacement(tokenizer, replacement_name):
     if replacement_name == "unk":
         result = tokenizer.unk_token_id, tokenizer.unk_token
     if replacement_name == "default":
+        # TKTK: handle this differently where needed, e.g. GPT-NeoX?
+        result = None, None
+    if replacement_name == "none":
         result = None, None
     
     return result
@@ -348,8 +354,12 @@ class AdversarialContentList(JSONSerializableObject):
 class AttackParams(JSONSerializableObject):
 
     def get_model_data_type(self):
-        if self.model_weight_format_handling == ModelDataFormatHandling.AS_IS:
+        if self.model_weight_format_handling == ModelDataFormatHandling.DEFAULT:
             return None
+        # Explicitly pass "auto" to avoid loading things in float32 form when torch_dtype is not specified.
+        # https://huggingface.co/transformers/v4.10.1/main_classes/model.html#model-instantiation-dtype
+        if self.model_weight_format_handling == ModelDataFormatHandling.AUTO:
+            return "auto"
         if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
             return torch.float16
         if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
@@ -562,7 +572,6 @@ class AttackParams(JSONSerializableObject):
 
         # where to place the adversarial content in the generated prompt
         # all other modes besides SUFFIX are TKTK for now
-        # because I don't want to have to rewrite even *more* code that handles the content exclusively as strings instead of token IDs
         self.adversarial_content_placement = AdversarialContentPlacement.SUFFIX
         
         # emulate the original attack by converting the adversarial token IDs to a string and then back to token IDs at every iteration
@@ -601,7 +610,7 @@ class AttackParams(JSONSerializableObject):
         self.missing_pad_token_replacement = "eos"
 
         # If the tokenizer does not have a padding token defined, pad from the following side.
-        # default is 'left' because the most common / default replacement padding token is EOS, and padding with that on the right will cause the model to not generate any text at all.
+        # Default is 'left' because the most common / default replacement padding token is EOS, and padding with that on the right will cause the model to not generate any text at all.
         self.missing_pad_token_padding_side = "left"
         
         # If this value is not None, force the tokenizer to use the specified padding side. Overrides the missing pad token padding side value.
@@ -623,7 +632,7 @@ class AttackParams(JSONSerializableObject):
         self.random_seed_scoring_mode = OverallScoringFunction.MEDIAN
 
         # values that can greatly influence model behaviour
-        # enable do_sample in all calls to model.generate, even for the "canonical" instance
+        # enable do_sample in all calls to model.generate, even for the "canonical" instance.
         # This is included for development/debugging only.
         self.always_do_sample = False
         # temperature range begin
@@ -675,14 +684,9 @@ class AttackParams(JSONSerializableObject):
             # filter out any additional tokens that are listed as being highly problematic in generated content
             self.exclude_other_offensive_tokens = False
             
-            # Filtering out other values can sometimes help prevent the script from focusing 
-            # on attacks that are easily detectable as unusual, but also potentially 
-            # filter out interesting attacks that would actually work when user input
-            # is not heavily restricted. The command-line interface includes several 
-            # shortcuts to populate this list with values I found useful at one time or another
-            # but I'd recommend leaving it empty by default.
-            # "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG" is a special value that will exclude
-            # any token that consists solely of whitespace
+            # Filtering out other values can sometimes help prevent the script from focusing on attacks that are easily detectable as unusual, but also potentially filter out interesting attacks that would actually work when user input is not heavily restricted.
+            # The command-line interface includes several shortcuts to populate this list with values I found useful at one time or another but I'd recommend leaving it empty by default.
+            # "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG" is a special value that will exclude any token that consists solely of whitespace
             self.individually_specified_not_allowed_token_list = []
             self.individually_specified_not_allowed_token_list_case_insensitive = []
             
@@ -692,27 +696,17 @@ class AttackParams(JSONSerializableObject):
         # Post-generation candidate adversarial data filtering
         if 2 > 1:   # indent this data to make it more distinguishable from other sections
             #
-            # This section is kind of a hack, because ideally everything would be done
-            # by biasing the token generation, not culling the list of values it generates
-            # but it can help avoid edge and corner cases like adversarial data
-            # where each position becomes optimized to "\n###"
+            # This section is kind of a hack, because ideally everything would be done by biasing the token generation, not culling the list of values it generates.
             
-            # If these values are not None, filter out candidate strings with too many 
-            # or too few tokens
-            # This is a modification of the original code, which tried to keep the number 
-            # consistent, but the logic didn't work for some models (e.g. StableLM 2)
+            # If these values are not None, filter out candidate strings with too many or too few tokens.
+            # This is a modification of the original code, which tried to keep the number consistent, but the logic didn't work for some models (e.g. StableLM 2).
             self.candidate_filter_tokens_min = None
             self.candidate_filter_tokens_max = None
-            # This option re-enables the check from the original code, which is supposed
-            # to keep the token count consistent but will prevent any candidates from being
-            # allowed for some models (such as StableLM 2)
+            # This option re-enables the check from the original code, which is supposed to keep the token count consistent but will prevent any candidates from being allowed for some models (such as StableLM 2)
             self.attempt_to_keep_token_count_consistent = False
             
             # Filter candidate strings by requiring that they match a regular expression
-            #self.candidate_filter_regex = "[0-9A-Za-z]+"
-            #self.candidate_filter_regex = "\w+"
             self.candidate_filter_regex = "."
-            #self.candidate_filter_regex = None
 
             # Filter candidate strings to exclude lists with more than this many repeated lines
             self.candidate_filter_repetitive_lines = None
@@ -755,7 +749,7 @@ class AttackParams(JSONSerializableObject):
 
         # assorted values that may or may not impact performance
         self.low_cpu_mem_usage = False
-        self.use_cache = False
+        self.use_cache = True
     
         # various other minor configuration options
         # Displays the size of the model after loading it
@@ -891,32 +885,22 @@ class AttackParams(JSONSerializableObject):
         # However, the attack could be performed on the floating-point model, and each adversarial result checked against the floating-point and quantized models at each iteration.
         # Alternatively, maybe it would make sense to have the quantized testing performed using the Python Ollama library, because Ollama supports many more quantization formats than PyTorch.
         
-        
-        
         # Quantization options
         #
         # None of these work, and are unlikely to work for the foreseeable future.
         # That's why none of these are exposed as command-line parameters.
         #
-        # They're a remnant of the work I did early on to try to allow use of 
-        # quantized models so that attacks against larger LLMs could fit into memory 
-        # on consumer hardware. Maybe they'll be useful again someday.
+        # They're a remnant of the work I did early on to try to allow use of quantized models so that attacks against larger LLMs could fit into memory on consumer hardware.
+        # They should be useful again once I add support for just testing an existing list of adversarial content against a model.
         #
-        # The attack performed by Broken Hill depends on PyTorch features that 
-        # do not currently support quantized data. In particular, the gradient operations.
-        # The PyTorch developers claim that gradient operations are only possible
-        # for floating-point values, because they require continuous functions.
-        # I don't know why it's not possible to shift everything left by a decimial 
-        # place or two and do everything in integer math, like game developers did 
-        # for decades to improve performance, but I'm also not a mathematician or 
-        # an expert in machine learning theory.
-        # All I know is that we had integer gradients for other purposes in the 1990s 
-        # and they were a heck of a lot better than no gradients at all.
+        # The attack performed by Broken Hill depends on PyTorch features that do not currently support quantized data. In particular, the gradient operations.
+        # The PyTorch developers claim that gradient operations are only possible for floating-point values, because they require continuous functions.
+        # I don't know why it's not possible to shift everything left by a decimial place or two and do everything in integer math, like game developers did for decades to improve performance, but I'm also not a mathematician or an expert in machine learning theory.
+        # All I know is that we had integer gradients for other purposes in the 1990s and they were a heck of a lot better than no gradients at all.
         # [ shakes fist at cloud ]
         
         # set to none to disable dynamic quantization
-        # Dynamic quantization doesn't currently work with the llm-attacks code
-        # because the code uses PyTorch features that aren't available with dynamic quantization
+        # Dynamic quantization doesn't currently work with the llm-attacks code, because the code uses PyTorch features that aren't available with dynamic quantization.
         #self.quantization_dtype = torch.qint8
         self.quantization_dtype = None
 
@@ -980,10 +964,6 @@ class RandomNumberGeneratorStateCollection(JSONSerializableObject):
         self.random_generator_attack_params_gradient_device_state = None                    
         # NumPy
         self.numpy_rng_state = None
-
-    # [RandomNumberGeneratorStateCollection.to_dict] Debug: self.torch_rng_state = tensor([20,  0,  0,  ...,  0,  0,  0], dtype=torch.uint8), self.random_generator_cpu_state = tensor([20,  0,  0,  ...,  0,  0,  0], dtype=torch.uint8), self.random_generator_attack_params_model_device_state = tensor([20,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    #   dtype=torch.uint8), self.random_generator_attack_params_gradient_device_state = tensor([20,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    #   dtype=torch.uint8), self.numpy_rng_state = {'bit_generator': 'PCG64', 'state': {'state': 3383365900161324816698418978122629783, 'inc': 72763549156770659863042999813056722643}, 'has_uint32': 0, 'uinteger': 0}
 
     def to_dict(self):
         #logger.debug(f"self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
@@ -1476,6 +1456,124 @@ class VolatileAttackState():
     def initialize_jailbreak_detector(self):
         self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
 
+    # Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
+    # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
+    # TKTK: iterate over all other parameters with similar names and warn the user if any of them may cause the script to crash unless the value is reduced.
+    # TKTK: split this into separate functions for overall max length, max new tokens, max position embeddings, etc. where possible, instead of the hack it is right now of handling them all as the same thing
+    def get_effective_max_token_value_for_model_and_tokenizer(self, parameter_name, desired_value):
+        effective_value = desired_value
+
+        limited_by_tokenizer_model_max_length = False
+        limited_by_tokenizer_max_position_embeddings = False
+        limited_by_tokenizer_config_model_max_length = False
+        limited_by_tokenizer_config_max_position_embeddings = False
+        limited_by_model_config_max_position_embeddings = False
+        limited_by_model_decoder_config_max_position_embeddings = False
+
+        tokenizer_model_max_length = None
+        tokenizer_max_position_embeddings = None
+        tokenizer_config_model_max_length = None
+        tokenizer_config_max_position_embeddings = None
+        model_config_max_position_embeddings = None
+        model_decoder_config_max_position_embeddings = None
+
+        limiting_factor_count = 0
+        
+        if hasattr(self.tokenizer, "model_max_length"):        
+            if not isinstance(self.tokenizer.model_max_length, type(None)):
+                tokenizer_model_max_length = self.tokenizer.model_max_length
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
+                if tokenizer_model_max_length < desired_value:
+                    limited_by_tokenizer_model_max_length = True
+                    limiting_factor_count += 1
+                    
+        if hasattr(self.tokenizer, "max_position_embeddings"):        
+            if not isinstance(self.tokenizer.max_position_embeddings, type(None)):
+                tokenizer_max_position_embeddings = self.tokenizer.max_position_embeddings
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+                if tokenizer_max_position_embeddings < desired_value:
+                    limited_by_tokenizer_max_position_embeddings = True
+                    limiting_factor_count += 1
+
+        if hasattr(self.tokenizer, "config"):
+            if self.tokenizer.config is not None:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"self.tokenizer.config = {self.tokenizer.config}")
+                if hasattr(self.tokenizer.config, "model_max_length"):            
+                    if not isinstance(self.tokenizer.config.model_max_length, type(None)):
+                        tokenizer_config_model_max_length = self.tokenizer.config.model_max_length
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+                        if tokenizer_config_model_max_length < desired_value:            
+                            limited_by_tokenizer_config_model_max_length = True
+                            limiting_factor_count += 1
+                if hasattr(self.tokenizer.config, "max_position_embeddings"):            
+                    if not isinstance(self.tokenizer.config.max_position_embeddings, type(None)):
+                        tokenizer_config_max_position_embeddings = self.tokenizer.config.max_position_embeddings
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+                        if tokenizer_config_max_position_embeddings < desired_value:            
+                            limited_by_tokenizer_config_max_position_embeddings = True
+                            limiting_factor_count += 1
+            
+        if hasattr(self.model, "config"):
+            if self.model.config is not None:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"model.config = {self.model.config}")
+                if hasattr(self.model.config, "max_position_embeddings"):            
+                    if not isinstance(self.model.config.max_position_embeddings, type(None)):
+                        model_config_max_position_embeddings = self.model.config.max_position_embeddings
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
+                        if model_config_max_position_embeddings < desired_value:            
+                            limited_by_model_config_max_position_embeddings = True
+                            limiting_factor_count += 1
+        
+        if hasattr(self.model, "decoder"):
+            if self.model.decoder is not None:
+                if hasattr(self.model.decoder, "config"):
+                    if self.model.decoder.config is not None:
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"self.model.decoder.config = {self.model.decoder.config}")
+                        if hasattr(self.model.decoder.config, "max_position_embeddings"):            
+                            if not isinstance(self.model.decoder.config.max_position_embeddings, type(None)):
+                                model_decoder_config_max_position_embeddings = self.model.decoder.config.max_position_embeddings
+                                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+                                if model_decoder_config_max_position_embeddings < desired_value:            
+                                    limited_by_model_decoder_config_max_position_embeddings = True
+                                    limiting_factor_count += 1
+        
+        if limiting_factor_count > 0:
+            description_string = f"The current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
+            for limit_value in [ tokenizer_model_max_length, tokenizer_max_position_embeddings, tokenizer_config_model_max_length, tokenizer_config_max_position_embeddings, model_config_max_position_embeddings, model_decoder_config_max_position_embeddings ]:
+                if not isinstance(limit_value, type(None)):
+                    effective_value = min(effective_value, limit_value)
+            if limited_by_tokenizer_model_max_length:
+                description_string += f"The tokenizer's model_max_length value is {tokenizer_model_max_length}. "
+            if limited_by_tokenizer_max_position_embeddings:
+                description_string += f"The tokenizer's max_position_embeddings value is {tokenizer_max_position_embeddings}. "
+            if limited_by_tokenizer_config_model_max_length:
+                description_string += f"The tokenizer's configuration's model_max_length value is {tokenizer_config_model_max_length}. "
+            if limited_by_tokenizer_config_max_position_embeddings:
+                description_string += f"The tokenizer's configuration's max_position_embeddings value is {tokenizer_config_max_position_embeddings}. "
+            if limited_by_model_config_max_position_embeddings:
+                description_string += f"The model configuration's max_position_embeddings value is {model_config_max_position_embeddings}. "
+            if limited_by_model_decoder_config_max_position_embeddings:
+                description_string += f"The model's decoder's configuration's max_position_embeddings value is {model_decoder_config_max_position_embeddings}. "
+            description_string += f"The effective value that will be used is {effective_value}."
+            logger.warning(description_string)
+             
+        return effective_value
+
+    # TKTK: Add overall max length and similar
+    def adjust_token_length_limit_parameters(self):
+        #model_maximum_token_TKTK        
+        self.persistable.attack_params.generation_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
+        self.persistable.attack_params.full_decoding_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
+        
     def load_model_and_tokenizer(self):
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
@@ -1532,7 +1630,7 @@ class VolatileAttackState():
                     if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
                     handled_model_load = False
-        if not handled_model_load:
+        if not handled_model_load:            
             model = AutoModelForCausalLM.from_pretrained(
                     self.persistable.attack_params.model_path,
                     torch_dtype = self.model_weight_type,
@@ -1636,7 +1734,7 @@ class VolatileAttackState():
             logger.info(model_load_message)
             self.model_weight_type = self.persistable.attack_params.get_model_data_type()
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"model_weight_type = {self.model_weight_type}")
+                logger.debug(f"self.model_weight_type = {self.model_weight_type}")
             model_config_path = None
             model_config_dict = None
             try:
@@ -1663,6 +1761,11 @@ class VolatileAttackState():
             self.persistable.performance_data.collect_torch_stats(self, is_key_snapshot_event = True, location_description = "after loading model and tokenizer")
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Model loaded.")
+            
+            if self.model_weight_storage_string == "" and self.model_weight_type == "auto":
+                self.model_weight_storage_string = f"Model weight data is stored as {self.model.dtype} (determined after loading model in 'auto' dtype mode)"
+                self.model_weight_storage_dtype = self.model.dtype
+                logger.info(self.model_weight_storage_string)                
             model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
             if self.model_weight_storage_string != "":            
                 model_data_type_message = f"{self.model_weight_storage_string}, and was loaded as {self.model.dtype}"
@@ -1674,7 +1777,8 @@ class VolatileAttackState():
                 except Exception as e:
                     raise AttackInitializationException(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
                 self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading PEFT adapter")
-                logger.info(f"PEFT adapter loaded.")
+                self.model_type_name = f"{type(model).__name__}"
+                logger.info(f"PEFT adapter loaded. After loading the PEFT adapter, this model is an instance of the type '{self.model_type_name}'.")
             
             self.persistable.overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(self.model)
             
@@ -1686,11 +1790,13 @@ class VolatileAttackState():
             
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Getting max effective token value for model and tokenizer.")
-        
-            self.persistable.attack_params.generation_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer(self, "--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
-            self.persistable.attack_params.full_decoding_max_new_tokens = get_effective_max_token_value_for_model_and_tokenizer(self, "--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
         except Exception as e:
             raise AttackInitializationException(f"Error loading model: {e}\n{traceback.format_exc()}")
+        try:
+            # Now that the model is loaded, make any necessary adjustments to --max-new-tokens and similar values
+            self.adjust_token_length_limit_parameters()
+        except Exception as e:
+            raise AttackInitializationException(f"Error adjusting token length limit parameters: {e}\n{traceback.format_exc()}")
 
     def build_token_allow_and_denylists(self):
         self.persistable.build_token_allow_and_denylists(self)
@@ -2004,22 +2110,38 @@ class VolatileAttackState():
         else:
             working_gen_config.max_new_tokens = self.persistable.attack_params.generation_max_new_tokens
 
-        # TKTK: probably remove this temporary debugging-related content
+        # TKTK: remove this once the limit-adjusting code is done
+        # Doing this is supposed to be implicit based on setting max_new_tokens (https://huggingface.co/docs/transformers/en/main_classes/text_generation), but not all models respect that.
         working_gen_config.max_length = working_gen_config.max_new_tokens + input_token_id_data.get_input_ids_length()
 
         result = GenerationResults()
         result.max_new_tokens = working_gen_config.max_new_tokens
 
+        attn_masks = None
         result.input_token_id_data = input_token_id_data
         input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(self.model_device)
+        if input_ids.device != self.model.device:
+            input_ids = input_ids.to(self.model_device)
         input_ids_sliced = input_ids
         if not include_target_content:
             input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
-        input_ids_converted = input_ids_sliced.to(self.model.device).unsqueeze(0)
-        attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
+        if input_ids_sliced != self.model.device:
+            input_ids_sliced = input_ids_sliced.to(self.model.device)
+        input_ids_converted = input_ids_sliced
+        if len(input_ids_converted.shape) == 1:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Adding one extra dimension to input_ids_converted because model.generate uses the first dimension to indicate batching, and will error out without wrapping the existing tensor in another dimension.")
+            input_ids_converted = input_ids_sliced.unsqueeze(0)
+        if len(input_ids_converted.shape) > 2:
+            raise GenerationException(f"input_ids_converted had shape {input_ids_converted.shape}, but must have exactly two dimensions to match the format expected by model.generate. Broken Hill is unable to automatically determine which dimension to remove. This typically indicates either model-specific behaviour that Broken Hill must be updated to account for, or a bug in Broken Hill itself.")
+        attn_masks = torch.ones_like(input_ids_converted)
+        if attn_masks.device != self.model.device:
+            attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
         
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"Using the model to generate output with working_gen_config = {working_gen_config},\npad_token_id = {self.tokenizer.pad_token_id},\ninput_token_id_data.input_token_ids = {input_token_id_data.input_token_ids}\ninput_ids = {input_ids},\ninput_ids_sliced = {input_ids_sliced},\ninput_ids_converted = {input_ids_converted},\nattn_masks = {attn_masks}")
+            working_gen_config_dict = working_gen_config.to_dict()
+            working_gen_config_dict_string = json.dumps(working_gen_config_dict, indent = 4)
+            logger.debug(f"Using the model to generate output with working_gen_config = {working_gen_config},\nworking_gen_config.to_dict() = {working_gen_config_dict_string},\npad_token_id = {self.tokenizer.pad_token_id},\ninput_token_id_data.input_token_ids = {input_token_id_data.input_token_ids}\ninput_ids = {input_ids},\ninput_ids_sliced = {input_ids_sliced},\ninput_ids_converted = {input_ids_converted},\ninput_ids_converted.shape = {input_ids_converted.shape},\nattn_masks = {attn_masks},\nself.model.config = {self.model.config}")
             if self.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
                 decoded_input_token_ids = get_decoded_tokens(self, input_token_id_data.input_token_ids)
                 logger.debug(f"input_token_id_data.input_token_ids (decoded) = {decoded_input_token_ids}")

@@ -1,9 +1,15 @@
 # Broken Hill version history
 
-# 0.34 - 2024-10-xx
+# 0.34 - 2024-11-xx
 
 This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
 
+* Absolutely *massive* performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
+  * Tentative results indicate about 20-30 times faster. For example, GPT-J and GPT-NeoX would take 10 hours or more to perform a single iteration of the GCG attack prior to the change, versus about 20 minutes now.
+  * There is a tradeoff - CPU processing must take place in the `float32` format, which means Broken Hill will require twice as much system RAM as it would CUDA device memory.
+  * You **must** specify the new `--model-data-type default` option, at least until Transformers and PyTorch get better support for 16-bit floating point values on CPU devices.
+    * The root cause is that Transformers more or less supports `float16` on CPU devices now (except for GPT-NeoX), but the performance is dramatically worse, and Transformers does not provide any indication or warning of this.
+  * This also provides a workaround for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
 * [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
   * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
   * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
@@ -92,12 +98,13 @@ This is the most significant update to Broken Hill since its public release in S
 	* `--load-options-from-state`
   * *Experimental* `--model-device`, `--gradient-device`, and `--forward-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
-  * *Experimental* `--model-data-type`, which theoretically would allow more accurate testing using models' native weight formats, but currently will probably just cause Broken Hill to crash.
+  * *Experimental* `--model-data-type`, which allows the operator to either tell Transformers and PyTorch to use their default `dtype`, autodetect the `dtype` based on the model's data, or convert to a specific `dtype`. The default is `float16` for compatibility with previous releases, and to avoid a surprise doubling of VRAM usage for CUDA device users.
   * *Experimental* `--torch-dp-model`, which may allow Broken Hill to utilize multiple CUDA devices at once. We don't have a system with more than one CUDA device to try it out on, so it might also just result in a crash.
   * `--padding-side` `left` or `right`, which forces the tokenizer to use the specified padding side, whether or not a padding token has been defined.
 * Changed the default value for `--batch-size-get-logits` from 1 to 512, based on analysis of CUDA memory profile information.
   * This significantly improves performance in some cases, and seems to use approximately the same amount of memory as a value of 1.
   * If you are trying to minimize CUDA device memory utilization as much as possible, you can still try reducing this value to 1 manually.
+* Changed the default behaviour when loading the model and tokenizer to pass `use_cache = True` instead of `use_cache = False`. Added a `--no-torch-cache` option to override this behaviour.
 * A few additions to the default jailbreak detection rules.
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:

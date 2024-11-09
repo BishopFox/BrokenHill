@@ -697,4 +697,8 @@ When loading the model, pass `trust_remote_code=True`, which enables execution o
 
 ### --use-cache
 
-When loading the model and tokenizer, pass `use_cache=True`. May or may not affect performance and results.
+When loading the model and tokenizer, pass `use_cache = True`. May or may not affect performance and results. This is the default behaviour for Broken Hill as of version 0.34.
+
+### --no-torch-cache
+
+When loading the model and tokenizer, pass `use_cache = False`. May or may not affect performance and results.

@@ -285,6 +285,9 @@ def main(attack_params, log_manager):
     logger.info(f"Starting at {start_ts}")
 
     # Parameter validation, warnings, and errors
+    if attack_state.persistable.attack_params.using_cpu():        
+        if attack_state.persistable.attack_params.model_weight_format_handling != ModelDataFormatHandling.DEFAULT:
+            logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use a specific PyTorch dtype when loading the model. This will *generally* work with most models on modern (late 2024) versions of PyTorch and Transformers, but will still cause issues for some models, such as GPT-NeoX. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default.")
     non_cuda_devices = attack_state.persistable.attack_params.get_non_cuda_devices()
     if len(non_cuda_devices) > 0:
         logger.warning(f"Using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
@@ -312,6 +315,17 @@ def main(attack_params, log_manager):
         
         if attack_state.model_type_name == "MosaicGPT":
             logger.warning("This model is of type MosaicGPT. At the time this version of Broken Hill was made, MosaicGPT did not support the 'inputs_embeds' keyword when calling the forward method. If that is still the case when you are reading this message, Broken Hill will likely crash during the GCG attack.")
+
+        if attack_state.model_type_name == "GPTNeoXForCausalLM":
+            warn_about_bad_gpt_neox_weight_type = True
+            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.DEFAULT:
+                warn_about_bad_gpt_neox_weight_type = False
+            # still need to validate that AUTO will actually work
+            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.AUTO:
+                warn_about_bad_gpt_neox_weight_type = False
+            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+                warn_about_bad_gpt_neox_weight_type = False
+            logger.warning("This model is of type GPTNeoXForCausalLM. At the time this version of Broken Hill was made, GPT-NeoX did not perform correctly in PyTorch/Transformers when loaded with weights in float16 format, possibly any other dtype besides float32. If you encounter very long processing times or incorrect output (such as the LLM responding with only the <|endoftext|> token), try using one of the following options instead of your current --model-data-type selection:\n--model-data-type default\n--model-data-type auto\n--model-data-type float32")
 
         # only build the token allowlist and denylist if this is a new run.
         # If the state has been loaded, the lists are already populated.
@@ -1230,8 +1244,8 @@ if __name__=='__main__':
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("--model-data-type", type = str, default="float16", choices = [ "as-is", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
-        help=f"Experimental: specify the type to load the model's data as. 'as-is' will load the data in its native format.  Default: float16. Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.")    
+    parser.add_argument("--model-data-type", type = str, default="float16", choices = [ "default", "auto", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
+        help=f"Experimental: specify the type to load the model's data as. 'default' will use the PyTorch default, which is float32 as of this writing. 'auto' will load the data in its native format. Default: float16. Using this option is not recommended at this time unless you're following specific instructions to use it from the Broken Hill documentation.")
     
     parser.add_argument("--template", type = str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fschat library will attempt to load the correct template based on the base model directory contents.")
@@ -1607,8 +1621,11 @@ if __name__=='__main__':
         const=True, default=attack_params.low_cpu_mem_usage,
         help="When loading the model and tokenizer, pass 'low_cpu_mem_usage=True'. May or may not affect performance and results.")
     parser.add_argument("--use-cache", type = str2bool, nargs='?',
-        const=True, default=attack_params.use_cache,
-        help="When loading the model and tokenizer, pass 'use_cache=True'. May or may not affect performance and results.")
+        const=True,
+        help="When loading the model and tokenizer, pass 'use_cache = True'. May or may not affect performance and results. This is the default behaviour for Broken Hill starting with version 0.34.")
+    parser.add_argument("--no-torch-cache", type = str2bool, nargs='?',
+        const=True,
+        help="When loading the model and tokenizer, pass 'use_cache = False'. May or may not affect performance and results.")
     parser.add_argument("--display-model-size", type = str2bool, nargs='?',
         const=True, default=attack_params.display_model_size,
         help="Displays size information for the selected model. Warning: will write the raw model data to a temporary file, which may double the load time.")
@@ -1712,7 +1729,7 @@ if __name__=='__main__':
     mps_available = torch.backends.mps.is_available()
     
     if not cuda_available:
-        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
+        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours (or longer, for some models) instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
     if mps_available:
         logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
 
@@ -1777,8 +1794,11 @@ if __name__=='__main__':
             logger.critical(f"The specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not appear to exist.")
             sys.exit(1)
         
-    if args.model_data_type == "as-is":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.AS_IS
+    if args.model_data_type == "default":        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.DEFAULT
+        
+    if args.model_data_type == "auto":        
+        attack_params.model_weight_format_handling = ModelDataFormatHandling.AUTO
         
     if args.model_data_type == "float16":        
         attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
@@ -2151,7 +2171,14 @@ if __name__=='__main__':
     
     attack_params.low_cpu_mem_usage = args.low_cpu_mem_usage
     
-    attack_params.use_cache = args.use_cache
+    if args.use_cache:
+        attack_params.use_cache = True
+        if args.no_torch_cache:
+            logger.critical(f"Only one of --use-cache and --no-torch-cache may be specified.")
+            sys.exit(1)
+    
+    if args.no_torch_cache:
+        attack_params.use_cache = False
     
     attack_params.display_model_size = args.display_model_size
     
