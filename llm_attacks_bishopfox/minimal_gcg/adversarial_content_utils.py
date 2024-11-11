@@ -948,7 +948,7 @@ class AdversarialContentManager:
                                 dummy = 1
                                 # last_token_index is already correct
                                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"Exception while getting second token index for user role using fast tokenizer: {e}")
+                                    logger.debug(f"Exception while getting second token index for user role using fast tokenizer: {e}\n{traceback.format_exc()}")
                     
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"result.prompt = {result.prompt}")
@@ -1144,11 +1144,19 @@ class AdversarialContentManager:
                     final_decoded_toks = get_decoded_tokens(self.attack_state, current_token_ids)
                     logger.debug(f"current_token_ids (after removing any content after the target output) decodes to '{final_decoded_toks}'")
             # update the prompt string as well in case anything ends up using that
-            target_output_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
-            len_target_output = len(self.attack_state.persistable.attack_params.target_output)
-            target_output_end_index = target_output_start_index + len_target_output
-            result.prompt = result.prompt[0:target_output_end_index]
-            logger.debug(f"result.prompt (after removing any content after the target output) = '{result.prompt}'")
+            target_output_start_index = None
+            # Use the stripped version of the string because some tokenizers will strip out spaces on their own, and the rindex operation will fail.
+            target_output_string = self.attack_state.persistable.attack_params.target_output.strip()
+            try:
+                target_output_start_index = result.prompt.rindex(target_output_string)
+            except Exception as e:
+                logger.error(f"Could not find the string '{target_output_string}' in the generated prompt '{result.prompt}' to truncate the generated prompt text. This indicates a bug in Broken Hill's prompt-generation code, and may or may not affect the results of this test.")
+                target_output_start_index = None
+            if target_output_start_index is not None:
+                len_target_output = len(target_output_string)
+                target_output_end_index = target_output_start_index + len_target_output
+                result.prompt = result.prompt[0:target_output_end_index]
+                logger.debug(f"result.prompt (after removing any content after the target output) = '{result.prompt}'")
         
         result.full_prompt_token_ids = current_token_ids
         result.input_token_ids = current_token_ids[:result.slice_data.target_output.stop]

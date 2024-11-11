@@ -1093,7 +1093,7 @@
 			"template": "guanaco",
 			"size": 13476876661,
 			"safe_tensors": false,
-			"custom_options": [],
+			"custom_options": [ "--trust-remote-code" ],
 			"comment": "Included as it's a test of the PEFT adapter functionality - size of the adapter is 639792909."
 		},
 		{

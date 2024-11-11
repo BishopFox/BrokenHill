@@ -82,12 +82,12 @@ class PyTorchDevice():
     @staticmethod
     def get_all_cuda_devices():
         result = []
-        for i in range(torch.cuda.device_count()):
-            d = PyTorchDevice.from_cuda_device_number(i)
-            result.append(d)
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                d = PyTorchDevice.from_cuda_device_number(i)
+                result.append(d)
         return result
-
-# 
+ 
 def get_broken_hill_file_name(attack_state, file_type, file_extension):
     file_uuid = uuid.uuid4()
     file_ts = time.time_ns()
@@ -153,7 +153,7 @@ def get_file_content(file_path, failure_is_critical = True):
         with open(file_path) as input_file:
             result = input_file.read()        
     except Exception as e:
-        print(f"Couldn't read the file '{file_path}': {e}")
+        print(f"Couldn't read the file '{file_path}': {e}\n{traceback.format_exc()}\n")
         if failure_is_critical:
             raise(BrokenHillFileIOException)
         result = None
@@ -179,14 +179,14 @@ def numeric_string_to_int(s):
             result = int(s[2:], 16)
             return result
         except Exception as e:
-            print(f"Tried to parse the value '{s}' as hexadecimal and failed: {e}")
+            print(f"Tried to parse the value '{s}' as hexadecimal and failed: {e}\n{traceback.format_exc()}\n")
             sys.exit(1)
     else:
         try:
             result = int(s, 10)
             return result
         except Exception as e:
-            print(f"Tried to parse the value '{s}' as decimal and failed: {e}")
+            print(f"Tried to parse the value '{s}' as decimal and failed: {e}\n{traceback.format_exc()}\n")
             sys.exit(1)
     print(f"Unhandled case while parsing the value '{s}'")
     sys.exit(1)
@@ -197,7 +197,7 @@ def numeric_string_to_float(s):
         result = float(s)
         return result
     except Exception as e:
-        print(f"Tried to parse the value '{s}' as a floating-point number and failed: {e}")
+        print(f"Tried to parse the value '{s}' as a floating-point number and failed: {e}\n{traceback.format_exc()}\n")
         sys.exit(1)
     return None
  
@@ -305,7 +305,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
             try:
                 pathlib.Path(file_directory_path).mkdir(parents = True, exist_ok = True)
             except Exception as e:
-                err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist, and Broken Hill could not create it: {e}"
+                err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist, and Broken Hill could not create it: {e}\n{traceback.format_exc()}\n"
                 raise Exception(err_message)
         else:
             err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist."
@@ -316,7 +316,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
         born_2_lose, temporary_path = tempfile.mkstemp(dir = file_directory_path)
         os.close(born_2_lose)
     except Exception as e:
-        err_message = f"Couldn't create a temporary file in '{file_directory_path}': {e}"
+        err_message = f"Couldn't create a temporary file in '{file_directory_path}': {e}\n{traceback.format_exc()}\n"
         raise Exception(err_message)
     temporary_path_object = pathlib.Path(temporary_path)
     file_path_object = pathlib.Path(file_path)
@@ -327,7 +327,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 # of course pathlib doesn't have a copy method
                 shutil.copy(file_path, temporary_path)
             except Exception as e:
-                err_message = f"Couldn't copy the existing file '{file_path}' to the temporary path '{temporary_path}': {e}"
+                err_message = f"Couldn't copy the existing file '{file_path}' to the temporary path '{temporary_path}': {e}\n{traceback.format_exc()}\n"
                 raise Exception(err_message)
     successful_write = False
     try:
@@ -346,7 +346,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 output_file.write(transformed_output)
             successful_write = True
         except Exception as e2:
-            err_message = f"Couldn't write to the temporary file '{temporary_path}' in either text mode ('{e}') or binary mode('{e2}')."
+            err_message = f"Couldn't write to the temporary file '{temporary_path}' in either text mode ('{e}') or binary mode('{e2}')\n{traceback.format_exc()}\n"
             raise Exception(err_message)
     successful_delete = False
     if successful_write:
@@ -355,7 +355,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 file_path_object.unlink() 
                 successful_delete = True
             except Exception as e:
-                err_message = f"Couldn't delete the existing file '{file_path}' to replace it with the newly-generated file: {e}."
+                err_message = f"Couldn't delete the existing file '{file_path}' to replace it with the newly-generated file: {e}\n{traceback.format_exc()}\n"
                 raise Exception(err_message)
         else:
             successful_delete = True
@@ -365,7 +365,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
             temporary_path_object.rename(file_path) 
             successful_replace = True
         except Exception as e:
-            err_message = f"Couldn't rename the temporary file '{temporary_path}' to '{file_path}': {e}."
+            err_message = f"Couldn't rename the temporary file '{temporary_path}' to '{file_path}': {e}\n{traceback.format_exc()}\n"
             raise Exception(err_message)
     if successful_write and successful_delete and successful_replace:
         return file_path            

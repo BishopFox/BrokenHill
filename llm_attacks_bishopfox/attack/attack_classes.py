@@ -148,8 +148,7 @@ def get_missing_pad_token_names():
     result = [  "unk", 
                 "bos",
                 "eos",
-                "default",
-                "none" ]
+                "default" ]
     return result
 
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
@@ -279,7 +278,7 @@ class AdversarialContent(JSONSerializableObject):
                 logger.warning(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
                 raise DecodingException(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
             except Exception as e2:
-                raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}")
+                raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}\n{traceback.format_exc()}\n")
 
         return result
 
@@ -481,6 +480,8 @@ class AttackParams(JSONSerializableObject):
         return False
 
     def using_cuda(self):
+        if not torch.cuda.is_available():
+            return False
         for d in self.get_devices():
             dl = d.lower()
             if len(dl) > 3:
@@ -607,14 +608,13 @@ class AttackParams(JSONSerializableObject):
         self.enable_hardcoded_tokenizer_workarounds = False
 
         # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
-        self.missing_pad_token_replacement = "eos"
-
-        # If the tokenizer does not have a padding token defined, pad from the following side.
-        # Default is 'left' because the most common / default replacement padding token is EOS, and padding with that on the right will cause the model to not generate any text at all.
-        self.missing_pad_token_padding_side = "left"
+        self.missing_pad_token_replacement = None
         
         # If this value is not None, force the tokenizer to use the specified padding side. Overrides the missing pad token padding side value.
         self.padding_side = None
+
+        # string to use to determine the token to use for padding Broken Hill lists and tensors - should NOT be a special token, and should be a value that always encodes to a single token ID
+        self.broken_hill_padding_token_string = "."
 
         # Options that control detection of a successful jailbreak
         self.jailbreak_detection_rule_set = None      
@@ -1188,7 +1188,8 @@ class VolatileAttackState():
         self.forward_device = None
         self.token_denylist_as_cpu_tensor = None
         self.trash_fire_token_treasury = None
-        self.jailbreak_detector = LLMJailbreakDetector()        
+        self.jailbreak_detector = LLMJailbreakDetector()    
+        self.broken_hill_padding_token_id = None
     
     def write_persistent_state(self):
         try:
@@ -1222,7 +1223,7 @@ class VolatileAttackState():
                     num_str = pattern_match.group(0).replace("-", "")
                     found_file_numbers.append(int(num_str))
                 except Exception as e:
-                    logger.error(f"Couldn't convert {pattern_match.group(0)} into a number: {e}")
+                    logger.error(f"Couldn't convert {pattern_match.group(0)} into a number: {e}\n{traceback.format_exc()}\n")
         if len(found_file_numbers) > 0:
             found_file_numbers.sort()
             file_number = found_file_numbers[(len(found_file_numbers) - 1)]        
@@ -1402,7 +1403,7 @@ class VolatileAttackState():
                     delete_message = f"{delete_message} The file '{self.persistable.attack_params.state_file}' was deleted successfully."
                     logger.info(delete_message)
                 except Exception as e:
-                    delete_message = f"{delete_message} However, the file '{self.persistable.attack_params.state_file}' could not be deleted: {e}"
+                    delete_message = f"{delete_message} However, the file '{self.persistable.attack_params.state_file}' could not be deleted: {e}\n{traceback.format_exc()}\n"
                     logger.error(delete_message)
                 handled_state_message = True
         if not handled_state_message:
@@ -1432,7 +1433,8 @@ class VolatileAttackState():
         # PyTorch
         torch.manual_seed(self.persistable.attack_params.torch_manual_seed)
         # CUDA
-        torch.cuda.manual_seed_all(self.persistable.attack_params.torch_cuda_manual_seed_all)
+        if self.persistable.attack_params.using_cuda():
+            torch.cuda.manual_seed_all(self.persistable.attack_params.torch_cuda_manual_seed_all)
         if self.random_number_generators is None:
             self.random_number_generators = BrokenHillRandomNumberGenerators(self)
     
@@ -1581,26 +1583,17 @@ class VolatileAttackState():
         #if ignore_mismatched_sizes:
         #    kwargs["ignore_mismatched_sizes"] = True
 
-        model = None
+        self.model = None
         handled_model_load = False
 
         # TKTK: try adding a fallback to other AutoModel types, like AutoModelForSeq2SeqLM for T5.
-
-        if self.model_weight_type is None:
-            model = AutoModelForCausalLM.from_pretrained(
-                    self.persistable.attack_params.model_path,
-                    trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
-                    ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                    low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
-                    use_cache = self.persistable.attack_params.use_cache
-                ).to(self.model_device).eval()
-            handled_model_load = True
         if not handled_model_load:            
             # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
             # Inspired by the following PyTorch output:
             #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
             #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
             if "qwen" in self.persistable.attack_params.model_path.lower():
+                logger.warning(f"This model appears to be from the Qwen family. Some models in the Qwen family have nonstandard code that causes the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for it, because the entire machine learning field is as lawless as the old west, and developers dressing up as Charlie Prince, then marauding through town to drink all the whiskey and rob the bank is apparently to be expected. Broken Hill will attempt to bring some small measure of law to the frontier by bypassing the Qwen logic and restoring the correct default behaviour that EVERY OTHER MODEL SUPPORTED BY TRANSFORMERS MANAGES TO USE instead of firing their custom Schofields into the air and yelling 'yee-haw, sheriff!'. If this attempt fails, Broken Hill will attempt to load the model normally instead. If this occurs, and you see a message indicating that the weights were loaded in 'bfloat16' format, please notify the Broken Hill developers with the configuration you used for your test so we can account for it.")
                 # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
                 charlie_prince_bf16 = False
                 charlie_prince_fp16 = False
@@ -1614,7 +1607,7 @@ class VolatileAttackState():
                 if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
                 try:
-                    model = AutoModelForCausalLM.from_pretrained(
+                    self.model = AutoModelForCausalLM.from_pretrained(
                             self.persistable.attack_params.model_path,
                             torch_dtype = self.model_weight_type,
                             bf16 = charlie_prince_bf16,
@@ -1628,10 +1621,20 @@ class VolatileAttackState():
                     handled_model_load = True
                 except Exception as e:
                     if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}")
+                        logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}\n{traceback.format_exc()}\n")
                     handled_model_load = False
+        if not handled_model_load:
+            if self.model_weight_type is None:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()
+                handled_model_load = True
         if not handled_model_load:            
-            model = AutoModelForCausalLM.from_pretrained(
+            self.model = AutoModelForCausalLM.from_pretrained(
                     self.persistable.attack_params.model_path,
                     torch_dtype = self.model_weight_type,
                     trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
@@ -1642,9 +1645,9 @@ class VolatileAttackState():
         
         if self.persistable.attack_params.torch_dataparallel_model:
             try:
-                model = torch.nn.DataParallel(model)
+                self.model = torch.nn.DataParallel(self.model)
             except Exception as e:
-                logger.error(f"Unable to load the model using torch.nn.DataParallel: {e}")
+                logger.error(f"Unable to load the model using torch.nn.DataParallel: {e}\n{traceback.format_exc()}\n")
         
         tokenizer_path_to_load = self.persistable.attack_params.model_path
         if self.persistable.attack_params.tokenizer_path is not None:
@@ -1653,15 +1656,15 @@ class VolatileAttackState():
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
 
-        tokenizer = None
+        self.tokenizer = None
         
         #is_mamba = args.model_name.startswith("state-spaces/mamba-")
         #    if is_mamba:
-        #tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-        #model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_weight_type = self.model_weight_type)
+        #self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+        #self.model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_weight_type = self.model_weight_type)
         
         try:
-            tokenizer = AutoTokenizer.from_pretrained(
+            self.tokenizer = AutoTokenizer.from_pretrained(
                 tokenizer_path_to_load,
                 trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                 use_fast = False
@@ -1672,59 +1675,71 @@ class VolatileAttackState():
             if 2 > 1:
                 logger.warning(f"Unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
                 try:
-                    tokenizer = AutoTokenizer.from_pretrained(
+                    self.tokenizer = AutoTokenizer.from_pretrained(
                         tokenizer_path_to_load,
                         trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                         use_fast = True
                     )
                     handled = True
                 except Exception as e2:
-                    logger.error(f"Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'")
+                    logger.error(f"Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'\n{traceback.format_exc()}\n")
                     raise e        
             if not handled:
-                logger.error(f"Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'")
+                logger.error(f"Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'\n{traceback.format_exc()}\n")
                 raise e
         
-        if self.persistable.attack_params.padding_side is not None:
-            tokenizer.padding_side = self.persistable.attack_params.padding_side
+        try:
+            self.broken_hill_padding_token_id = encode_string_for_real_without_any_cowboy_funny_business(self, self.persistable.attack_params.broken_hill_padding_token_string)
+        except Exception as e:
+            logger.error(f"Error setting Broken Hill padding token ID from string '{self.persistable.attack_params.broken_hill_padding_token_string}': {e}\n{traceback.format_exc()}\nBroken Hill will use ID 0 instead. This will likely cause issues.")
+            self.broken_hill_padding_token_id = 0
+        
+        exiting_padding_side = None
+        if hasattr(self.tokenizer, "padding_side"):
+            exiting_padding_side = self.tokenizer.padding_side
+        
+        if self.persistable.attack_params.padding_side is None:
+            logger.debug(f"Tokenizer's padding side is '{exiting_padding_side}'.")
+        else:
+            if exiting_padding_side is None:
+                logger.warning(f"The tokenizer does not have a default padding side defined. Using the operator-specified value '{self.persistable.attack_params.padding_side}'.")
+            else:
+                if exiting_padding_side == self.persistable.attack_params.padding_side:
+                    logger.info(f"The tokenizer has a default padding side value '{exiting_padding_side}'. The operator-specified value '{self.persistable.attack_params.padding_side}' is identical.")
+                else:
+                    logger.warning(f"The tokenizer has a default padding side value '{exiting_padding_side}'. Using the operator-specified value '{self.persistable.attack_params.padding_side}' instead.")
+            self.tokenizer.padding_side = self.persistable.attack_params.padding_side
         
         if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
             if 'oasst-sft-6-llama-30b' in tokenizer_path_to_load:
-                tokenizer.bos_token_id = 1
-                tokenizer.unk_token_id = 0
+                self.tokenizer.bos_token_id = 1
+                self.tokenizer.unk_token_id = 0
             if 'guanaco' in tokenizer_path_to_load:
                 # Both of these are defined already in the configuration included with TheBloke's version of Guanaco.
                 # They're also defined in the configuration included with the "huggyllama" version of llama-7b, so I think both values are redundant.
-                tokenizer.eos_token_id = 2
-                tokenizer.unk_token_id = 0
+                self.tokenizer.eos_token_id = 2
+                self.tokenizer.unk_token_id = 0
             if 'llama-2' in tokenizer_path_to_load:
                 # Llama-2's tokenizer does explicitly define an unknown token ("<unk>"), so this seems fine
-                tokenizer.pad_token = tokenizer.unk_token
+                self.tokenizer.pad_token = self.tokenizer.unk_token
                 # Llama-2's tokenizer configuration explicitly pads from the right
-                tokenizer.padding_side = 'left'
+                self.tokenizer.padding_side = 'left'
             if 'falcon' in tokenizer_path_to_load:
-                tokenizer.padding_side = 'left'
+                self.tokenizer.padding_side = 'left'
                 
-        if not tokenizer.pad_token:
-            # pad from the left side by default, because the default / most common replacement (EOS) will cause the model to not generate anything at all if the data is padded from the right
-            if self.persistable.attack_params.padding_side is None:
-                tokenizer.padding_side = self.persistable.attack_params.missing_pad_token_padding_side
-                side_message = f" The padding side has been set to '{self.persistable.attack_params.missing_pad_token_padding_side}'. If you encounter errors or unexpected results, try using the other padding side mode."
+        if self.tokenizer.pad_token is None:
             if self.persistable.attack_params.missing_pad_token_replacement is not None:
-                pad_token_id, pad_token = get_missing_pad_token_replacement(tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
+                pad_token_id, pad_token = get_missing_pad_token_replacement(self.tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
                 if pad_token_id is not None and pad_token is not None:
-                    tokenizer.pad_token_id = pad_token_id
-                    tokenizer.pad_token = pad_token
-                logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.{side_message}")
+                    self.tokenizer.pad_token_id = pad_token_id
+                    self.tokenizer.pad_token = pad_token
+                logger.warning(f"The tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
             else:
-                logger.warning(f"the tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.{side_message}")
+                logger.warning(f"The tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.")
         
-        self.model_type_name = f"{type(model).__name__}"
-        self.tokenizer_type_name = f"{type(tokenizer).__name__}"
+        self.model_type_name = f"{type(self.model).__name__}"
+        self.tokenizer_type_name = f"{type(self.tokenizer).__name__}"
         logger.info(f"This model is an instance of the type '{self.model_type_name}', and the tokenizer is an instance of the type '{self.tokenizer_type_name}'")
-        
-        return model, tokenizer
-
 
     def load_model(self):
         try:
@@ -1744,15 +1759,20 @@ class VolatileAttackState():
             except Exception as e:
                 logger.warning(f"Couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
             self.model_weight_storage_string = ""
-            if model_config_dict is not None:            
+            if model_config_dict is not None:
                 if "torch_dtype" in model_config_dict.keys():
                     model_torch_dtype = model_config_dict["torch_dtype"]
                     if model_torch_dtype is not None:
                         self.model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
                         self.model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
                         logger.info(self.model_weight_storage_string)
+                for model_config_property_name in [ "model_type", "architectures", "auto_map", "tokenizer_class" ]:
+                    if model_config_property_name in model_config_dict.keys():
+                        property_value = model_config_dict[model_config_property_name]
+                        if property_value is not None:
+                            logger.debug(f"model.{model_config_property_name}: {property_value}")
             try:
-                self.model, self.tokenizer = self.load_model_and_tokenizer()
+                self.load_model_and_tokenizer()
             except Exception as e:
                 tokenizer_message = ""
                 if self.persistable.attack_params.tokenizer_path is not None and self.persistable.attack_params.tokenizer_path != "":
@@ -1784,7 +1804,7 @@ class VolatileAttackState():
             
             print_model_parameter_info(self)
             
-            if isinstance(self.tokenizer.pad_token_id, type(None)):
+            if self.tokenizer.pad_token_id is None:
                 if self.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
                     raise AttackInitializationException("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
             
@@ -1907,7 +1927,7 @@ class VolatileAttackState():
                     try:
                         role_id_or_name = self.conversation_template.roles[role_id_or_name]
                     except Exception as e:
-                        raise Exception(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}")
+                        raise Exception(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}\n{traceback.format_exc()}\n")
                 self.conversation_template.messages.append((role_id_or_name, message))
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
@@ -2078,7 +2098,8 @@ class VolatileAttackState():
         else:
             if target_jailbreak_result:
                 logger.info(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
-            else:            
+            else:
+                # This is logged as critical even though execution will continue if --ignore-jailbreak-self-tests is specified because it's vital to notify the user that the attack will likely not succeed.
                 logger.critical(f"Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
 
         # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
@@ -2636,7 +2657,7 @@ class ResourceUtilizationSnapshot(JSONSerializableObject):
             result.system_swap_free = system_swap_info.free
             result.system_swap_percent = system_swap_info.percent
         except Exception as e:
-            raise ResourceUtilizationSnapshot(f"Error getting swap memory information: {e}")
+            raise ResourceUtilizationSnapshot(f"Error getting swap memory information: {e}\n{traceback.format_exc()}\n")
         
         cuda_devices = PyTorchDevice.get_all_cuda_devices()
         for i in range(0, len(cuda_devices)):
@@ -2994,7 +3015,7 @@ class ResourceUtilizationData(JSONSerializableObject):
             message = new_message
         return found_data, message
 
-    def output_statistics_grid(self, use_ansi = True, verbose = False):
+    def output_statistics_grid(self, using_cuda = False, use_ansi = True, verbose = False):
         message = "Resource utilization / performance statistics:"
         #if verbose:
         #    message = f"{message} (verbose)"
@@ -3063,69 +3084,70 @@ class ResourceUtilizationData(JSONSerializableObject):
             table_text = cgv.render_table()
             message = f"{message}{table_text}\n\n"
             found_data_overall = True
-        
-        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
-            # colour the two device-level tables in alternating pairs to make it easier to distinguish data when more than one CUDA device is present.
-            title_row_background_colour = "magenta"
-            #title_row_background_colour = "green"
-            title_row_foreground_colour = "white"
-            if (cuda_device_num % 2) == 1:
-                title_row_background_colour = "green"
-                #title_row_background_colour = "magenta"
+
+        if using_cuda:
+            for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+                # colour the two device-level tables in alternating pairs to make it easier to distinguish data when more than one CUDA device is present.
+                title_row_background_colour = "magenta"
+                #title_row_background_colour = "green"
                 title_row_foreground_colour = "white"
-            found_data = False  
-            cd = self.statistics.cuda_devices[cuda_device_num]
-            row_headers_cuda = [ 
-                "Memory reserved (bytes)",
-                "Memory utilization",
-                "Memory reserved and allocated",
-                "Memory reserved but unallocated",
-                "Reserved memory utilization"
-                ]
-            cgv = ConsoleGridView(use_ansi = use_ansi)
-            cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
-            cgv.column_headers = column_headers
-            cgv.row_headers = row_headers_cuda
-            current_stats = []
-            dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-            dataset = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
-            dataset = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-            dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-            dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
-            if found_data:
-                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - Broken Hill Process"
-                cgv.set_data(current_stats)
-                table_text = cgv.render_table()
-                message = f"{message}{table_text}\n\n"
-                found_data_overall = True
-        
-            row_headers_cuda = [ 
-                "Memory in use (bytes)",
-                "Memory available (bytes)",
-                "Memory utilization"
-                ]
-            cgv = ConsoleGridView(use_ansi = use_ansi)
-            cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
-            cgv.column_headers = column_headers
-            cgv.row_headers = row_headers_cuda
-            current_stats = []
-            dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-            dataset = cd.get_dataset("available_memory", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
-            dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
-            found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
-            if found_data:
-                cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - System-Wide"
-                cgv.set_data(current_stats)
-                table_text = cgv.render_table()
-                message = f"{message}{table_text}\n\n"
-                found_data_overall = True
+                if (cuda_device_num % 2) == 1:
+                    title_row_background_colour = "green"
+                    #title_row_background_colour = "magenta"
+                    title_row_foreground_colour = "white"
+                found_data = False  
+                cd = self.statistics.cuda_devices[cuda_device_num]
+                row_headers_cuda = [ 
+                    "Memory reserved (bytes)",
+                    "Memory utilization",
+                    "Memory reserved and allocated",
+                    "Memory reserved but unallocated",
+                    "Reserved memory utilization"
+                    ]
+                cgv = ConsoleGridView(use_ansi = use_ansi)
+                cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
+                cgv.column_headers = column_headers
+                cgv.row_headers = row_headers_cuda
+                current_stats = []
+                dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                dataset = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                if found_data:
+                    cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - Broken Hill Process"
+                    cgv.set_data(current_stats)
+                    table_text = cgv.render_table()
+                    message = f"{message}{table_text}\n\n"
+                    found_data_overall = True
+            
+                row_headers_cuda = [ 
+                    "Memory in use (bytes)",
+                    "Memory available (bytes)",
+                    "Memory utilization"
+                    ]
+                cgv = ConsoleGridView(use_ansi = use_ansi)
+                cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
+                cgv.column_headers = column_headers
+                cgv.row_headers = row_headers_cuda
+                current_stats = []
+                dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("available_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                if found_data:
+                    cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - System-Wide"
+                    cgv.set_data(current_stats)
+                    table_text = cgv.render_table()
+                    message = f"{message}{table_text}\n\n"
+                    found_data_overall = True
         
         found_data = False
         cgv = ConsoleGridView(use_ansi = use_ansi)
@@ -3145,7 +3167,7 @@ class ResourceUtilizationData(JSONSerializableObject):
         if found_data_overall:
             logger.info(message)
     
-    def output_statistics_plaintext(self, use_ansi = True, verbose = False):        
+    def output_statistics_plaintext(self, using_cuda = False, use_ansi = True, verbose = False):        
         message = "Resource utilization / performance statistics:"
         if verbose:
             message = f"{message} (verbose)"
@@ -3181,43 +3203,44 @@ class ResourceUtilizationData(JSONSerializableObject):
             found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
         if found_cpu_data:
             found_data = True
-            message = cpu_message
+            message = f"{message}{cpu_message}"
         
-        found_cuda_data = False
-        cuda_message = f"{message}\n\n  CUDA devices:"
-        cuda_padding = '        '
-        for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
-            found_cuda_device_data = False
-            cd = self.statistics.cuda_devices[cuda_device_num]
-            cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
-            cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
-            cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
-            cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
-            if verbose:
-                cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
-                cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
-                cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
-            cuda_device_message = f"{cuda_device_message}\n      System-wide:"
-            cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
-            if verbose:
-                cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
-                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
-            cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
-            found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
+        if using_cuda:
+            found_cuda_data = False
+            cuda_message = f"{message}\n\n  CUDA devices:"
+            cuda_padding = '        '
+            for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+                found_cuda_device_data = False
+                cd = self.statistics.cuda_devices[cuda_device_num]
+                cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
+                cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
+                cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
+                cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
+                if verbose:
+                    cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
+                    cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
+                    cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
+                cuda_device_message = f"{cuda_device_message}\n      System-wide:"
+                cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
+                if verbose:
+                    cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
+                cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
+                
+                if found_cuda_device_data:
+                    found_cuda_data = True
+                    cuda_message = f"{cuda_message}{cuda_device_message}"
             
-            if found_cuda_device_data:
-                found_cuda_data = True
-                cuda_message = f"{cuda_message}{cuda_device_message}"
-        
-        if found_cuda_data:
-            found_data = True
-            message = cuda_message
+            if found_cuda_data:
+                found_data = True
+                message = f"{message}{cuda_message}"
         
         #TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
         
@@ -3233,20 +3256,20 @@ class ResourceUtilizationData(JSONSerializableObject):
         if found_data:
             logger.info(message)
     
-    def output_statistics(self, use_ansi = True, verbose = False):
+    def output_statistics(self, using_cuda = False, use_ansi = True, verbose = False):
         # If there are at least 80 columns of terminal, try outputting in grid form first.
         # If not, or grid errors out, output in plaintext instead.
         grid_displayed = False
         if ConsoleGridView.terminal_is_wide_enough_for_grid(self.minimum_terminal_width_for_grid):
             try:
-                self.output_statistics_grid(use_ansi = use_ansi, verbose = verbose)
+                self.output_statistics_grid(using_cuda = using_cuda, use_ansi = use_ansi, verbose = verbose)
                 grid_displayed = True
             except Exception as e:
                 logger.error(f"Exception thrown when trying to display statistics in grid form: {e}\n{traceback.format_exc()}\nFalling back to plaintext statistics output.")
                 grid_displayed = False
         
         if not grid_displayed:
-            self.output_statistics_plaintext(use_ansi = use_ansi, verbose = verbose)
+            self.output_statistics_plaintext(using_cuda = using_cuda, use_ansi = use_ansi, verbose = verbose)
         
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
@@ -3270,23 +3293,22 @@ class ResourceUtilizationData(JSONSerializableObject):
         else:
             display_string = f"System resource statistics ({location_description})\n"
         
-        if using_cpu:
-            display_string += f"CPU:\n"
-            display_string += f"\tBroken Hill process:\n"
-            display_string += f"\t\tVirtual memory in use: {current_snapshot.process_virtual_memory:n} bytes\n"
-            display_string += f"\t\tPhysical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
-            if current_snapshot.process_swap is not None:
-                display_string += f"\t\tSwap memory in use: {current_snapshot.process_swap:n} bytes\n"
-            display_string += f"\tSystem-level:\n"
-            display_string += f"\t\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
-            display_string += f"\t\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
-            display_string += f"\t\tMemory available: {current_snapshot.system_available_memory:n} bytes\n"
-            display_string += f"\t\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
-            if current_snapshot.system_swap_total is not None:
-                display_string += f"\t\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
-                display_string += f"\t\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
-                display_string += f"\t\tSwap memory available: {current_snapshot.system_swap_free:n} bytes\n"
-                display_string += f"\t\tSwap memory utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
+        display_string += f"CPU:\n"
+        display_string += f"\tBroken Hill process:\n"
+        display_string += f"\t\tVirtual memory in use: {current_snapshot.process_virtual_memory:n} bytes\n"
+        display_string += f"\t\tPhysical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
+        if current_snapshot.process_swap is not None:
+            display_string += f"\t\tSwap memory in use: {current_snapshot.process_swap:n} bytes\n"
+        display_string += f"\tSystem-level:\n"
+        display_string += f"\t\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
+        display_string += f"\t\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
+        display_string += f"\t\tMemory available: {current_snapshot.system_available_memory:n} bytes\n"
+        display_string += f"\t\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
+        if current_snapshot.system_swap_total is not None:
+            display_string += f"\t\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
+            display_string += f"\t\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
+            display_string += f"\t\tSwap memory available: {current_snapshot.system_swap_free:n} bytes\n"
+            display_string += f"\t\tSwap memory utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
             
         if using_cuda:
             for i in range(0, len(current_snapshot.cuda_device_data)):

@@ -102,7 +102,7 @@ def fschat_conversation_template_from_dict(fschat_conversation_template_dict):
         result.stop_token_ids = fschat_conversation_template_dict["name"]
         result.max_image_size_mb = fschat_conversation_template_dict["name"]
     except Exception as e:
-        raise ConversationTemplateSerializationException(f"Couldn't create a conversation template from the data {fschat_conversation_template_dict}: {e}")
+        raise ConversationTemplateSerializationException(f"Couldn't create a conversation template from the data {fschat_conversation_template_dict}: {e}\n{traceback.format_exc()}\n")
     return result
     
 def fschat_conversation_template_from_json(fschat_conversation_template_json):
@@ -126,37 +126,6 @@ def get_fschat_id_to_role_name_map(fschat_conversation_template):
 
 class TokenizerCannotApplyChatTemplateException(Exception):
     pass
-    
-# class TokenizerConfiguration:
-    # def __init__(self):                
-        # # don't just collect all of the tokenizer configuration properties, or reference the , because some of them have *enormous* lists of tokens
-        
-        # # the self-declared class name
-        # self.tokenizer_class = None
-        
-        # # special tokens
-        # self.bos_token = None
-        # self.eos_token = None
-        # self.pad_token = None
-        # self.unk_token = None
-
-        # # special token use
-        # self.add_bos_token = None
-        # self.add_eos_token = None
-
-        # # if the auto_map property exists and has an AutoTokenizer list, it will be stored here
-        # autotokenizer_names = []
-
-        # # the chat template string, if one exists in the configuration        
-        # self.chat_template = None
-                
-        # # other assorted properties that may exist
-        # self.clean_up_tokenization_spaces = None
-        # self.do_lower_case = None
-        # self.padding_side = None
-        # self.remove_space = None
-        # self.spaces_between_special_tokens = None        
-        # self.use_default_system_prompt = None
 
 class TokenAndTokenIDListComparisonResult:
     def __init__(self):
@@ -307,7 +276,7 @@ class ConversationTemplateTester:
             except Exception as e:
                 result.got_tokenizer_chat_template = False
                 result.tokenizer_supports_apply_chat_template_method = False
-                result.result_messages.append(f"Warning: the tokenizer does not appear to support an apply_chat_template method. Broken Hill will be unable to compare the current conversation template against the template provided by the developers of the model/tokenizer. If you observe unexpected or incorrect results during this test, verify that the chat template you've selected formats data correctly for the model. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that did not include an initial system message was '{tokenizer_prompt_no_system_string}'")
+                result.result_messages.append(f"Warning: the tokenizer does not appear to support an apply_chat_template method. Broken Hill will be unable to compare the current conversation template against the template provided by the developers of the model/tokenizer. If you observe unexpected or incorrect results during this test, verify that the chat template you've selected formats data correctly for the model. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that did not include an initial system message was '{tokenizer_prompt_no_system_string}'\n{traceback.format_exc()}\n")
             if got_tokenizer_chat_template_with_no_system_as_string:
                 try:
                     tokenizer_prompt_no_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_without_system, tokenize = True)
@@ -317,7 +286,7 @@ class ConversationTemplateTester:
                 except Exception as e:
                     result.got_tokenizer_chat_template = False
                     result.tokenizer_supports_apply_chat_template_method = False
-                    result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation did not contain a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_no_system_string}'")
+                    result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation did not contain a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_no_system_string}'\n{traceback.format_exc()}\n")
 
             if result.tokenizer_supports_apply_chat_template_method:
                 try:
@@ -325,7 +294,7 @@ class ConversationTemplateTester:
                     got_tokenizer_chat_template_with_system_as_string = True
                 except Exception as e:
                     result.tokenizer_chat_template_supports_messages_with_system_role = False
-                    result.result_messages.append(f"Warning: the tokenizer's apply_chat_template method does not appear to support messages with the 'system' role. This may imply that the associated model does not support system messages. If your testing depends on setting a specific system message, you should validate that the model appears to incorporate your message. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that included an initial system message was '{tokenizer_prompt_with_system_string}'")
+                    result.result_messages.append(f"Warning: the tokenizer's apply_chat_template method does not appear to support messages with the 'system' role. This may imply that the associated model does not support system messages. If your testing depends on setting a specific system message, you should validate that the model appears to incorporate your message. Testing this aspect of the tokenizer resulted in the exception '{e}'. The output of the apply_chat_template method for a conversation that included an initial system message was '{tokenizer_prompt_with_system_string}'.")
                 if got_tokenizer_chat_template_with_system_as_string:
                     try:
                         tokenizer_prompt_with_system_token_ids = self.adversarial_content_manager.attack_state.tokenizer.apply_chat_template(tokenizer_chat_template_messages_with_system, tokenize = True)
@@ -335,7 +304,7 @@ class ConversationTemplateTester:
                         result.got_tokenizer_chat_template = True
                     except Exception as e:
                         result.tokenizer_chat_template_supports_messages_with_system_role = False
-                        result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation contained a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_with_system_string}'")
+                        result.result_messages.append(f"Error: an exception occurred when examining the output of the tokenizer's apply_chat_template when the conversation contained a system message: '{e}'. The string returned by the tokenizer was '{tokenizer_prompt_with_system_string}'\n{traceback.format_exc()}\n")
             
         existing_fschat_template_working_copy_system_message = result.existing_fschat_template.copy()
         existing_fschat_template_working_copy_system_role = result.existing_fschat_template.copy()

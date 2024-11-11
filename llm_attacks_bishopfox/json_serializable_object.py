@@ -195,7 +195,7 @@ class JSONSerializableObject:
                 try:
                     result[key] = JSONSerializableObject.make_value_serializable(value)
                 except Exception as e:
-                    raise JSONSerializationException(f"Could not serialize property '{key}' of type '{type(value)}' within object of type '{type(object_to_serialize)}': {e}")
+                    raise JSONSerializationException(f"Could not serialize property '{key}' of type '{type(value)}' within object of type '{type(object_to_serialize)}': {e}\n{traceback.format_exc()}\n")
         return result
 
     @staticmethod

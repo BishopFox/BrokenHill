@@ -179,7 +179,7 @@ class LargeLanguageModelParameterInfoCollection(JSONSerializableObject):
         try:
             result = int(float(self.total_parameter_count) * float(torch_dtype_to_bit_count(dtype)) / 8.0)
         except Exception as e:
-            raise LargeLanguageModelParameterException(f"Error calculating model memory use for parameter count {self.total_parameter_count} and data type {dtype}: {e}")
+            raise LargeLanguageModelParameterException(f"Error calculating model memory use for parameter count {self.total_parameter_count} and data type {dtype}: {e}\n{traceback.format_exc()}\n")
         return result
     
     def get_trainable_parameters(self):

@@ -255,7 +255,7 @@ def main(attack_params, log_manager):
             sys.exit(1)
         sys.exit(0)
     
-    if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+    if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None and attack_state.persistable.attack_params.using_cuda():
         torch.cuda.memory._record_memory_history()
     
     if not attack_params.load_state_from_file:
@@ -722,7 +722,12 @@ def main(attack_params, log_manager):
                                 del losses
                                 gc.collect()
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting losses and running gc.collect")
-                                current_loss_as_float = float(f"{current_loss.detach().cpu().numpy()}")
+                                current_loss_as_float = None
+                                try:
+                                    current_loss_as_float = float(f"{current_loss.detach().to(torch.float32).cpu().numpy()}")
+                                except Exception as e:
+                                    logger.error(f"Could not convert the current loss value '{current_loss}' to a floating-point number: {e}\n{traceback.format_exc()}\nThe value 100.0 will be used instead.")
+                                    current_loss_as_float = 100.0
                                 best_new_adversarial_content.original_loss = current_loss_as_float
                                 
                                 if isinstance(attack_state.persistable.attack_params.required_loss_threshold, type(None)) or attack_state.persistable.main_loop_iteration_number == 0:
@@ -835,7 +840,8 @@ def main(attack_params, log_manager):
                                 logger.debug(f"Temporarily setting all random seeds to {random_seed} to compare results")
                             numpy.random.seed(random_seed)
                             torch.manual_seed(random_seed)
-                            torch.cuda.manual_seed_all(random_seed)
+                            if attack_state.persistable.attack_params.using_cuda():
+                                torch.cuda.manual_seed_all(random_seed)
                             attack_data_current_iteration.numpy_random_seed = random_seed
                             attack_data_current_iteration.torch_manual_seed = random_seed
                             attack_data_current_iteration.torch_cuda_manual_seed_all = random_seed
@@ -872,7 +878,8 @@ def main(attack_params, log_manager):
                                     logger.debug(f"Temporarily setting all random seeds to {random_seed} to generate full output")
                                 numpy.random.seed(random_seed)
                                 torch.manual_seed(random_seed)
-                                torch.cuda.manual_seed_all(random_seed)
+                                if attack_state.persistable.attack_params.using_cuda():
+                                    torch.cuda.manual_seed_all(random_seed)
                             generation_results = attack_state.generate(best_new_adversarial_content_input_token_id_data, current_temperature, do_sample = do_sample, generate_full_output = True)
                             full_output_data.set_values(attack_state, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
                             
@@ -990,8 +997,6 @@ def main(attack_params, log_manager):
                         del coordinate_gradient
                     gc.collect()
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting coordinate gradient and running gc.collect")
-                    #if "cuda" in attack_state.persistable.attack_params.device:
-                    #    torch.cuda.empty_cache()
                                     
                 # Neither of the except KeyboardInterrupt blocks currently do anything because some inner code in another module is catching it first
                 except KeyboardInterrupt:
@@ -1051,7 +1056,7 @@ def main(attack_params, log_manager):
         logger.critical(f"Broken Hill encountered an exception when trying to collect the final set of performance statistics: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
 
     try:
-        if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None:
+        if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None and attack_state.persistable.attack_params.using_cuda():
             logger.info(f"Writing PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
             try:
                 torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
@@ -1137,7 +1142,7 @@ def main(attack_params, log_manager):
     if attack_state.persistable.attack_params.log_file_path is not None:
             logger.info(f"This attack has been logged to '{attack_state.persistable.attack_params.log_file_path}'.")
     try:
-        attack_state.persistable.performance_data.output_statistics(use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
+        attack_state.persistable.performance_data.output_statistics(using_cuda = attack_state.persistable.attack_params.using_cuda(), use_ansi = attack_state.persistable.attack_params.console_ansi_format, verbose = attack_state.persistable.attack_params.verbose_statistics)
     except (Exception, RuntimeError) as e:
         e_string = None
         traceback_string = None
@@ -1636,16 +1641,12 @@ if __name__=='__main__':
         help="Enable the undocumented, hardcoded tokenizer workarounds that the original developers introduced for some models.")
     padding_token_values = get_missing_pad_token_names()
     parser.add_argument("--missing-pad-token-replacement", type = str, 
-        default = attack_params.missing_pad_token_replacement,
+        default = "default",
         choices = padding_token_values,
-        help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}.")
-    parser.add_argument("--missing-pad-token-padding-side", type = str,
-        default = attack_params.missing_pad_token_padding_side,
-        choices = [ "left", "right" ],
-        help=f"If the tokenizer is missing a padding token definition, use the specified padding side for the replacement. Must be one of 'left' or 'right'. Default: left.")
+        help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}. If 'default' is specified, no alternative value will be explicitly specified, and the behaviour will be determined by the Transformers library and any other third-party code related to the tokenizer.")
     parser.add_argument("--padding-side", type = str,
-        choices = [ "left", "right" ],
-        help=f"Force the tokenizer to always used the specified padding side, even if it has a padding token defined already. Must be one of 'left' or 'right'.")
+        choices = [ "default", "left", "right" ], default = "default",
+        help=f"If this value is not 'default', configure the tokenizer to always used the specified padding side. If this value is 'default', use the tokenizer's value. Must be one of 'default', 'left' or 'right'.")
     parser.add_argument("--json-output-file", type = str,
         help=f"Write detailed result data in JSON format to the specified file.")
     parser.add_argument("--performance-output-file", type = str,
@@ -2187,15 +2188,16 @@ if __name__=='__main__':
     if args.enable_hardcoded_tokenizer_workarounds:
         attack_params.enable_hardcoded_tokenizer_workarounds = True
         
-    if args.missing_pad_token_replacement == "none":
+    if args.missing_pad_token_replacement == "default":
         attack_params.missing_pad_token_replacement = None
     else:
         attack_params.missing_pad_token_replacement = args.missing_pad_token_replacement
 
-    attack_params.missing_pad_token_padding_side = args.missing_pad_token_padding_side
-
     if args.padding_side:
-        attack_params.padding_side = args.padding_side
+        if args.padding_side == "default":
+            attack_params.padding_side = None
+        else:
+            attack_params.padding_side = args.padding_side
 
     if args.exclude_whitespace_tokens:
         attack_params.exclude_whitespace_tokens = True

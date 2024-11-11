@@ -674,22 +674,18 @@ When loading the model and tokenizer, pass `low_cpu_mem_usage=True`. May or may 
 
 ### --missing-pad-token-replacement [unk/bos/eos/default]
 
-Enable a more flexible version of the undocumented tokenizer workaround that the original developers included (which is no longer used by default).  The original logic would always cause the "end of string" token to be used if the tokenizer did not define a padding token. This option allows a value to be selected from three options:
+If this value is not `default`, and the tokenizer does not have a padding token defined in its configuration, use the specified padding token instead:
 
 * `unk` - use the "unknown token" token
 * `bos` - use the "beginning of string" token
 * `eos` - use the "end of string" token
 * `default` - use whatever token the PyTorch library selects, if any
 
-If this option is not specified, the "end of string" token will be used.
-
-### --missing-pad-token-padding-side [left/right]
-
-If the tokenizer is missing a padding token definition, use the specified padding side for the replacement. Must be one of `left` or `right`. Default: `left`.
+For most models that do not define a value explicitly, using `eos` and specifying `--padding-side left` is a safe choice.
 
 ### --padding-side
 
-Force the tokenizer to always used the specified padding side, even if it has a padding token defined already. Must be one of 'left' or 'right'.
+If this value is not `default`, configure the tokenizer to always used the specified padding side, even if it has a padding token defined already. Must be one of 'default', 'left', or 'right'.
 
 ### --trust-remote-code
 

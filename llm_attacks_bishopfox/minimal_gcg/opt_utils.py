@@ -65,23 +65,24 @@ def pad_token_id_list(attack_state, token_id_list, length_to_pad_to):
         raise PaddingException(f"Received a request to pad a list of length {len_token_id_list} to length {length_to_pad_to}, which is fewer tokens than the existing length.")
     
     try:
-        if attack_state.persistable.attack_params.missing_pad_token_padding_side == 'right':
+        
+        #if attack_state.persistable.attack_params.padding_side == 'right':
             # while len(token_id_list) < length_to_pad_to:
                 # token_id_list.append(attack_state.tokenizer.pad_token_id)
-            for i in range(0, num_tokens_to_add):
-                token_id_list.append(attack_state.tokenizer.pad_token_id)
-        else:
-            # while len(token_id_list) < length_to_pad_to:
-                # token_id_list.insert(0, attack_state.tokenizer.pad_token_id)
-            result = []
-            for i in range(0, num_tokens_to_add):
-                result.append(attack_state.tokenizer.pad_token_id)
-            for i in range(0, len_token_id_list):
-                result.append(token_id_list[i])
-            token_id_list = result
+        for i in range(0, num_tokens_to_add):
+            token_id_list.append(attack_state.broken_hill_padding_token_id)
+        # else:
+            # # while len(token_id_list) < length_to_pad_to:
+                # # token_id_list.insert(0, attack_state.tokenizer.pad_token_id)
+            # result = []
+            # for i in range(0, num_tokens_to_add):
+                # result.append(attack_state.broken_hill_padding_token_id)
+            # for i in range(0, len_token_id_list):
+                # result.append(token_id_list[i])
+            # token_id_list = result
             
     except Exception as e:
-        raise PaddingException(f"Exception padding token_id_list {token_id_list} to length {length_to_pad_to}: {e}")
+        raise PaddingException(f"Exception padding token_id_list {token_id_list} to length {length_to_pad_to}: {e}\n{traceback.format_exc()}\n")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"token_id_list (after padding) = {token_id_list}")
     return token_id_list
@@ -171,31 +172,31 @@ def mellowmax(attack_state, t: torch.Tensor, alpha = 1.0, dim = -1):
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"torch_logsumexp = '{torch_logsumexp}'")
     except Exception as e:
-        raise MellowmaxException(f"Error calling torch.logsumexp(alpha * t, dim = dim) with alpha = alpha, t = '{t}', dim = '{dim}': {e}")
+        raise MellowmaxException(f"Error calling torch.logsumexp(alpha * t, dim = dim) with alpha = alpha, t = '{t}', dim = '{dim}': {e}\n{traceback.format_exc()}\n")
     try:
         torch_tensor = torch.tensor(t.shape[-1], dtype = t.dtype, device = t.device)
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"torch_tensor = '{torch_tensor}'")
     except Exception as e:
-        raise MellowmaxException(f"Error calling torch.tensor(t.shape[-1], dtype = t.dtype, device = t.device) with t = '{t}', t.shape = '{t.shape}', dtype = '{dtype}': {e}")
+        raise MellowmaxException(f"Error calling torch.tensor(t.shape[-1], dtype = t.dtype, device = t.device) with t = '{t}', t.shape = '{t.shape}', dtype = '{dtype}': {e}\n{traceback.format_exc()}\n")
     try:
         torch_log = torch.log(torch_tensor)
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"torch_log = '{torch_log}'")
     except Exception as e:
-        raise MellowmaxException(f"Error calling torch.log(torch_tensor) with torch_tensor = '{torch_tensor}': {e}")
+        raise MellowmaxException(f"Error calling torch.log(torch_tensor) with torch_tensor = '{torch_tensor}': {e}\n{traceback.format_exc()}\n")
     try:
         tensor_data = torch_logsumexp - torch_log
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"tensor_data = '{tensor_data}'")
     except Exception as e:
-        raise MellowmaxException(f"Error calling torch_logsumexp - torch_log with torch_logsumexp = '{torch_logsumexp}', torch_log = '{torch_log}': {e}")
+        raise MellowmaxException(f"Error calling torch_logsumexp - torch_log with torch_logsumexp = '{torch_logsumexp}', torch_log = '{torch_log}': {e}\n{traceback.format_exc()}\n")
     try:
         result = 1.0 / alpha * (tensor_data)
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"result = '{result}'")
     except Exception as e:
-        raise MellowmaxException(f"Error calling 1.0 / alpha * (tensor_data) with alpha = alpha, tensor_data = '{tensor_data}': {e}")
+        raise MellowmaxException(f"Error calling 1.0 / alpha * (tensor_data) with alpha = alpha, tensor_data = '{tensor_data}': {e}\n{traceback.format_exc()}\n")
     return result
 # END: mellowmax loss function borrowed from nanoGCG
 
@@ -290,7 +291,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
                 device = attack_state.gradient_device,
                 dtype = embedding_matrix.dtype)
         except Exception as e:
-            raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0], embedding_matrix.shape[0], device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_token_ids_gradient_device[input_id_data.slice_data.control] = '{input_token_ids_gradient_device[input_id_data.slice_data.control]}', input_token_ids_gradient_device[input_id_data.slice_data.control].shape = '{input_token_ids_gradient_device[input_id_data.slice_data.control].shape}', embedding_matrix = '{embedding_matrix}', embedding_matrix.shape = '{embedding_matrix.shape}', dtype = '{dtype}': {e}")        
+            raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0], embedding_matrix.shape[0], device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_token_ids_gradient_device[input_id_data.slice_data.control] = '{input_token_ids_gradient_device[input_id_data.slice_data.control]}', input_token_ids_gradient_device[input_id_data.slice_data.control].shape = '{input_token_ids_gradient_device[input_id_data.slice_data.control].shape}', embedding_matrix = '{embedding_matrix}', embedding_matrix.shape = '{embedding_matrix.shape}', dtype = '{dtype}': {e}\n{traceback.format_exc()}\n")        
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot created")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"one_hot = {one_hot}")
@@ -309,7 +310,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         try:
             one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_state.gradient_device, dtype = embedding_matrix.dtype)
         except Exception as e:
-            raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}")
+            raise GradientCreationException(f"Error calling one_hot_ones = torch.ones(one_hot.shape[0], 1, device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with one_hot = '{one_hot}', one_hot.shape = '{one_hot.shape}', dtype = '{dtype}': {e}\n{traceback.format_exc()}\n")
 
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"one_hot_ones = {one_hot_ones}")
@@ -318,7 +319,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     try:
         one_hot_scatter_input = input_token_ids_gradient_device[input_id_data.slice_data.control].unsqueeze(1)
     except Exception as e:
-        raise GradientCreationException(f"Error calling one_hot_scatter_input = input_token_ids_gradient_device[input_id_data.slice_data.control].unsqueeze(1)) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_id_data.slice_data.control = '{input_id_data.slice_data.control}': {e}")
+        raise GradientCreationException(f"Error calling one_hot_scatter_input = input_token_ids_gradient_device[input_id_data.slice_data.control].unsqueeze(1)) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_id_data.slice_data.control = '{input_id_data.slice_data.control}': {e}\n{traceback.format_exc()}\n")
 
     try:
         one_hot.scatter_(
@@ -327,7 +328,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
             one_hot_ones
         )
     except Exception as e:
-        raise GradientCreationException(f"Error calling one_hot.scatter_(1, one_hot_scatter_input, one_hot_ones) with one_hot_scatter_input = '{one_hot_scatter_input}', one_hot_ones = '{one_hot_ones}': {e}")
+        raise GradientCreationException(f"Error calling one_hot.scatter_(1, one_hot_scatter_input, one_hot_ones) with one_hot_scatter_input = '{one_hot_scatter_input}', one_hot_ones = '{one_hot_ones}': {e}\n{traceback.format_exc()}\n")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot scattered")
     
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -362,7 +363,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     try:
         embeds = get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach()
     except Exception as e:
-        raise GradientCreationException(f"Error calling get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach() with input_token_ids_model_device.unsqueeze(0) = '{input_token_ids_model_device.unsqueeze(0)}': {e}")
+        raise GradientCreationException(f"Error calling get_embeddings(attack_state, input_token_ids_model_device.unsqueeze(0)).detach() with input_token_ids_model_device.unsqueeze(0) = '{input_token_ids_model_device.unsqueeze(0)}': {e}\n{traceback.format_exc()}\n")
     #embeds = embeds.to(attack_state.gradient_device)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - embeds created")
 
@@ -379,7 +380,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
             ], 
             dim=1)
     except Exception as e:
-        raise GradientCreationException(f"Error calling torch.cat([embeds[:,:input_id_data.slice_data.control.start,:], input_embeds, embeds[:,input_id_data.slice_data.control.stop:,:]], dim=1) with embeds = '{embeds}', input_embeds = '{input_embeds}': {e}")
+        raise GradientCreationException(f"Error calling torch.cat([embeds[:,:input_id_data.slice_data.control.start,:], input_embeds, embeds[:,input_id_data.slice_data.control.stop:,:]], dim=1) with embeds = '{embeds}', input_embeds = '{input_embeds}': {e}\n{traceback.format_exc()}\n")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - full_embeds created")
 
     del embeds
@@ -424,7 +425,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     # TKTK: is there a way to limit this up front to just the user input/adversarial content and the messages that follow? That should reduce device memory consumption considerably.
     #logits = attack_state.model(inputs_embeds=full_embeds).logits
     except Exception as e:
-        raise GradientCreationException(f"Error calling attack_state.model(inputs_embeds = full_embeds).logits with full_embeds = '{full_embeds}': {e}")
+        raise GradientCreationException(f"Error calling attack_state.model(inputs_embeds = full_embeds).logits with full_embeds = '{full_embeds}': {e}\n{traceback.format_exc()}\n")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - logits created")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"logits = {logits}")
@@ -439,7 +440,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     try:
         targets = input_token_ids_gradient_device[input_id_data.slice_data.target_output]
     except Exception as e:
-        raise GradientCreationException(f"Error calling input_token_ids_gradient_device[input_id_data.slice_data.target_output] with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}")
+        raise GradientCreationException(f"Error calling input_token_ids_gradient_device[input_id_data.slice_data.target_output] with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}': {e}\n{traceback.format_exc()}\n")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - targets created")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"targets = {targets}")
@@ -452,7 +453,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     try:
         targets = get_padded_target_token_ids(attack_state, input_id_data.slice_data.loss, targets)
     except Exception as e:
-        raise GradientCreationException(f"Error calling get_padded_target_token_ids(attack_state.tokenizer, input_id_data.slice_data.loss, targets) with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}', targets = '{targets}': {e}")
+        raise GradientCreationException(f"Error calling get_padded_target_token_ids(attack_state.tokenizer, input_id_data.slice_data.loss, targets) with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}', targets = '{targets}': {e}\n{traceback.format_exc()}\n")
 
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"targets (after padding, if necessary) = {targets}")
@@ -463,7 +464,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     try:
         loss_logits = logits[0,input_id_data.slice_data.loss,:]
     except Exception as e:
-        raise GradientCreationException(f"Error calling logits[0,input_id_data.slice_data.loss,:] with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}': {e}")
+        raise GradientCreationException(f"Error calling logits[0,input_id_data.slice_data.loss,:] with input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}': {e}\n{traceback.format_exc()}\n")
 
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"loss_logits = {loss_logits}")
@@ -477,7 +478,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
             loss = torch.nn.CrossEntropyLoss()(loss_logits, targets)
             got_loss = True
         except Exception as e:
-            raise GradientCreationException(f"Error calling torch.nn.CrossEntropyLoss()(loss_logits, targets) with loss_logits = '{loss_logits}', targets = '{targets}': {e}")
+            raise GradientCreationException(f"Error calling torch.nn.CrossEntropyLoss()(loss_logits, targets) with loss_logits = '{loss_logits}', targets = '{targets}': {e}\n{traceback.format_exc()}\n")
 
     # TKTK: fix this
     # if not got_loss and attack_state.persistable.attack_params.loss_algorithm == LossAlgorithm.MELLOWMAX:
@@ -508,7 +509,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     # This one operation requires about 1 GiB of PyTorch device memory for a 500M parameter model, regardless of whether it's CPU or GPU
         loss.backward()
     except Exception as e:
-        raise GradientCreationException(f"Error calling loss.backward(): {e}")
+        raise GradientCreationException(f"Error calling loss.backward(): {e}\n{traceback.format_exc()}\n")
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - loss.backward() complete")
     
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -536,7 +537,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         try:
             result_gradient = result_gradient / result_gradient.norm(dim=-1, keepdim=True)
         except Exception as e:
-            raise GradientCreationException(f"Error calling result_gradient / result_gradient.norm(dim=-1, keepdim=True) with result_gradient = '{result_gradient}', result_gradient.norm(dim=-1, keepdim=True) = '{result_gradient.norm(dim=-1, keepdim=True)}': {e}")
+            raise GradientCreationException(f"Error calling result_gradient / result_gradient.norm(dim=-1, keepdim=True) with result_gradient = '{result_gradient}', result_gradient.norm(dim=-1, keepdim=True) = '{result_gradient.norm(dim=-1, keepdim=True)}': {e}\n{traceback.format_exc()}\n")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - result_gradient created")
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"result_gradient (after normalization) = {result_gradient}")
@@ -599,15 +600,15 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             try:
                 random_ids_1 = torch.rand((attack_state.persistable.attack_params.new_adversarial_value_candidate_count, len(attack_state.persistable.current_adversarial_content.token_ids)), generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device, device = coordinate_gradient.device)
             except RuntimeError as e:
-                raise GradientSamplingException(f"Couldn't generate first set of random IDs: {e}")
+                raise GradientSamplingException(f"Couldn't generate first set of random IDs: {e}\n{traceback.format_exc()}\n")
             try:
                 random_ids_2 = torch.randint(0, attack_state.persistable.attack_params.topk, (attack_state.persistable.attack_params.new_adversarial_value_candidate_count, attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration, 1), device = coordinate_gradient.device, generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device)
             except RuntimeError as e:
-                raise GradientSamplingException(f"Couldn't generate second set of random IDs: {e}")
+                raise GradientSamplingException(f"Couldn't generate second set of random IDs: {e}\n{traceback.format_exc()}\n")
             try:
                 new_token_pos = torch.argsort(random_ids_1)[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration]
             except Exception as e:
-                raise GradientSamplingException(f"Error calling torch.argsort(random_ids_1)[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration] with random_ids_1 = '{random_ids_1}', attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration = {attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration}: {e}")
+                raise GradientSamplingException(f"Error calling torch.argsort(random_ids_1)[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration] with random_ids_1 = '{random_ids_1}', attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration = {attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration}: {e}\n{traceback.format_exc()}\n")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
             try:
                 new_token_val = torch.gather(
@@ -616,7 +617,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                     random_ids_2
                 ).squeeze(2)
             except Exception as e:
-                raise GradientSamplingException(f"Error calling new_token_val = torch.gather(top_indices[new_token_pos], 2, random_ids_2).squeeze(2) with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}")
+                raise GradientSamplingException(f"Error calling new_token_val = torch.gather(top_indices[new_token_pos], 2, random_ids_2).squeeze(2) with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}\n{traceback.format_exc()}\n")
             # END: nanoGCG gradient-sampling algorithm
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_val")
         else:
@@ -632,7 +633,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                     device = coordinate_gradient.device
                 ).type(torch.int64)
             except Exception as e:
-                raise GradientSamplingException(f"Error calling torch.arange(0, num_adversarial_tokens, num_adversarial_tokens / attack_state.persistable.attack_params.new_adversarial_value_candidate_count, device = coordinate_gradient.device) with num_adversarial_tokens = '{num_adversarial_tokens}', attack_state.persistable.attack_params.new_adversarial_value_candidate_count = '{attack_state.persistable.attack_params.new_adversarial_value_candidate_count}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}")
+                raise GradientSamplingException(f"Error calling torch.arange(0, num_adversarial_tokens, num_adversarial_tokens / attack_state.persistable.attack_params.new_adversarial_value_candidate_count, device = coordinate_gradient.device) with num_adversarial_tokens = '{num_adversarial_tokens}', attack_state.persistable.attack_params.new_adversarial_value_candidate_count = '{attack_state.persistable.attack_params.new_adversarial_value_candidate_count}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}\n{traceback.format_exc()}\n")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
             num_rand_ints = attack_state.persistable.attack_params.new_adversarial_value_candidate_count
             # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
@@ -649,7 +650,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             try:
                 rand_ints = torch.randint(0, attack_state.persistable.attack_params.topk, (num_rand_ints, 1), device = coordinate_gradient.device, generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device)
             except Exception as e:
-                raise GradientSamplingException(f"Error calling torch.randint(0, attack_state.persistable.attack_params.topk, (num_rand_ints, 1), ...) with attack_state.persistable.attack_params.topk = '{attack_state.persistable.attack_params.topk}', num_rand_ints = '{num_rand_ints}': {e}")
+                raise GradientSamplingException(f"Error calling torch.randint(0, attack_state.persistable.attack_params.topk, (num_rand_ints, 1), ...) with attack_state.persistable.attack_params.topk = '{attack_state.persistable.attack_params.topk}', num_rand_ints = '{num_rand_ints}': {e}\n{traceback.format_exc()}\n")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating rand_ints")
             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
@@ -680,7 +681,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                     rand_ints
                 )
             except Exception as e:
-                raise GradientSamplingException(f"Error calling torch.gather(top_indices[new_token_pos], 1, rand_ints) with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', rand_ints = '{rand_ints}': {e}")
+                raise GradientSamplingException(f"Error calling torch.gather(top_indices[new_token_pos], 1, rand_ints) with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', rand_ints = '{rand_ints}': {e}\n{traceback.format_exc()}\n")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_val")
             new_token_pos = new_token_pos.unsqueeze(-1)
 
@@ -691,7 +692,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
         try:
             new_adversarial_token_ids = original_adversarial_content_token_ids_gradient_device.scatter_(1, new_token_pos, new_token_val)
         except Exception as e:
-            raise GradientSamplingException(f"Error calling original_adversarial_content_token_ids_gradient_device.scatter_(1, new_token_pos, new_token_val) with original_adversarial_content_token_ids_gradient_device = '{original_adversarial_content_token_ids_gradient_device}', new_token_pos = '{new_token_pos}', new_token_val = '{new_token_val}': {e}")
+            raise GradientSamplingException(f"Error calling original_adversarial_content_token_ids_gradient_device.scatter_(1, new_token_pos, new_token_val) with original_adversarial_content_token_ids_gradient_device = '{original_adversarial_content_token_ids_gradient_device}', new_token_pos = '{new_token_pos}', new_token_val = '{new_token_val}': {e}\n{traceback.format_exc()}\n")
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"new_adversarial_token_ids = {new_adversarial_token_ids}")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_adversarial_token_ids")
@@ -1046,8 +1047,9 @@ def forward(*, attack_state, input_ids, attention_mask, batch_size = 512):
         else:
             model_result = attack_state.model(input_ids = batch_input_ids)
         
-        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"getting logits for model_result = '{model_result}'")
+        # Currently commented out because for some models, the output of this call is ENORMOUS
+        #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        #    logger.debug(f"getting logits for model_result = '{model_result}'")
 
         model_result_logits = model_result.logits
         if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.forward_device:

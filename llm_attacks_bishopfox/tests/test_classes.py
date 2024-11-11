@@ -39,6 +39,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.enable_cuda_blocking_mode = True
         self.output_file_directory = None
         self.output_file_base_name = None
+        self.log_torch_cuda_profile_data = False
         self.model_path = None
         self.tokenizer_path = None
         self.peft_path = None
@@ -182,9 +183,10 @@ class BrokenHillTestParams(JSONSerializableObject):
             result.append('--json-output-file')
             result.append(self.get_result_json_output_path())        
             result.append('--performance-output-file')
-            result.append(self.get_performance_json_output_path())        
-            result.append('--torch-cuda-memory-history-file')
-            result.append(self.get_torch_cuda_output_path())        
+            result.append(self.get_performance_json_output_path())    
+            if self.log_torch_cuda_profile_data:
+                result.append('--torch-cuda-memory-history-file')
+                result.append(self.get_torch_cuda_output_path())        
             result.append('--log')
             result.append(self.get_log_path())
         for i in range(0, len(self.custom_options)):

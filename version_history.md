@@ -6,9 +6,13 @@ This is the most significant update to Broken Hill since its public release in S
 
 * Absolutely *massive* performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
   * Tentative results indicate about 20-30 times faster. For example, GPT-J and GPT-NeoX would take 10 hours or more to perform a single iteration of the GCG attack prior to the change, versus about 20 minutes now.
+  
+  
+	TKTK: make sure all CUDA-specific calls are wrapped in checks that CUDA is present.
+  
   * There is a tradeoff - CPU processing must take place in the `float32` format, which means Broken Hill will require twice as much system RAM as it would CUDA device memory.
-  * You **must** specify the new `--model-data-type default` option, at least until Transformers and PyTorch get better support for 16-bit floating point values on CPU devices.
-    * The root cause is that Transformers more or less supports `float16` on CPU devices now (except for GPT-NeoX), but the performance is dramatically worse, and Transformers does not provide any indication or warning of this.
+  * You **must** specify the new `--model-data-type default` option (or `--model-data-type float32`), at least until Transformers and PyTorch get better support for 16-bit floating point values on CPU devices.
+    * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024 (except for GPT-NeoX), but the performance is dramatically worse, and Transformers does not provide any indication or warning of this. The default behaviour for Broken Hill is to use `float16` to conserve memory, inherited from [the llm-attacks code that Broken Hill is distantly descended from](https://github.com/llm-attacks/llm-attacks/).
   * This also provides a workaround for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
 * [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
   * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
@@ -109,9 +113,6 @@ This is the most significant update to Broken Hill since its public release in S
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
   * Fixed incorrect prompt parsing logic for fast tokenizer output that would output invalid information if the base prompt, target output, or adversarial content appeared more than once in the prompt (e.g. if the target output was a specific message from the system prompt).
-  * Corrected the default behaviour for tokenizers without a padding token defined to default to the "end of string" token, and to pad from the left.
-    * The new `--missing-pad-token-padding-side` option can be used to override this, e.g. `--missing-pad-token-padding-side right`, but you probably don't want to do that.
-	* If you want to default to whatever token Torch would pick (which is usually "end of string" anyway), use `--missing-pad-token-replacement default`.
   * Added special corner-case handling for Qwen models that define non-standard, redundant, proprietary equivalents of the `dtype` parameter when loading a model.
     * The affected models default to converting the weights to `bfloat16` on the fly if the proprietary additional parameters are not included.
 	* The corner-case handling overrides this behaviour and loads the weights in the correct format.
