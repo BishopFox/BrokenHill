@@ -6,10 +6,6 @@ This is the most significant update to Broken Hill since its public release in S
 
 * Absolutely *massive* performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
   * Tentative results indicate about 20-30 times faster. For example, GPT-J and GPT-NeoX would take 10 hours or more to perform a single iteration of the GCG attack prior to the change, versus about 20 minutes now.
-  
-  
-	TKTK: make sure all CUDA-specific calls are wrapped in checks that CUDA is present.
-  
   * There is a tradeoff - CPU processing must take place in the `float32` format, which means Broken Hill will require twice as much system RAM as it would CUDA device memory.
   * You **must** specify the new `--model-data-type default` option (or `--model-data-type float32`), at least until Transformers and PyTorch get better support for 16-bit floating point values on CPU devices.
     * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024 (except for GPT-NeoX), but the performance is dramatically worse, and Transformers does not provide any indication or warning of this. The default behaviour for Broken Hill is to use `float16` to conserve memory, inherited from [the llm-attacks code that Broken Hill is distantly descended from](https://github.com/llm-attacks/llm-attacks/).

@@ -2185,7 +2185,7 @@ class VolatileAttackState():
             try:
                 output_token_ids_full = self.model.generate(input_ids_converted, 
                                             generation_config = working_gen_config,
-                                            pad_token_id = self.tokenizer.pad_token_id)[0]
+                                            pad_token_id = self.tokenizer.pad_token_id)
                 result.output_token_ids = output_token_ids_full[0]
             except Exception as e:
                 done_generating = False
