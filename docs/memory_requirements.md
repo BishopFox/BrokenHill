@@ -51,7 +51,6 @@ On top of that baseline, each iteration of the attack requires steps such as for
 
 ### Models with 6 - 7 billion parameters
 
-* 24 GiB should be sufficient to perform Broken Hill self-tests if the model is loaded in 16-bit format, but generally not perform the GCG attack
 * 40 GiB should be sufficient to perform the GCG attack if the model is loaded in 16-bit format
 
 ### Models with 8 billion parameters
@@ -62,10 +61,14 @@ On top of that baseline, each iteration of the attack requires steps such as for
 
 * 64 GiB should be sufficient to perform the GCG attack if the model is loaded in 16-bit format
 
-### Models with 20 billion parameters or more
+### Models with 20 billion parameters
 
 * 96 GiB should be sufficient to perform the GCG attack if the model is loaded in 16-bit format
 
-### Models with more than 20 billion parameters
+### Models with 46 billion parameters
+
+* 224 GiB should be sufficient to perform the GCG attack if the model is loaded in 16-bit format
+
+### Models with more than 46 billion parameters
 
 * We're going to need a <s>bigger boat</s>device with more memory

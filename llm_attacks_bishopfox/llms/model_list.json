@@ -701,6 +701,7 @@
 			"template": "mistral",
 			"size": 93405713504,
 			"data_type": "bfloat16",
+			"parameter_count": 46702792704,
 			"safe_tensors": true,
 			"custom_options": [],
 			"comment": "Add parameter_count"
