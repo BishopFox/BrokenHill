@@ -18,7 +18,7 @@ This is the most significant update to Broken Hill since its public release in S
      * CUDA device processing retains the previous default behaviour of using the `float16` format. Other formats can be specified for either type of device using the new `--model-data-type` option, discussed below.
   * This also provides a resolution for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
 * Broken Hill can now be used on Mac OS and Windows in addition to Linux, although we recommend Linux for the best experience, or if you want to take advantage of CUDA hardware.
-* [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
+* Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results.
   * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
   * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
   * However, it *is* a brand new feature, so please let us know if you find any discrepancies.
