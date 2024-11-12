@@ -1,15 +1,15 @@
 # Broken Hill version history
 
-# 0.34 - 2024-11-xx
+# 0.34 - 2024-11-11
 
 This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
 
-* Absolutely *massive* performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
+* Absolutely massive performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
   * Tentative results indicate about 20-30 times faster. For example, GPT-J and GPT-NeoX would take 10 hours or more to perform a single iteration of the GCG attack prior to the change, versus about 20 minutes now.
-  * There is a tradeoff - CPU processing must take place in the `float32` format, which means Broken Hill will require twice as much system RAM as it would CUDA device memory.
-  * You **must** specify the new `--model-data-type default` option (or `--model-data-type float32`), at least until Transformers and PyTorch get better support for 16-bit floating point values on CPU devices.
-    * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024 (except for GPT-NeoX), but the performance is dramatically worse, and Transformers does not provide any indication or warning of this. The default behaviour for Broken Hill is to use `float16` to conserve memory, inherited from [the llm-attacks code that Broken Hill is distantly descended from](https://github.com/llm-attacks/llm-attacks/).
-  * This also provides a workaround for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
+  * There is a tradeoff - CPU processing must take place in either the `bfloat16` or `float32` formats. `float32` results in double the memory usage, and `bfloat16` is less precise by some measures.
+    * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024, but the performance is dramatically worse, and Transformers does not provide any indication or warning of this.
+  * This also provides a resolution for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
+* Broken Hill now defaults to the `bfloat16` format for CPU processing. For increased accuracy, consider `--model-data-type float32` as long as your system has sufficient memory. CUDA device processing retains the previous default behaviour of using the `float16` format. Other formats can be specified using the new `--model-data-type` option, discussed below.
 * [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
   * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
   * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
@@ -27,7 +27,7 @@ This is the most significant update to Broken Hill since its public release in S
       * [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
       * [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
       * [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
-  * GLM-4
+  * [Chat]GLM-4
     * [glm-4-9b-chat](https://huggingface.co/THUDM/glm-4-9b-chat)
   * GPT-NeoX
     * [gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b)
@@ -67,6 +67,8 @@ This is the most significant update to Broken Hill since its public release in S
     * [llama-3-youko-8b-instruct](https://huggingface.co/rinna/llama-3-youko-8b-instruct) (derived from Llama-3)
   * OpenAssistant (and derived) fine-tuned variations of [Eleuther AI's Pythia model family](https://github.com/EleutherAI/pythia)
     * [huge-roadrunner-pythia-1b-deduped-oasst](https://huggingface.co/csimokat/huge-roadrunner-pythia-1b-deduped-oasst)
+  * Qwen-1-derived models
+    * [nekomata-7b-instruction](https://huggingface.co/rinna/nekomata-7b-instruction)
   * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF) (derived from Vicuna and therefore from Llama as well)  
 * Added the following custom chat templates:
   * `felladrin-llama-chat`
@@ -85,6 +87,7 @@ This is the most significant update to Broken Hill since its public release in S
   * Additionally, a `--torch-cuda-memory-history-file` option has been added that uses [PyTorch's built-in CUDA profiling feature to generate a pickled blob of information that you can use to visualize details of data in memory on your CUDA device(s)](https://pytorch.org/docs/stable/torch_cuda_memory.html) during a Broken Hill run.
 * Replaced the `--override-fschat-templates` option with `--do-not-override-fschat-templates`, and changed the default behaviour to "use the custom Broken Hill template" due to the increasing number of custom templates that fix issues with `fschat` templates.
 * Updated several custom chat templates to more closely match their models' `apply_chat_template` output or other documentation.
+* Updated the version of the Transformers library to 4.46.2, and the version of PyTorch to 2.5.1.
 * Greatly improved error handling throughout.
 * Added automated testing to make validating additional models and families easier and avoid regression bugs.
 * Replaced `requirements.txt` and `setup.py` with a `pyproject.toml` file to keep `pip` from complaining with newer versions of Python.
@@ -96,9 +99,9 @@ This is the most significant update to Broken Hill since its public release in S
     * `--save-options`
 	* `--load-options`
 	* `--load-options-from-state`
+  * `--model-data-type`, which allows the operator to either tell Transformers and PyTorch to use their default `dtype`, autodetect the `dtype` based on the model's data, or convert to a specific `dtype`. The default is `float16` for compatibility with previous releases, and to avoid a surprise doubling of VRAM usage for CUDA device users.
   * *Experimental* `--model-device`, `--gradient-device`, and `--forward-device`, which may allow testing larger models more efficiently on systems with limited CUDA device memory.
   * *Experimental* `--ignore-prologue-during-gcg-operations`, which attempts to reduce the amount of memory used for creating the gradient, but may also reduce the quality of results.
-  * *Experimental* `--model-data-type`, which allows the operator to either tell Transformers and PyTorch to use their default `dtype`, autodetect the `dtype` based on the model's data, or convert to a specific `dtype`. The default is `float16` for compatibility with previous releases, and to avoid a surprise doubling of VRAM usage for CUDA device users.
   * *Experimental* `--torch-dp-model`, which may allow Broken Hill to utilize multiple CUDA devices at once. We don't have a system with more than one CUDA device to try it out on, so it might also just result in a crash.
   * `--padding-side` `left` or `right`, which forces the tokenizer to use the specified padding side, whether or not a padding token has been defined.
 * Changed the default value for `--batch-size-get-logits` from 1 to 512, based on analysis of CUDA memory profile information.
@@ -109,7 +112,7 @@ This is the most significant update to Broken Hill since its public release in S
 * Changed the default value for `--max-new-tokens-final` from 16384 back to 1024 to avoid excessive delays when some LLMs go way off the rails.
 * Bug fixes:
   * Fixed incorrect prompt parsing logic for fast tokenizer output that would output invalid information if the base prompt, target output, or adversarial content appeared more than once in the prompt (e.g. if the target output was a specific message from the system prompt).
-  * Added special corner-case handling for Qwen models that define non-standard, redundant, proprietary equivalents of the `dtype` parameter when loading a model.
+  * Added special corner-case handling for Qwen-1 models that define non-standard, redundant, proprietary equivalents of the `dtype` parameter when loading a model.
     * The affected models default to converting the weights to `bfloat16` on the fly if the proprietary additional parameters are not included.
 	* The corner-case handling overrides this behaviour and loads the weights in the correct format.
   * Fixed a bug that could cause a crash instead of displaying a warning during jailbreak self-testing.

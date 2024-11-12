@@ -34,6 +34,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.python_params = [ '-u' ]
         self.broken_hill_path = "./BrokenHill/brokenhill.py"
         self.model_device = None
+        self.model_data_type = None
         self.gradient_device = None
         self.forward_device = None
         self.enable_cuda_blocking_mode = True
@@ -52,6 +53,9 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.max_iterations = 2
         self.max_new_tokens_final = 128
         self.perform_cpu_tests = True
+        self.perform_cpu_tests_requiring_float16 = False
+        self.perform_cpu_tests_requiring_swap = False
+        self.always_use_bfloat16_for_cpu = True
         self.perform_cuda_tests = True
         self.ignore_jailbreak_test_results = False
         self.verbose_stats = True
@@ -59,16 +63,10 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens', '--no-ansi' ]
         # ten minute default for CUDA devices
         self.cuda_process_timeout = 600
-        # default: fifteen hours, necessary for some models tested on CPU, e.g that take 2-3 hours for initial iteration, then 10 hours for each additional iteration
-        self.cpu_process_timeout = 54000
-        # ten hours
-        #self.process_timeout = 36000
-        # one hour
-        #self.process_timeout = 3600
+        # default: one hour
+        self.process_timeout = 3600
         # two hours
         #self.process_timeout = 7200
-        # Five minutes to test only models that will fit in the GPU
-        #self.process_timeout = 300
         self.specific_model_names_to_test = None
         self.model_name_regexes_to_test = None
         self.specific_model_names_to_skip = None
@@ -120,6 +118,14 @@ class BrokenHillTestParams(JSONSerializableObject):
         result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-log.txt")
         return result
     
+    def get_effective_model_data_type(self):
+        result = self.model_data_type
+        if result is None:
+            result = "float32"
+            if self.model_device is not None:
+                if "cuda" in self.model_device:
+                    result = "float16"
+    
     def get_command_array(self, base_command_array = []):
         result = copy.deepcopy(base_command_array)
         result.append(self.python_path)
@@ -133,6 +139,9 @@ class BrokenHillTestParams(JSONSerializableObject):
         if self.model_device is not None and self.model_device.strip() != "":
             result.append('--model-device')
             result.append(self.model_device)
+        if self.model_data_type is not None:
+            result.append('--model-data-type')
+            result.append(self.model_data_type)
         if self.gradient_device is not None and self.gradient_device.strip() != "":
             result.append('--gradient-device')
             result.append(self.gradient_device)

@@ -20,9 +20,7 @@ The original research by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson was pe
 
 Our original goal was to greatly expand the accessibility of this fascinating area of research by producing a tool that could perform the GCG attack against as many models as possible on a GeForce RTX 4090, which is the current-generation consumer GPU with CUDA support that includes the most VRAM (24GiB). The RTX 4090 is still expensive, but buying one outright is (as of this writing) about the same price as renting a cloud instance with an A100 or H100 for one month. Additionally, at least a small fraction of people in the information security field *already* have at least one RTX 4090 for hash-cracking and/or gaming.
 
-The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only supported a few base models, and while some of those models were available in forms that could fit into VRAM on an RTX 4090, it typically didn't leave enough memory available for the actual attack. 
-
-Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
+As of version 0.34, Broken Hill can also perform processing on devices without CUDA hardware at an acceptable rate (although reduced from the performance CUDA hardware provides). This allows the attack to be performed by a much larger audience, and against much larger models than previous versions allowed.
 
 ## Documentation
 
@@ -42,6 +40,7 @@ Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. 
   * Falcon
   * Gemma (including third-party derivatives, such as `Vikhr-Gemma-2B-instruct`)
   * Gemma 2
+  * GLM-4
   * Guanaco
   * Llama (including third-party derivatives such as `Llama-68M-Chat-v1`)
   * Llama-2 (including first- and third-party derivatives, such as Meta-Llama-Guard-2, Swallow, and Youri)
@@ -63,10 +62,10 @@ Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. 
   * TinyLlama
   * Vicuna
   * Vikhr
-  
 * Results can be output in JSON format for filtering/analysis
-* The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
-* Self-tests to help validate that that the attack is configured correctly and will produce useful results
+* Supports testing each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
+* Automatic state backup at each iteration, allowing resuming from a checkpoint if an error is encountered, or continuing to perform additional iterations after a test ends.
+* Features self-tests to help validate that that the attack is configured correctly and will produce useful results
   * Validation that conversations are provided in the format the model was trained for
   * Validation that the model does not provide the requested output when no adversarial content is included
   * Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
@@ -91,8 +90,6 @@ Note: Broken Hill is only really usable on CUDA (Nvidia) hardware at this time. 
 * Configurable randomization rules to help generate more unique variations ("Gamma garden mode")
 * Built-in features to output result data for follow-on work (versus using `jq` in the current version)
 * Improved default jailbreak detection logic
-* Improved output/logging
-* Improved system resource statistics capture to allow users to better tune parameters for performance
 * Additional loss algorithm(s)
 * The ability to operate a cluster of systems running Broken Hill coordinated by a central node
 * Additional attack modes

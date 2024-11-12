@@ -6,6 +6,7 @@ This document describes high-level results of testing the GCG attack using vario
 
 * [Model families with publicly-available versions capable of handling chat interaction](#model-families-with-publicly-available-versions-capable-of-handling-chat-interaction)
   * [APT](#apt)
+  * [ChatGLM and GLM](#chatglm-and-glm)
   * [Falcon](#falcon)
   * [Gemma](#gemma)
   * [Gemma 2](#gemma-2)
@@ -27,7 +28,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [StableLM](#stablelm)
   * [StableLM 2](#stablelm-2)
   * [TinyLlama](#tinyllama)
-  * [Vicuna 1.1](#vicuna-11)
+  * [Vicuna](#vicuna)
 * [Other model families that can be used with Broken Hill](#other-model-families-that-can-be-used-with-broken-hill)
   * [BART](#bart)
   * [BigBird / BigBirdPegasus](#bigbird--bigbirdpegasus)
@@ -43,6 +44,36 @@ This document describes high-level results of testing the GCG attack using vario
   * [BlenderBot](#blenderbot)
 
 ## Model families with publicly-available versions capable of handling chat interaction
+
+### APT
+
+* Conversation template name: `llama2`
+* [Azurro APT3 collection at Hugging Face](https://huggingface.co/collections/Azurro/apt3-66fa965b5eea43a116b1c545)
+
+#### Specific models tested using Broken Hill:
+
+* [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
+* [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
+* [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
+* [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
+
+### ChatGLM and GLM
+
+* Conversation template names:
+  * For GLM-4: `chatglm3`
+* [Zhipu AI's GLM-4-9B-Chat page at Hugging Face](https://huggingface.co/THUDM/glm-4-9b-chat/blob/main/README_en.md)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Special considerations
+
+Currently, only GLM-4 works in Broken Hill due to code provided with earlier versions of the model that is incompatible with modern versions of Transformers. We've tried coming up with instructions to make the earlier versions work, but it looks like a deep rabbit hole.
+
+#### Specific models tested using Broken Hill:
+
+* [glm-4-9b-chat](https://huggingface.co/THUDM/glm-4-9b-chat)
 
 ### Falcon
 
@@ -108,19 +139,6 @@ Gemma 2 is strongly conditioned to avoid discussing certain topics. We'll be add
 
 * [gemma-2-2b](https://huggingface.co/google/gemma-2b)
 * [gemma-2-2b-it](https://huggingface.co/google/gemma-2b-it)
-
-### GLM-4
-
-* Conversation template name: `chatglm3`
-* [Zhipu AI's GLM-4-9B-Chat page at Hugging Face](https://huggingface.co/THUDM/glm-4-9b-chat/blob/main/README_en.md)
-* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
-  * Tool can generate adversarial content that defeats those restrictions: TBD
-* Will generally follow system prompt instructions that restrict information given to the user: TBD
-  * Tool can generate adversarial content that defeats those restrictions: TBD
-
-#### Specific models tested using Broken Hill:
-
-* [glm-4-9b-chat](https://huggingface.co/THUDM/glm-4-9b-chat)
 
 ### GPT-NeoX
 
@@ -434,7 +452,7 @@ The `Phi-3-small-128k-instruct` version of Phi-3 requires `--trust-remote-code`,
 Pointer argument (at 0) cannot be accessed from Triton (cpu tensor?)
 ```
 
-We're researching a workaround for this, but because CPU processing is so slow, most likely the only people impacted are us, when we run the model test script.
+We're researching a workaround for this.
 
 #### Specific models tested using Broken Hill:
 
@@ -481,6 +499,8 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [GPT-NeoX](#gpt-neox) mo
 
 ### Qwen
 
+#### First-party models
+
 * Conversation template name: `qwen`
 * [Alibaba's Qwen model family page at Hugging Face](https://huggingface.co/Qwen)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
@@ -490,12 +510,20 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [GPT-NeoX](#gpt-neox) mo
 
 `fschat` includes a template for Qwen and Qwen 2, but for some reason it's named `qwen-7b-chat` specifically, and it specifies the use of an `<|endoftext|>` stop string that the models' `apply_chat_template` function does not add. As a result, Broken Hill includes a custom `qwen` template definition.
 
-#### Specific models tested using Broken Hill:
+##### Specific models tested using Broken Hill:
 
 * [Qwen-7B-Chat](https://huggingface.co/Qwen/Qwen-7B-Chat)
 * [Qwen-1_8B-Chat](https://huggingface.co/Qwen/Qwen-1_8B-Chat)
 * [Qwen1.5-0.5B-Chat](https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat)
 * [Qwen1.5-1.8B-Chat](https://huggingface.co/Qwen/Qwen1.5-1.8B-Chat)
+
+#### Nekomata
+
+* Conversation template name: `qwen`
+
+##### Specific models tested using Broken Hill:
+
+* [nekomata-7b-instruction](https://huggingface.co/rinna/nekomata-7b-instruction)
 
 ### Qwen 2
 
@@ -651,18 +679,6 @@ These model families can be used in the tool, but publicly-available versions ar
 #### Specific models tested using Broken Hill:
 
 * [snowflake-arctic-embed-s](https://huggingface.co/Snowflake/snowflake-arctic-embed-s)
-
-### APT
-
-* Conversation template name: `llama2`
-* [Azurro APT3 collection at Hugging Face](https://huggingface.co/collections/Azurro/apt3-66fa965b5eea43a116b1c545)
-
-#### Specific models tested using Broken Hill:
-
-* [APT-1B-Base](https://huggingface.co/Azurro/APT-1B-Base)
-* [APT2-1B-Base](https://huggingface.co/Azurro/APT2-1B-Base)
-* [APT3-1B-Base](https://huggingface.co/Azurro/APT3-1B-Base)
-* [APT3-1B-Instruct-v1](https://huggingface.co/Azurro/APT3-1B-Instruct-v1)
 
 ### BART
 

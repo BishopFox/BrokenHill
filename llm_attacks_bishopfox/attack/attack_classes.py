@@ -60,6 +60,7 @@ from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
+from llm_attacks_bishopfox.util.util_functions import load_json_from_file
 from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
 from llm_attacks_bishopfox.util.util_functions import tensor_from_dict
@@ -133,8 +134,10 @@ class SystemMessageMode(StrEnum):
     MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
 
 class ModelDataFormatHandling(StrEnum):
-    # TORCH_DEFAULT will not set model_dtype at all. Currently this causes PyTorch to load the model in float32 form
+    # DEFAULT will use the Broken Hill defaults (float16 for CUDA devices, bfloat16 for CPU devices)
     DEFAULT = 'default'
+    # TORCH_DEFAULT will not set model_dtype at all. Currently this causes PyTorch to load the model in float32 form
+    TORCH_DEFAULT = 'torch_default'
     # TORCH_AUTO will pass model_type = "auto", which causes PyTorch to autodetect the model's native weight format and use that
     AUTO = 'auto'
     FORCE_FLOAT16 = 'force_float16'
@@ -353,23 +356,27 @@ class AdversarialContentList(JSONSerializableObject):
 class AttackParams(JSONSerializableObject):
 
     def get_model_data_type(self):
-        if self.model_weight_format_handling == ModelDataFormatHandling.DEFAULT:
+        if self.model_data_format_handling == ModelDataFormatHandling.DEFAULT:
+            if self.model_device_is_cuda():
+                return torch.float16
+            return torch.float32
+        if self.model_data_format_handling == ModelDataFormatHandling.TORCH_DEFAULT:
             return None
         # Explicitly pass "auto" to avoid loading things in float32 form when torch_dtype is not specified.
         # https://huggingface.co/transformers/v4.10.1/main_classes/model.html#model-instantiation-dtype
-        if self.model_weight_format_handling == ModelDataFormatHandling.AUTO:
+        if self.model_data_format_handling == ModelDataFormatHandling.AUTO:
             return "auto"
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
             return torch.float16
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
             return torch.bfloat16
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
             return torch.float32
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT64:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT64:
             return torch.float64
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_COMPLEX64:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_COMPLEX64:
             return torch.complex64
-        if self.model_weight_format_handling == ModelDataFormatHandling.FORCE_COMPLEX128:
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_COMPLEX128:
             return torch.complex128
         return None
 
@@ -496,6 +503,16 @@ class AttackParams(JSONSerializableObject):
                 if dl[0:3] == "mps":
                     return True
         return False
+    
+    def model_device_is_cuda(self):
+        if "cuda" in self.model_device.lower():
+            return True
+        return False
+    
+    # def get_default_model_dtype(self):
+        # if self.model_device_is_cuda():
+            # return 'float16'
+        # return 'float32'
 
     def __init__(self):
         self.original_command_line_array = None
@@ -528,7 +545,7 @@ class AttackParams(JSONSerializableObject):
 
         # When loading the model, use the data as-is, or force conversion to a particular format?
         # The original proof-of-concept forced float16.
-        self.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
+        self.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
         
         self.template_name = None
         
@@ -606,6 +623,9 @@ class AttackParams(JSONSerializableObject):
         
         # enable some hardcoded tokenizer workarounds implemented by the original developers
         self.enable_hardcoded_tokenizer_workarounds = False
+
+        # try the Qwen 1 dtype workaround even if the model is not autodetected as Qwen
+        self.force_qwen_dtype_workaround_check = False
 
         # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
         self.missing_pad_token_replacement = None
@@ -1178,9 +1198,9 @@ class VolatileAttackState():
         self.adversarial_content_manager = None
         self.conversation_template = None
         self.random_seed_values = get_random_seed_list_for_comparisons()
-        self.model_weight_type = None
-        self.model_weight_storage_dtype = None
-        self.model_weight_storage_string = None        
+        self.model_data_type = None
+        self.model_dtype_dtype = None
+        self.model_dtype_string = None        
         self.model_device = None
         self.model_type_name = None
         self.tokenizer_type_name = None
@@ -1190,6 +1210,10 @@ class VolatileAttackState():
         self.trash_fire_token_treasury = None
         self.jailbreak_detector = LLMJailbreakDetector()    
         self.broken_hill_padding_token_id = None
+        self.model_config_dict = None
+        self.generation_config_dict = None
+        self.tokenizer_config_dict = None
+        self.model_architectures = []
     
     def write_persistent_state(self):
         try:
@@ -1575,11 +1599,168 @@ class VolatileAttackState():
         #model_maximum_token_TKTK        
         self.persistable.attack_params.generation_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
         self.persistable.attack_params.full_decoding_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
-        
-    def load_model_and_tokenizer(self):
-        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
+    
+    def load_model_or_tokenizer_configuration_file(self, configuration_file_path):        
+        result = None
+        if os.path.isfile(configuration_file_path):
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Attempting to load model configuration file '{configuration_file_path}'.")
+            try:
+                result = load_json_from_file(configuration_file_path, failure_is_critical = True)
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Loaded configuration file '{configuration_file_path}' successfully. Content:\n{result}")
+            except Exception as e:
+                logger.error(f"Exception thrown loading configuration file '{configuration_file_path}': {e}'\n{traceback.format_exc()}")
+                result = None
+        else:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Model configuration file '{configuration_file_path}' was not found.")
+        return result
 
+    def get_model_or_tokenizer_configuration_file_value(self, configuration_file_data, key_name):
+        result = None
+        if configuration_file_data is None:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"The specified configuration file data does not exist.")
+        else:
+            if key_name in configuration_file_data.keys():
+                result = configuration_file_data[key_name]
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Returning configuration file value for key '{key_name}': '{result}'.")
+            else:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"The specified configuration file data does not contain a key named '{key_name}'.")
+        return result
+
+    # Loads select configuration files as dicts for use in various loading operations that occur before the model and tokenizer are loaded by Transformers
+    def load_model_and_tokenizer_configuration_files(self):
+        # config.json
+        model_config_json_path = os.path.join(self.persistable.attack_params.model_path, "config.json")
+        self.model_config_dict = self.load_model_or_tokenizer_configuration_file(model_config_json_path)
+        # generation_config.json
+        generation_config_json_path = os.path.join(self.persistable.attack_params.model_path, "generation_config.json")
+        self.generation_config_dict = self.load_model_or_tokenizer_configuration_file(generation_config_json_path)
+        # tokenizer_config.json
+        tokenizer_config_json_path = os.path.join(self.persistable.attack_params.tokenizer_path, "tokenizer_config.json")
+        self.tokenizer_config_dict = self.load_model_or_tokenizer_configuration_file(tokenizer_config_json_path)
+        
+        # populate values based on that data
+        if self.model_config_dict is not None:
+            model_architectures = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "architectures")
+            if model_architectures is not None:
+                if isinstance(model_architectures, list):
+                    if len(model_architectures) > 0:
+                        self.model_architectures = add_values_to_list_if_not_already_present(self.model_architectures, model_architectures, ignore_none = True)
+    
+    def check_for_qwen_outlaw_parameter(self, parameter_name, danger_charlie_prince_qwen_model_detected):
+        if parameter_name in self.model_config_dict.keys():
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"This Qwen model has a '{parameter_name}' option in its configuration, indicating it is likely an outlaw and criminal.")
+        else:
+            danger_charlie_prince_qwen_model_detected = False
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"This Qwen model does not have a '{parameter_name}' option in its configuration, indicating it may be a lawful and virtuous resident of the frontier.")
+        return danger_charlie_prince_qwen_model_detected
+    
+    def handle_potential_charlie_prince_qwen_model(self):
+        handled_model_load = False
+        # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
+        # Inspired by the following PyTorch output:
+        #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
+        #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
+        is_qwen_model = False
+        use_qwen_workaround = False
+        qwen_danger_message = "This model appears to be one of the Qwen family members that have nonstandard behaviour and cause the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for that format."
+        
+        # Attempt to autodetect affected Qwen models (and derivatives)
+        danger_charlie_prince_qwen_model_detected = False
+        if "qwen" in self.persistable.attack_params.model_path.lower():
+            is_qwen_model = True
+            danger_charlie_prince_qwen_model_detected = True
+        if self.persistable.attack_params.template_name is not None:
+            if "qwen" in self.persistable.attack_params.template_name.lower():
+                is_qwen_model = True
+                danger_charlie_prince_qwen_model_detected = True
+        for model_arch in self.model_architectures:
+            if "qwen" in model_arch.lower():
+                is_qwen_model = True
+                danger_charlie_prince_qwen_model_detected = True
+        if danger_charlie_prince_qwen_model_detected:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Qwen model detected. Checking for evidence of it being a lawless cattle-rustler with intentions of robbing the bank and drinking all the whiskey in town.")
+            # if there is a model configuration file, and it includes the signs of outlaw behaviour, use that as the indicator
+            for yee_haw_sheriff in [ "bf16", "fp16", "fp32" ]:
+                danger_charlie_prince_qwen_model_detected = self.check_for_qwen_outlaw_parameter(yee_haw_sheriff, danger_charlie_prince_qwen_model_detected)
+            if danger_charlie_prince_qwen_model_detected:
+                use_qwen_workaround = True
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Qwen model appears to be a low-down criminal. Workaround will be attempted.")
+
+        # If the user has specified to always try the workaround, obey their wishes
+        if self.persistable.attack_params.force_qwen_dtype_workaround_check:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Operator has enabled the option to attempt the workaround for Qwen family members that have nonstandard behaviour and cause the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for that format.")
+            if not use_qwen_workaround:
+                use_qwen_workaround = True
+                danger_charlie_prince_qwen_model_detected = True
+                qwen_danger_message = "Broken Hill did not detect a misbehaving Qwen model, but the operator has specified the option to always attempt the associated workaround."
+                
+        if use_qwen_workaround:                
+            if self.model_data_type in [ torch.bfloat16, torch.float16, torch.float32 ]:
+                qwen_danger_message = f"{qwen_danger_message} Broken Hill will attempt to approximate the correct default behaviour that almost every other model supported by Transformers manages to use. If this attempt fails, Broken Hill will attempt to load the model normally instead. If this occurs, and you see a message indicating that the weights were loaded in a format other than the one you specified, please notify the Broken Hill developers with the configuration you used for your test so we can account for it."
+            else:
+                qwen_danger_message = f"{qwen_danger_message} The nonstandard code included with this Qwen model only supports the following data types: float32, float16, and bfloat16. Please specify one of these options explicitly using the --model-data-type option."
+                logger.critical(qwen_danger_message)
+                raise AttackInitializationException(qwen_danger_message)
+            logger.warning(qwen_danger_message)
+
+            charlie_prince_bf16 = False
+            charlie_prince_fp16 = False
+            charlie_prince_fp32 = False
+            if self.model_data_type == torch.bfloat16:
+                charlie_prince_bf16 = True
+            if self.model_data_type == torch.float16:
+                charlie_prince_fp16 = True
+            if self.model_data_type == torch.float32:
+                charlie_prince_fp32= True
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"self.model_data_type = {self.model_data_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_data_type,
+                        bf16 = charlie_prince_bf16,
+                        fp16 = charlie_prince_fp16,
+                        fp32 = charlie_prince_fp32,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()
+                handled_model_load = True
+            except Exception as e:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}\n{traceback.format_exc()}\n")
+                handled_model_load = False
+        else:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Qwen model detected, but it appears to be a law-abiding citizen of the frontier.")
+                    
+        return handled_model_load
+    
+    def check_model_dtype(self):
+        # if the model was loaded, check to see if the dtype does not match the user-specified option and warn them
+        target_data_type = self.model_data_type
+        if self.model_data_type is None:
+            target_data_type = torch.float32
+        else:
+            if self.model.dtype != target_data_type:
+                if self.persistable.attack_params.force_qwen_dtype_workaround_check:
+                    logger.warning(f"The operator specified options equivalent to --model-data-type {self.model_data_type}, but the model load operation returned the data in the format {self.model.dtype}. Please provide the Broken Hill developers with your configuration to implement a workaround.")
+                else:
+                    logger.warning(f"The operator specified options equivalent to --model-data-type {self.model_data_type}, but the model load operation returned the data in the format {self.model.dtype}. If this is a Qwen-1 model or derivative, try adding the --force-qwen-workaround option to see if it corrects this issue. If it does not, please provide the Broken Hill developers with your configuration to implement a workaround.")
+    
+    def load_model_and_tokenizer(self):
         #if ignore_mismatched_sizes:
         #    kwargs["ignore_mismatched_sizes"] = True
 
@@ -1587,44 +1768,11 @@ class VolatileAttackState():
         handled_model_load = False
 
         # TKTK: try adding a fallback to other AutoModel types, like AutoModelForSeq2SeqLM for T5.
-        if not handled_model_load:            
-            # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
-            # Inspired by the following PyTorch output:
-            #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
-            #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
-            if "qwen" in self.persistable.attack_params.model_path.lower():
-                logger.warning(f"This model appears to be from the Qwen family. Some models in the Qwen family have nonstandard code that causes the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for it, because the entire machine learning field is as lawless as the old west, and developers dressing up as Charlie Prince, then marauding through town to drink all the whiskey and rob the bank is apparently to be expected. Broken Hill will attempt to bring some small measure of law to the frontier by bypassing the Qwen logic and restoring the correct default behaviour that EVERY OTHER MODEL SUPPORTED BY TRANSFORMERS MANAGES TO USE instead of firing their custom Schofields into the air and yelling 'yee-haw, sheriff!'. If this attempt fails, Broken Hill will attempt to load the model normally instead. If this occurs, and you see a message indicating that the weights were loaded in 'bfloat16' format, please notify the Broken Hill developers with the configuration you used for your test so we can account for it.")
-                # because we don't have a config yet to call hasattr against, seems like we have to try calling the next function with the specific parameters first, catch an exception, and try again without them
-                charlie_prince_bf16 = False
-                charlie_prince_fp16 = False
-                charlie_prince_fp32 = False
-                if self.model_weight_type == torch.bfloat16:
-                    charlie_prince_bf16 = True
-                if self.model_weight_type == torch.float16:
-                    charlie_prince_fp16 = True
-                if self.model_weight_type == torch.float32:
-                    charlie_prince_fp32= True
-                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"self.model_weight_type = {self.model_weight_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
-                try:
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                            self.persistable.attack_params.model_path,
-                            torch_dtype = self.model_weight_type,
-                            bf16 = charlie_prince_bf16,
-                            fp16 = charlie_prince_fp16,
-                            fp32 = charlie_prince_fp32,
-                            trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
-                            ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                            low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
-                            use_cache = self.persistable.attack_params.use_cache
-                        ).to(self.model_device).eval()
-                    handled_model_load = True
-                except Exception as e:
-                    if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}\n{traceback.format_exc()}\n")
-                    handled_model_load = False
         if not handled_model_load:
-            if self.model_weight_type is None:
+            handled_model_load = self.handle_potential_charlie_prince_qwen_model()
+        if not handled_model_load:
+            # Operator specified the TORCH_DEFAULT mode
+            if self.model_data_type is None:
                 self.model = AutoModelForCausalLM.from_pretrained(
                         self.persistable.attack_params.model_path,
                         trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
@@ -1634,25 +1782,25 @@ class VolatileAttackState():
                     ).to(self.model_device).eval()
                 handled_model_load = True
         if not handled_model_load:            
+            # Operator either specified the Broken Hill default dtype or an explicit dtype
             self.model = AutoModelForCausalLM.from_pretrained(
                     self.persistable.attack_params.model_path,
-                    torch_dtype = self.model_weight_type,
+                    torch_dtype = self.model_data_type,
                     trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                     ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
                     low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
                     use_cache = self.persistable.attack_params.use_cache
                 ).to(self.model_device).eval()                
         
+        if handled_model_load:
+            self.check_model_dtype()
+        
         if self.persistable.attack_params.torch_dataparallel_model:
             try:
                 self.model = torch.nn.DataParallel(self.model)
             except Exception as e:
                 logger.error(f"Unable to load the model using torch.nn.DataParallel: {e}\n{traceback.format_exc()}\n")
-        
-        tokenizer_path_to_load = self.persistable.attack_params.model_path
-        if self.persistable.attack_params.tokenizer_path is not None:
-            tokenizer_path_to_load = self.persistable.attack_params.tokenizer_path
-        
+                
         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
 
@@ -1661,11 +1809,11 @@ class VolatileAttackState():
         #is_mamba = args.model_name.startswith("state-spaces/mamba-")
         #    if is_mamba:
         #self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-        #self.model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_weight_type = self.model_weight_type)
+        #self.model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_data_type = self.model_data_type)
         
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                tokenizer_path_to_load,
+                self.persistable.attack_params.tokenizer_path,
                 trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                 use_fast = False
             )
@@ -1673,19 +1821,19 @@ class VolatileAttackState():
             handled = False
             #if isinstance(e, ValueError):
             if 2 > 1:
-                logger.warning(f"Unable to load standard tokenizer from '{tokenizer_path_to_load}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
+                logger.warning(f"Unable to load standard tokenizer from '{self.persistable.attack_params.tokenizer_path}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
                 try:
                     self.tokenizer = AutoTokenizer.from_pretrained(
-                        tokenizer_path_to_load,
+                        self.persistable.attack_params.tokenizer_path,
                         trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                         use_fast = True
                     )
                     handled = True
                 except Exception as e2:
-                    logger.error(f"Error loading both standard and fast tokenizers from '{tokenizer_path_to_load}': '{e}', '{e2}'\n{traceback.format_exc()}\n")
+                    logger.error(f"Error loading both standard and fast tokenizers from '{self.persistable.attack_params.tokenizer_path}': '{e}', '{e2}'\n{traceback.format_exc()}\n")
                     raise e        
             if not handled:
-                logger.error(f"Error loading tokenizer from '{tokenizer_path_to_load}': '{e}'\n{traceback.format_exc()}\n")
+                logger.error(f"Error loading tokenizer from '{self.persistable.attack_params.tokenizer_path}': '{e}'\n{traceback.format_exc()}\n")
                 raise e
         
         try:
@@ -1711,20 +1859,20 @@ class VolatileAttackState():
             self.tokenizer.padding_side = self.persistable.attack_params.padding_side
         
         if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
-            if 'oasst-sft-6-llama-30b' in tokenizer_path_to_load:
+            if 'oasst-sft-6-llama-30b' in self.persistable.attack_params.tokenizer_path:
                 self.tokenizer.bos_token_id = 1
                 self.tokenizer.unk_token_id = 0
-            if 'guanaco' in tokenizer_path_to_load:
+            if 'guanaco' in self.persistable.attack_params.tokenizer_path:
                 # Both of these are defined already in the configuration included with TheBloke's version of Guanaco.
                 # They're also defined in the configuration included with the "huggyllama" version of llama-7b, so I think both values are redundant.
                 self.tokenizer.eos_token_id = 2
                 self.tokenizer.unk_token_id = 0
-            if 'llama-2' in tokenizer_path_to_load:
+            if 'llama-2' in self.persistable.attack_params.tokenizer_path:
                 # Llama-2's tokenizer does explicitly define an unknown token ("<unk>"), so this seems fine
                 self.tokenizer.pad_token = self.tokenizer.unk_token
                 # Llama-2's tokenizer configuration explicitly pads from the right
                 self.tokenizer.padding_side = 'left'
-            if 'falcon' in tokenizer_path_to_load:
+            if 'falcon' in self.persistable.attack_params.tokenizer_path:
                 self.tokenizer.padding_side = 'left'
                 
         if self.tokenizer.pad_token is None:
@@ -1733,44 +1881,44 @@ class VolatileAttackState():
                 if pad_token_id is not None and pad_token is not None:
                     self.tokenizer.pad_token_id = pad_token_id
                     self.tokenizer.pad_token = pad_token
-                logger.warning(f"The tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
+                logger.warning(f"The tokenizer in '{self.persistable.attack_params.tokenizer_path}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
             else:
-                logger.warning(f"The tokenizer in '{tokenizer_path_to_load}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.")
+                logger.warning(f"The tokenizer in '{self.persistable.attack_params.tokenizer_path}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.")
         
         self.model_type_name = f"{type(self.model).__name__}"
         self.tokenizer_type_name = f"{type(self.tokenizer).__name__}"
         logger.info(f"This model is an instance of the type '{self.model_type_name}', and the tokenizer is an instance of the type '{self.tokenizer_type_name}'")
 
     def load_model(self):
+        if self.persistable.attack_params.tokenizer_path is None:
+            logger.debug(f"No tokenizer path was explicitly set. Using '{self.persistable.attack_params.model_path}'.")
+            self.persistable.attack_params.tokenizer_path = self.persistable.attack_params.model_path
+
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
+            
+        self.load_model_and_tokenizer_configuration_files()
+
         try:
             model_load_message = f"Loading model and tokenizer from '{self.persistable.attack_params.model_path}'."
-            if self.persistable.attack_params.tokenizer_path is not None:
+            if self.persistable.attack_params.tokenizer_path != self.persistable.attack_params.model_path:
                 model_load_message = f"Loading model from '{self.persistable.attack_params.model_path}' and tokenizer from {self.persistable.attack_params.tokenizer_path}."
             logger.info(model_load_message)
-            self.model_weight_type = self.persistable.attack_params.get_model_data_type()
+            self.model_data_type = self.persistable.attack_params.get_model_data_type()
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"self.model_weight_type = {self.model_weight_type}")
-            model_config_path = None
-            model_config_dict = None
-            try:
-                model_config_path = os.path.join(self.persistable.attack_params.model_path, "config.json")
-                model_config_data = get_file_content(model_config_path, failure_is_critical = False)
-                model_config_dict = json.loads(model_config_data)
-            except Exception as e:
-                logger.warning(f"Couldn't load model configuration file '{model_config_path}'. Some information will not be displayed. The exception thrown was: {e}.")
-            self.model_weight_storage_string = ""
-            if model_config_dict is not None:
-                if "torch_dtype" in model_config_dict.keys():
-                    model_torch_dtype = model_config_dict["torch_dtype"]
-                    if model_torch_dtype is not None:
-                        self.model_weight_storage_string = f"Model weight data is stored as {model_torch_dtype}"
-                        self.model_weight_storage_dtype = torch_dtype_from_string(model_torch_dtype)
-                        logger.info(self.model_weight_storage_string)
+                logger.debug(f"self.model_data_type = {self.model_data_type}")
+            
+            self.model_dtype_string = ""
+            if self.model_config_dict is not None:
+                model_torch_dtype = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "torch_dtype")
+                if model_torch_dtype is not None:
+                    self.model_dtype_string = f"{model_torch_dtype}"
+                    self.model_dtype_dtype = torch_dtype_from_string(self.model_dtype_string)
+                    logger.info(f"Model weight data is stored as {self.model_dtype_string}")
                 for model_config_property_name in [ "model_type", "architectures", "auto_map", "tokenizer_class" ]:
-                    if model_config_property_name in model_config_dict.keys():
-                        property_value = model_config_dict[model_config_property_name]
-                        if property_value is not None:
-                            logger.debug(f"model.{model_config_property_name}: {property_value}")
+                    property_value = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, model_config_property_name)
+                    if property_value is not None:
+                        logger.debug(f"model.{model_config_property_name}: {property_value}")
             try:
                 self.load_model_and_tokenizer()
             except Exception as e:
@@ -1782,13 +1930,13 @@ class VolatileAttackState():
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Model loaded.")
             
-            if self.model_weight_storage_string == "" and self.model_weight_type == "auto":
-                self.model_weight_storage_string = f"Model weight data is stored as {self.model.dtype} (determined after loading model in 'auto' dtype mode)"
-                self.model_weight_storage_dtype = self.model.dtype
-                logger.info(self.model_weight_storage_string)                
+            if self.model_dtype_string == "" and self.model_data_type == "auto":
+                self.model_dtype_string = f"Model weight data is stored as {self.model.dtype} (determined after loading model in 'auto' dtype mode)"
+                self.model_dtype_dtype = self.model.dtype
+                logger.info(self.model_dtype_string)                
             model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
-            if self.model_weight_storage_string != "":            
-                model_data_type_message = f"{self.model_weight_storage_string}, and was loaded as {self.model.dtype}"
+            if self.model_dtype_string != "":            
+                model_data_type_message = f"{self.model_dtype_string}, and was loaded as {self.model.dtype}"
             logger.info(f"Model and tokenizer loaded. {model_data_type_message}")
             if self.persistable.attack_params.peft_adapter_path is not None:
                 logger.info(f"Loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}'.")

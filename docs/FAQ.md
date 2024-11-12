@@ -10,7 +10,7 @@ It's a reference to [*Lexicon*, by Max Barry](https://maxbarry.com/lexicon/). Sa
 
 ## Can I run this using something other than an Nvidia GPU?
 
-You can use the PyTorch `cpu` device if you really want to, but it will literally take hundreds of times longer to run, e.g. 2+ hours for a single iteration of the main loop.
+As of version 0.34, yes, you can specify `--device cpu` to perform processing on a CPU instead of an Nvidia GPU. Processing times will be slower than on CUDA hardware, but generally tolerable. 
 
 [The `mps` (Metal for Mac OS) PyTorch back-end does not support some of the necessary features at this time](https://github.com/pytorch/pytorch/issues/127743) ([e.g. nested tensors](https://github.com/pytorch/pytorch/blob/3855ac5a5d53fd4d2d6521744eaf80c2a95a4d54/aten/src/ATen/NestedTensorImpl.cpp#L183), so using `--device mps` will cause the script to crash not long after loading the model.
 

@@ -5,11 +5,13 @@ import datetime
 import json
 import logging
 import os
+import psutil
 import re
 import selectors
 import signal
 import subprocess
 import sys
+import torch
 import traceback
 
 from llm_attacks_bishopfox.attack.attack_classes import AttackParams
@@ -17,6 +19,7 @@ from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelI
 from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelInfoList
 from llm_attacks_bishopfox.logging import BrokenHillLogManager
 from llm_attacks_bishopfox.tests.test_classes import BrokenHillTestParams
+from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import get_elapsed_time_string
@@ -31,14 +34,12 @@ from subprocess import TimeoutExpired
 
 logger = logging.getLogger(__name__)
 
-# 24 GiB of device memory == 25390809088
 # Largest model successfully tested so far with 24 GiB: 3821079552 parameters (Microsoft Phi-3 / 3.5 Mini 128k)
-# This is not entirely accurate, because the file size doesn't take into account the weight format yet
 # Gives a threshold of about 1/3
-CUDA_CPU_SIZE_THRESHOLD = int(float(25390809088) / 3.0)
+MODEL_SIZE_FACTOR = 3.0
 PYTHON_PROCESS_BUFFER_SIZE = 262144
 
-def main(test_params):
+def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
     model_info_list = LargeLanguageModelInfoList.from_bundled_json_file()
     exit_test = False
     start_time = get_now()
@@ -108,31 +109,58 @@ def main(test_params):
                     skip_model = True
         
         if not skip_model:
-            model_size = None
+            model_size_cuda = None
+            model_size_cpu_float32 = None
+            # TKTK: update this to bfloat16 if testing supports it as a better option
+            model_size_cpu_float16 = None
             model_parameter_count = model_info.get_parameter_count()
             if model_parameter_count is not None:
-                # TKTK: update this to handle different dtypes
-                model_size = model_parameter_count * 2
+                model_size_cuda = model_parameter_count * 2
+                model_size_cpu_float16 = model_parameter_count * 2
+                model_size_cpu_float32 = model_parameter_count * 4
             else:
-                model_size = model_info.size
-            if model_size is None or model_size > CUDA_CPU_SIZE_THRESHOLD:
+                model_size_cuda = model_info.size
+                model_size_cpu_float32 = model_info.size
+                model_size_cpu_float16 = model_info.size
+            if model_size_cuda > cuda_cpu_size_threshold:
                 if not test_params.perform_cpu_tests:
                     skip_message = "skipping this test because it would require CPU processing by PyTorch."
                     skip_model = True
+                else:
+                    if model_test_params.always_use_bfloat16_for_cpu:
+                        model_test_params.model_data_type = "bfloat16"
+                        if model_size_cpu_float16 > cpu_size_threshold:
+                            if not test_params.perform_cpu_tests_requiring_swap:
+                                skip_message = "skipping this test because it would require use of swap memory."
+                                skip_model = True
+                    else:
+                        model_test_params.model_data_type = "float32"
+                        if model_size_cpu_float32 > cpu_size_threshold:
+                            if model_size_cpu_float16 <= cpu_size_threshold:
+                                if test_params.perform_cpu_tests_requiring_float16:
+                                    model_test_params.model_data_type = "bfloat16"
+                                else:
+                                    skip_message = "skipping this test because it would require use of 16-bit floating point values on a CPU device."
+                                    skip_model = True
+                            else:
+                                if not test_params.perform_cpu_tests_requiring_swap:
+                                    skip_message = "skipping this test because it would require use of swap memory."
+                                    skip_model = True
                 model_test_params.model_device = "cpu"
                 model_test_params.gradient_device = "cpu"
                 model_test_params.forward_device = "cpu"
-                default_data_type_options = [ "--model-data-type", "default" ]
-                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, default_data_type_options)
+                
             else:
                 # CUDA tests with a denylist are fine
                 denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
                 model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, denylist_options)
-                default_data_type_options = [ "--model-data-type", "float16" ]
-                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, default_data_type_options)
+                model_test_params.model_data_type = "float16"
                 if not test_params.perform_cuda_tests:
                     skip_message = "skipping this test because it would be processed on a CUDA device."
                     skip_model = True
+                    
+                    
+                    cpu_size_threshold
         
         if skip_model:
             skipped_tests.append(model_info.model_name)
@@ -272,6 +300,27 @@ def main(test_params):
     
     sys.exit(0)
 
+def get_cuda_memory():
+    result = 0
+    try:
+        if torch.cuda.is_available():
+            cuda_devices = PyTorchDevice.get_all_cuda_devices()
+            for i in range(0, len(cuda_devices)):
+                d = cuda_devices[i]
+                result += d.total_memory
+    except Exception as e:
+        logger.error(f"Couldn't determine the amount of CUDA memory available: {e}\n{traceback.format_exc()}")
+    return result
+
+def get_system_memory():
+    result = 0
+    try:
+        system_mem_info = psutil.virtual_memory()
+        result = system_mem_info.total
+    except Exception as e:
+        logger.error(f"Couldn't determine the amount of system memory available: {e}\n{traceback.format_exc()}")
+    return result
+
 if __name__=='__main__':
     smoke_test_params = BrokenHillTestParams()
     
@@ -390,5 +439,12 @@ if __name__=='__main__':
                     else:
                         smoke_test_params.specific_model_names_to_skip = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_skip, et)
     
-    main(smoke_test_params)
+    # 24 GiB of device memory == 25390809088
+    # Largest model successfully tested so far with 24 GiB: 3821079552 parameters (Microsoft Phi-3 / 3.5 Mini 128k)
+    # This is not entirely accurate, because the file size doesn't take into account the weight format yet
+    # Gives a threshold of about 1/3
+    cuda_cpu_size_threshold = int(float(get_cuda_memory()) / MODEL_SIZE_FACTOR)
+    cpu_size_threshold = int(float(get_system_memory()) / MODEL_SIZE_FACTOR)
+    
+    main(smoke_test_params, cuda_cpu_size_threshold, cpu_size_threshold)
 

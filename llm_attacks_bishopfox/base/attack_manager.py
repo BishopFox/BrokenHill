@@ -36,15 +36,58 @@ from pathlib import Path
 from pkgutil import iter_modules
 import transformers
 
+# workaround for the following issue in Transformers 4.46.2:
+# Error while examining Transformers attribute 'DetrImageProcessorFast' during dynamic import of all ForCausalLM classes: Failed to import transformers.models.detr.image_processing_detr_fast because of the following error (look up to see its traceback):
+# cannot import name 'pil_torch_interpolation_mapping' from 'transformers.image_utils' (/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/image_utils.py)
+# Traceback (most recent call last):
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 1778, in _get_module
+    # return importlib.import_module("." + module_name, self.__name__)
+           # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  # File "/usr/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    # return _bootstrap._gcd_import(name[level:], package, level)
+           # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  # File "<frozen importlib._bootstrap>", line 1206, in _gcd_import
+  # File "<frozen importlib._bootstrap>", line 1178, in _find_and_load
+  # File "<frozen importlib._bootstrap>", line 1149, in _find_and_load_unlocked
+  # File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  # File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  # File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/models/detr/image_processing_detr_fast.py", line 30, in <module>
+    # from ...image_utils import (
+# ImportError: cannot import name 'pil_torch_interpolation_mapping' from 'transformers.image_utils' (/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/image_utils.py)
+
+# The above exception was the direct cause of the following exception:
+
+# Traceback (most recent call last):
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/llm_attacks_bishopfox/base/attack_manager.py", line 41, in <module>
+    # attribute = getattr(transformers, attribute_name)
+                # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 1767, in __getattr__
+    # value = getattr(module, name)
+            # ^^^^^^^^^^^^^^^^^^^^^
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 1766, in __getattr__
+    # module = self._get_module(self._class_to_module[name])
+             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  # File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 1780, in _get_module
+    # raise RuntimeError(
+# RuntimeError: Failed to import transformers.models.detr.image_processing_detr_fast because of the following error (look up to see its traceback):
+# cannot import name 'pil_torch_interpolation_mapping' from 'transformers.image_utils' (/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/image_utils.py)
+
+ignored_problem_attributes = [ "DetrImageProcessorFast" ]
+
 for attribute_name in dir(transformers):
-    attribute = getattr(transformers, attribute_name)
-    if isclass(attribute):
-        #import pdb; pdb.Pdb(nosigint=True).set_trace()
-        # Add the class to this package's variables
-        if hasattr(attribute, "__name__"):
-            if "ForCausalLM" in attribute.__name__:
-                #logger.debug(f"importing {attribute.__name__} from transformers")
-                globals()[attribute_name] = attribute
+    if attribute_name not in ignored_problem_attributes:
+        try:
+            attribute = getattr(transformers, attribute_name)
+            if isclass(attribute):
+                #import pdb; pdb.Pdb(nosigint=True).set_trace()
+                # Add the class to this package's variables
+                if hasattr(attribute, "__name__"):
+                    if "ForCausalLM" in attribute.__name__:
+                        #logger.debug(f"importing {attribute.__name__} from transformers")
+                        globals()[attribute_name] = attribute
+        except Exception as e:
+            logger.warning(f"Error while examining Transformers attribute '{attribute_name}' during dynamic import of all ForCausalLM classes: {e}\n{traceback.format_exc()}")
 
 # END: based loosely on https://julienharbulot.com/python-dynamical-import.html
 

@@ -18,9 +18,10 @@
 ## Prerequisites
 
 * You should run Broken Hill on a Linux system. It has been tested on Debian, so these steps should work virtually identically on any Debian-derived distribution (Kali, Ubuntu, etc.).
-* Your Linux system should have some sort of reasonably modern Nvidia GPU. Using Broken Hill against most popular/common LLMs will require at least 24 GiB of VRAM. [It has been tested on an RTX 4090, but other Nvidia GPUs with 24 GiB or more of VRAM should work at least as well](other_graphics_hardware.md).
-  * [You can still test smaller models on Nvidia GPUs with 8 or 16 GiB of VRAM. See the memory requirements document for guidelines](memory_requirements.md).
-* You should have your Linux system set up with a working, reasonbly current version of [Nvidia's drivers and the CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). One way to validate that the drivers and toolkit are working correctly is to try running [hashcat](https://hashcat.net/) in benchmarking mode. If you get results that are more or less like the results other hashcat users report for the same hardware, your drivers are probably working more or less correctly. If you see warnings or errors about the driver, "NVIDIA CUDA library", or "NVIDIA RTC library", you should troubleshoot those and get `hashcat` running without errors before proceeding.
+* If you want to perform processing on CUDA hardware:
+  * Your Linux system should have some sort of reasonably modern Nvidia GPU. Using Broken Hill against most popular/common LLMs will require at least 24 GiB of VRAM. [It has been tested on an RTX 4090, but other Nvidia GPUs with 24 GiB or more of VRAM should work at least as well](other_graphics_hardware.md).
+    * [You can still test smaller models on Nvidia GPUs with 8 or 16 GiB of VRAM. See the memory requirements document for guidelines](memory_requirements.md).
+  * You should have your Linux system set up with a working, reasonbly current version of [Nvidia's drivers and the CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). One way to validate that the drivers and toolkit are working correctly is to try running [hashcat](https://hashcat.net/) in benchmarking mode. If you get results that are more or less like the results other hashcat users report for the same hardware, your drivers are probably working more or less correctly. If you see warnings or errors about the driver, "NVIDIA CUDA library", or "NVIDIA RTC library", you should troubleshoot those and get `hashcat` running without errors before proceeding.
 
 ## Setup
 

@@ -285,12 +285,13 @@ def main(attack_params, log_manager):
     logger.info(f"Starting at {start_ts}")
 
     # Parameter validation, warnings, and errors
-    if attack_state.persistable.attack_params.using_cpu():        
-        if attack_state.persistable.attack_params.model_weight_format_handling != ModelDataFormatHandling.DEFAULT:
-            logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use a specific PyTorch dtype when loading the model. This will *generally* work with most models on modern (late 2024) versions of PyTorch and Transformers, but will still cause issues for some models, such as GPT-NeoX. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default.")
+    if attack_state.persistable.attack_params.using_cpu():
+        if attack_state.persistable.attack_params.model_data_format_handling != ModelDataFormatHandling.DEFAULT and attack_state.persistable.attack_params.model_data_format_handling != ModelDataFormatHandling.FORCE_FLOAT32:
+            logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use a non-default PyTorch dtype when loading the model. This will *generally* work with most models on modern (late 2024) versions of PyTorch and Transformers, but will still cause issues for some models, such as GPT-NeoX. If 'float16' is specified, it will also greatly increase runtimes. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default.")
     non_cuda_devices = attack_state.persistable.attack_params.get_non_cuda_devices()
     if len(non_cuda_devices) > 0:
-        logger.warning(f"Using the following device(s) is not recommended: {non_cuda_devices}. Broken Hill is heavily optimized for CUDA. It will run very slowly if the GCG operations are processed on the CPU, and will likely crash on other hardware (such as MPS/Metal). Expect performance about 100 times slower on CPU hardware than CUDA, for example; 10 hours to process each iteration of the main loop against a model with 20 billion parameters is typical.")
+        if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
+            logger.warning(f"Using the following device(s) with the 'float16' model data format is not recommended: {non_cuda_devices}. Using this format on non-CUDA devices will cause Broken Hill to run extremely slowly. Expect performance about 100 times slower than using 'float16' on CUDA hardware, for example, and about 10 times slower than using 'float32' on CPU hardware.")
 
     ietf_tag_names = None
     ietf_tag_data = None
@@ -318,12 +319,12 @@ def main(attack_params, log_manager):
 
         if attack_state.model_type_name == "GPTNeoXForCausalLM":
             warn_about_bad_gpt_neox_weight_type = True
-            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.DEFAULT:
+            if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.DEFAULT:
                 warn_about_bad_gpt_neox_weight_type = False
             # still need to validate that AUTO will actually work
-            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.AUTO:
+            if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.AUTO:
                 warn_about_bad_gpt_neox_weight_type = False
-            if attack_state.persistable.attack_params.model_weight_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+            if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
                 warn_about_bad_gpt_neox_weight_type = False
             logger.warning("This model is of type GPTNeoXForCausalLM. At the time this version of Broken Hill was made, GPT-NeoX did not perform correctly in PyTorch/Transformers when loaded with weights in float16 format, possibly any other dtype besides float32. If you encounter very long processing times or incorrect output (such as the LLM responding with only the <|endoftext|> token), try using one of the following options instead of your current --model-data-type selection:\n--model-data-type default\n--model-data-type auto\n--model-data-type float32")
 
@@ -1249,8 +1250,8 @@ if __name__=='__main__':
         
     template_name_list = ", ".join(attack_params.get_known_template_names())
     
-    parser.add_argument("--model-data-type", type = str, default="float16", choices = [ "default", "auto", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
-        help=f"Experimental: specify the type to load the model's data as. 'default' will use the PyTorch default, which is float32 as of this writing. 'auto' will load the data in its native format. Default: float16. Using this option is not recommended at this time unless you're following specific instructions to use it from the Broken Hill documentation.")
+    parser.add_argument("--model-data-type", type = str, default="default", choices = [ "default", "torch", "auto", "float16", "bfloat16", "float32", "float64", "complex64", "complex128" ],
+        help=f"Specify the type to load the model's data as. 'default' will use the Broken Hill default, which is 'float16' for CUDA devices, and 'bfloat16' for CPU devices. 'torch' will use the PyTorch default, which is 'float32' as of this writing. 'auto' is an experimental option that will cause PyTorch to attempt to load the data in its native format. Default: 'default'. Recommended value for CUDA devices: 'default', 'float16', or (if you have an enormous amount of CUDA device memory) 'float32'. Recommended value for CPU devices: 'default' or 'float32'. 'float64', 'complex64', and 'complex128' are untested at this time, and their use is discouraged. Please see the documentation for additional details.")
     
     parser.add_argument("--template", type = str, 
         help=f"An optional model type name, for selecting the correct chat template. Use --list-templates to view available options. If this option is not specified, the fschat library will attempt to load the correct template based on the base model directory contents.")
@@ -1639,6 +1640,8 @@ if __name__=='__main__':
         help="Use the Python tokenizer even if the model supports a (usually faster) non-Python tokenizer. May allow use of some models that include incomplete non-Python tokenizers.")
     parser.add_argument("--enable-hardcoded-tokenizer-workarounds", type = str2bool, nargs='?',
         help="Enable the undocumented, hardcoded tokenizer workarounds that the original developers introduced for some models.")
+    parser.add_argument("--force-qwen-workaround", type = str2bool, nargs='?',
+        help="Attempt to load the model using the dtype workaround necessary for some Qwen-1 models (and derived models), even if Broken Hill does not automatically detect that the workaround may be necessary.")
     padding_token_values = get_missing_pad_token_names()
     parser.add_argument("--missing-pad-token-replacement", type = str, 
         default = "default",
@@ -1730,10 +1733,12 @@ if __name__=='__main__':
     mps_available = torch.backends.mps.is_available()
     
     if not cuda_available:
-        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Using CPU processing will result in significantly longer run times for Broken Hill. Expect each iteration to take several hours (or longer, for some models) instead of tens of seconds on a modern GPU with support for CUDA. If your host has CUDA hardware, you should investigate why PyTorch is not detecting it.")        
+        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Broken Hill will default to the PyTorch device '{attack_params.device_fallback}' instead.")
+        attack_params.model_device = attack_params.device_fallback
+        attack_params.gradient_device = attack_params.device_fallback
+        attack_params.forward_device = attack_params.device_fallback
     if mps_available:
-        logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of {script_name} was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")  
-
+        logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of Broken Hill was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")
 
     if args.list_language_tags:
         attack_params.operating_mode = BrokenHillMode.LIST_IETF_TAGS
@@ -1779,7 +1784,7 @@ if __name__=='__main__':
 
     if cuda_available:
         if len(attack_params.get_non_cuda_devices()) > 0:
-            logger.warning(f"This system appears to have a PyTorch CUDA back-end available, but at least one back-end option has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. Please ensure this was an intentional decision.")
+            logger.warning(f"This system appears to have a PyTorch CUDA back-end available, but at least one back-end option has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. If this decision was intentional (e.g. the test system does not have enough CUDA device memory to perform the processing, but does have enough system RAM), you can ignore this message.")
 
     check_pytorch_devices(attack_params)
         
@@ -1795,32 +1800,49 @@ if __name__=='__main__':
             logger.critical(f"The specified PEFT adapter directory ('{attack_params.peft_adapter_path}') does not appear to exist.")
             sys.exit(1)
         
-    if args.model_data_type == "default":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.DEFAULT
+    experimental_dtype = False
+    
+    if args.model_data_type == "default":
+        if attack_params.model_device_is_cuda():
+            attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
+        else:
+            attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_BFLOAT16
+        
+    if args.model_data_type == "torch":        
+        attack_params.model_data_format_handling = ModelDataFormatHandling.TORCH_DEFAULT
         
     if args.model_data_type == "auto":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.AUTO
+        attack_params.model_data_format_handling = ModelDataFormatHandling.AUTO
+        experimental_dtype = True
         
     if args.model_data_type == "float16":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
     
     if args.model_data_type == "bfloat16":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_BFLOAT16
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_BFLOAT16
 
     if args.model_data_type == "float32":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT32
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT32
     
     if args.model_data_type == "float64":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_FLOAT64
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT64
+        experimental_dtype = True
     
     if args.model_data_type == "complex64":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX64
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_COMPLEX64
+        experimental_dtype = True
     
     if args.model_data_type == "complex128":        
-        attack_params.model_weight_format_handling = ModelDataFormatHandling.FORCE_COMPLEX128
+        attack_params.model_data_format_handling = ModelDataFormatHandling.FORCE_COMPLEX128
+        experimental_dtype = True
     
-    if attack_params.model_weight_format_handling != ModelDataFormatHandling.FORCE_FLOAT16:
-        logger.warning(f"Using non-default behaviour for model data type. This is a highly experimental feature and will probably cause Broken Hill to crash.")
+    if experimental_dtype:
+        dtype_warning = f"The operator has specified --model-data-type {args.model_data_type}. This is an experimental mode and may cause Broken Hill to crash, perform poorly, or produce inaccurate results."
+        dtype_suggestions = "'bfloat16', or 'float32'"
+        if attack_params.model_device_is_cuda():
+            dtype_suggestions = "'float16', 'bfloat16', or 'float32'"
+        dtype_warning = f"{dtype_warning} Using one of 'default', {dtype_suggestions} is currently recommended instead."
+        logger.warning(dtype_warning)
     
     if args.template:
         attack_params.template_name = args.template
@@ -2187,6 +2209,9 @@ if __name__=='__main__':
 
     if args.enable_hardcoded_tokenizer_workarounds:
         attack_params.enable_hardcoded_tokenizer_workarounds = True
+        
+    if args.force_qwen_workaround:
+        attack_params.force_qwen_dtype_workaround_check = True
         
     if args.missing_pad_token_replacement == "default":
         attack_params.missing_pad_token_replacement = None

@@ -12,11 +12,27 @@ An optional parameter used to specify a path to a different directory containing
 
 An optional parameter used to specify a path to the base directory for a PEFT pre-trained model/adapter that is based on the model specified with `--model`. [Used to load models such as Guanaco](GCG_attack/model_notes.md).
 
-## --model-data-type [ as-is | float16 | bfloat16 | float32 | float64 | complex64 | complex128 ]
+## --model-data-type [ default | torch | auto | float16 | bfloat16 | float32 | float64 | complex64 | complex128 ]
 
-*Experimental* Specify the type to load the model's data as. `as-is` will load the data in its native format.  The default is `float16`, which was the historical behaviour inherited from [the proof-of-concept written by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/).
+Specify the type to load the model's data.
 
-Using this option is not recommended at this time, and anything other than the default is likely to cause Broken Hill to crash unless the model's native type is already float16.
+* `default` is equivalent to `float16` if the model is being loaded into memory on a CUDA device, or `bfloat16` for other device types. This is the default behaviour for Broken Hill as of version 0.34.
+* `torch` defers the choice of model data type to the Transformers library. As of this writing, this should generally be equivalent to `float32`.
+* `auto` is an experimental feature that causes the Transformers library to load the model's data in the same form as the data on disk. It will probably result in a crash unless the data is stored in `float16` or `float32` format.
+* `float16` causes Broken Hill to load the data using the `float16` 16-bit floating-point format. Prior to version 0.34, Broken Hill always used this format, as it was the historical behaviour inherited from [the proof-of-concept written by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/). `float16` is generally recommended when using CUDA hardware, because it reduces the memory requirements by 50% over `float32`, while generally producing comparable results. **USING `float16` with CPU processing is strongly discouraged at this time, because it will result in incredibly poor performance, such as multiple hours per attack iteration.**
+* `bfloat16` causes Broken Hill to load the data using the `bfloat16` 16-bit floating-point format.
+* `float32` causes Broken Hill to load the data using the `float32` 32-bit floating-point format.
+* `float64`, `complex64`, and `complex128` are experimental and untested. Using them is currently discouraged.
+
+Recommended choices for CUDA processing: `default`, `bfloat16`, `float16`, or `float32`.
+
+Recommended choices for CPU processing: `default`, `bfloat16`, or `float32`.
+
+### Qwen-1 issues
+
+Some models in (and derived from) the Qwen-1 series include nonstandard, incompatible code that duplicates the functionality of the standard `torch_dtype` parameter supported by Transformers when loading models. Broken Hill attempts to automatically detect models affected by this issue and apply a workaround, and the `--force-qwen-workaround` option will attempt to apply that workaround even if the automatic detection indicates the model is likely not affected.
+
+As a consequence of the nonstandard, incompatible code, it is currently only possible to load data for affected models in one of the following three formats: `float16`, `bfloat16`, or `float32`. If the operator attempts to specify another option, Broken Hill will exit with an error.
 
 ## Specifying PyTorch devices
 
@@ -24,7 +40,7 @@ Using this option is not recommended at this time, and anything other than the d
 
 The PyTorch device to use for all elements of the attack. Defaults to `cuda`. Equivalent to specifying `--model-device`, `--gradient-device`, and `--forward-device` with the same value.
 
-Using anything other than a CUDA device (`cuda:0`, `cuda:1`, etc.) is not recommended in most cases. For example, using `cpu` option will make the attack run about 100 times slower.
+If your system includes a CUDA device with sufficient memory, it will generally provide the best performance, and can be specified using (`--device cuda`, `--device cuda:0`, `--device cuda:1`, etc.). Processing can instead be performed on the CPU by specifying `--device cpu`. If you select CPU processing, **do not specify --model-data-type float16**, or you will experience extremely slow processing times. See the `--model-data-type` section for more information.
 
 ### --model-device <string>
 
@@ -653,6 +669,12 @@ Enable the undocumented, hardcoded tokenizer workarounds that the original devel
 * `guanaco`
 * `llama-2`
 * `falcon`
+
+### --force-qwen-workaround
+
+Some models in (and derived from) the Qwen-1 series include nonstandard, incompatible code that duplicates the functionality of the standard `torch_dtype` parameter supported by Transformers when loading models. Broken Hill attempts to automatically detect models affected by this issue and apply a workaround. `--force-qwen-workaround` will cause Broken Hill to attempt the workaround even if it does not automatically detect an affected model.
+
+See the related discussion in the documentation for the `--model-data-type` option for more details.
 
 ### --force-python-tokenizer
 

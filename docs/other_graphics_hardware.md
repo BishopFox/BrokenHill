@@ -1,6 +1,6 @@
 # Results on other graphics hardware
 
-So far, Broken Hill has only been tested on a GeForce RTX 4090. This document contains placeholders for some other hardware of potential interest.
+So far, Broken Hill has only been tested on a GeForce RTX 4090 and a GeForce RTX 4070. This document contains placeholders for some other hardware of potential interest.
 
 ## Nvidia GPUs with more than 24 GiB of VRAM
 

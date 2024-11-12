@@ -79,8 +79,7 @@
 			"data_type": "float32",
 			"parameter_count": 13015874560,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests" ],
-			"comment": "Takes just under 6.5 hours to smoke-test this model on the test system in CPU mode."
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "huge-roadrunner-pythia-1b-deduped-oasst",
@@ -144,8 +143,7 @@
 			"data_type": "float16",
 			"parameter_count": 20554567680,
 			"safe_tensors": true,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "eos" ],
-			"comment": "Takes about 9.5 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement."
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "pythia-1.4b",
@@ -403,8 +401,7 @@
 			"data_type": "float16",
 			"parameter_count": 20554567680,
 			"safe_tensors": false,
-			"custom_options": [ "--ignore-jailbreak-self-tests", "--missing-pad-token-replacement", "eos" ],
-			"comment": "Takes about 9.75 hours to smoke-test this model on the test system in CPU mode. Need to validate the missing pad token replacement value."
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
 			"model_name": "OPT-6.7B-Erebus",
@@ -719,8 +716,7 @@
 			"data_type": "bfloat16",
 			"parameter_count": 7241732096,
 			"safe_tensors": true,
-			"custom_options": [],
-			"comment": "This model is excruciatingly slow using CPU processing. It takes ~2 hours to run the jailbreak checks, and another ~8 hours just to reach the end of the first iteration (no gradient/adversarial content generation)."
+			"custom_options": []
 		},
 		{
 			"model_name": "NeuralDaredevil-7B",
@@ -928,7 +924,7 @@
 			"model_path": "rinna/nekomata-7b-instruction",
 			"tokenizer_path": null,
 			"peft_path": null,
-			"template": "alpaca",
+			"template": "qwen",
 			"size": 15442677504,
 			"safe_tensors": true,
 			"custom_options": [ "--trust-remote-code" ]

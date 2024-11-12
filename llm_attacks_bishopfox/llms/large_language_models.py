@@ -96,9 +96,9 @@ def print_model_parameter_info(attack_state):
     model_calculated_bytes_in_memory = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_parameter_size_in_memory(attack_state.model.dtype)
     current_memory_parameter_info_string = f" Using the current data type '{attack_state.model.dtype}', the model data should occupy {model_calculated_bytes_in_memory} bytes of device memory."
         
-    if attack_state.model_weight_storage_dtype is not None:
-        model_as_is_calculated_bytes_in_memory = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_parameter_size_in_memory(attack_state.model_weight_storage_dtype)
-        as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{attack_state.model_weight_storage_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory." 
+    if attack_state.model_dtype_dtype is not None:
+        model_as_is_calculated_bytes_in_memory = attack_state.persistable.overall_result_data.model_parameter_info_collection.get_parameter_size_in_memory(attack_state.model_dtype_dtype)
+        as_is_storage_memory_parameter_info_string = f" Using the model's native data type '{attack_state.model_dtype_dtype}', the model data should occupy {model_as_is_calculated_bytes_in_memory} bytes of device memory." 
             
     model_parameter_info_string = f"The current model has {attack_state.persistable.overall_result_data.model_parameter_info_collection.total_parameter_count} total parameters in named groups."
     if attack_state.persistable.attack_params.verbose_model_parameter_info:
