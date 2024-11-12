@@ -262,6 +262,7 @@ Until this issue is resolved, Broken Hill will report one or more warnings when 
 
 * [Swallow-7b-instruct-hf](https://huggingface.co/tokyotech-llm/Swallow-7b-instruct-hf)
 * [Swallow-MS-7b-instruct-v0.1](https://huggingface.co/tokyotech-llm/Swallow-MS-7b-instruct-v0.1)
+* [Vikhr-7B-instruct_0.4](https://huggingface.co/Vikhrmodels/Vikhr-7B-instruct_0.4)
 * [youri-7b-chat](https://huggingface.co/rinna/youri-7b-chat)
 
 ### Llama-3

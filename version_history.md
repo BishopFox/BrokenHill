@@ -60,6 +60,7 @@ This is the most significant update to Broken Hill since its public release in S
     * [Meta-Llama-Guard-2-8B](https://huggingface.co/meta-llama/Meta-Llama-Guard-2-8B)
     * [Swallow-7b-instruct-hf](https://huggingface.co/tokyotech-llm/Swallow-7b-instruct-hf)
 	* [Swallow-MS-7b-instruct-v0.1](https://huggingface.co/tokyotech-llm/Swallow-MS-7b-instruct-v0.1)
+	* [Vikhr-7B-instruct_0.4](https://huggingface.co/Vikhrmodels/Vikhr-7B-instruct_0.4)
     * [youri-7b-chat](https://huggingface.co/rinna/youri-7b-chat) (derived from Llama-2)
   * Llama-3-derived models
     * [Llama-Guard-3-8B](https://huggingface.co/meta-llama/Llama-Guard-3-8B)
