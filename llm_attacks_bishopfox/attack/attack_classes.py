@@ -1946,7 +1946,7 @@ class VolatileAttackState():
                 except Exception as e:
                     raise AttackInitializationException(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
                 self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading PEFT adapter")
-                self.model_type_name = f"{type(model).__name__}"
+                self.model_type_name = f"{type(self.model).__name__}"
                 logger.info(f"PEFT adapter loaded. After loading the PEFT adapter, this model is an instance of the type '{self.model_type_name}'.")
             
             self.persistable.overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(self.model)

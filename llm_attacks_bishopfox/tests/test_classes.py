@@ -89,7 +89,12 @@ class BrokenHillTestParams(JSONSerializableObject):
     
     def set_output_file_base_name(self):
         time_string = get_time_string(dt = datetime.datetime.now(tz = datetime.timezone.utc))
-        result = f"{self.test_name}-{self.model_path}-{time_string}"
+        result = f"{self.test_name}-{self.model_path}"
+        if self.tokenizer_path is not None:
+            result = f"{result}-{self.tokenizer_path}"
+        if self.peft_path is not None:
+            result = f"{result}-{self.peft_path}"
+        result = f"{result}-{time_string}"
         result = re.sub(r'[\\/:]', '-', result)
         result = re.sub(r'[ ]', '_', result)
         self.output_file_base_name = result    
