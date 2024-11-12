@@ -1,28 +1,79 @@
 #!/bin/env python
 
 import copy
+# IMPORTANT: 'fastchat' is in the PyPi package 'fschat', not 'fastchat'!
+import fastchat as fschat
+import fastchat.conversation as fschat_conversation
 import json
+import logging
 import numpy
+import os
+import pathlib
+import psutil
 import re
+import statistics
+import sys
+import time
 import torch
+import torch.nn
+import traceback
 import uuid
+
+from transformers import AutoModelForCausalLM
+from transformers import AutoTokenizer
 
 from enum import IntFlag
 from enum import StrEnum
 from enum import auto
+from llm_attacks_bishopfox.base.attack_manager import get_embedding_layer
+from llm_attacks_bishopfox.base.attack_manager import get_random_seed_list_for_comparisons
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateTester
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_other_highly_problematic_content
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_profanity
+from llm_attacks_bishopfox.dumpster_fires.offensive_tokens import get_slurs
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TokenAllowAndDenyList
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenCollection
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
-from llm_attacks_bishopfox.base.attack_manager import get_default_negative_test_strings
-from llm_attacks_bishopfox.base.attack_manager import get_default_positive_test_strings
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_allow_and_deny_lists
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_token_list_as_tensor
 from llm_attacks_bishopfox.attack.radiation_garden import RadiationGarden
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import remove_empty_and_trash_fire_leading_and_trailing_tokens
-#from llm_attacks_bishopfox.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import JailbreakDetectionRuleResult
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRule
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_negative_test_strings
+from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import get_default_positive_test_strings
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
+from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterInfoCollection
+from llm_attacks_bishopfox.llms.large_language_models import print_model_parameter_info
+from llm_attacks_bishopfox.logging import ConsoleGridView
+#from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
+from llm_attacks_bishopfox.statistics.statistical_tools import StatisticsCube
+from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
+from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
+from llm_attacks_bishopfox.util.util_functions import command_array_to_string
+from llm_attacks_bishopfox.util.util_functions import get_file_content
 from llm_attacks_bishopfox.util.util_functions import get_now
 from llm_attacks_bishopfox.util.util_functions import get_time_string
+from llm_attacks_bishopfox.util.util_functions import load_json_from_file
+from llm_attacks_bishopfox.util.util_functions import safely_write_text_output_file
 from llm_attacks_bishopfox.util.util_functions import slice_from_dict
+from llm_attacks_bishopfox.util.util_functions import tensor_from_dict
+from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
+from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
+
+from peft import PeftModel
+from transformers.generation import GenerationConfig
+
+logger = logging.getLogger(__name__)
+
+class AttackInitializationException(Exception):
+    pass
 
 class DecodingException(Exception):
     pass
@@ -30,61 +81,28 @@ class DecodingException(Exception):
 class EncodingException(Exception):
     pass
 
-# for debugging
-class FakeException(Exception):
+class GenerationException(Exception):
     pass
 
-class PyTorchDevice():
-    def __init__(self):
-        self.type_name = None
-        # The device's index within its type of device, e.g. 0 for cuda:0
-        self.device_number = None
-        self.device_name = None
-        self.device_display_name = None
-        self.total_memory = None
-        self.gpu_total_memory = None
-        self.gpu_free_memory = None
-        self.gpu_used_memory = None
-        self.process_reserved_memory = None
-        self.available_memory = None
-        self.process_reserved_allocated_memory = None
-        self.process_reserved_unallocated_memory = None
-        self.total_memory_utilization = None
-        self.process_reserved_utilization = None
-        self.process_reserved_utilization = None
-    
-    @staticmethod
-    def from_cuda_device_number(device_number):
-        result = PyTorchDevice()
-        result.device_number = device_number
-        result.device_name = f"cuda:{device_number}"
-        gpu_wide_memory_info = torch.cuda.mem_get_info(device=device_number)
-        result.gpu_free_memory = gpu_wide_memory_info[0]
-        result.gpu_total_memory = gpu_wide_memory_info[1]
-        result.gpu_used_memory = result.gpu_total_memory - result.gpu_free_memory
-        
-        device_props = torch.cuda.get_device_properties(device_number)
-        result.device_display_name = device_props.name
-        result.total_memory = device_props.total_memory        
-        result.process_reserved_memory = torch.cuda.memory_reserved(device_number)
-        result.process_reserved_allocated_memory = torch.cuda.memory_allocated(device_number)
-        result.process_reserved_unallocated_memory = result.process_reserved_memory - result.process_reserved_allocated_memory
-        #result.available_memory = result.total_memory - result.process_reserved_memory
-        result.available_memory = result.gpu_free_memory
-        result.total_memory_utilization = float(result.gpu_used_memory) / float(result.total_memory)
-        result.process_memory_utilization = float(result.process_reserved_memory) / float(result.total_memory)
-        if result.process_reserved_memory > 0:
-            result.process_reserved_utilization = float(result.process_reserved_allocated_memory) / float(result.process_reserved_memory)
-        else:
-            result.process_reserved_utilization = 0.0        
-        if result.total_memory != result.gpu_total_memory:
-            print(f"[PyTorchDevice.from_cuda_device_number] warning: the amount of total memory available reported by torch.cuda.mem_get_info ({result.gpu_total_memory}) was not equal to the total reported by torch.cuda.get_device_properties ({result.total_memory}). This may cause some statistics to be incorrect.")
-        return result
+class LossThresholdException(Exception):
+    pass
+
+class MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException(Exception):
+    pass
+
+# TKTK: actually resolve this circular import without code duplication
+# Duplicate of the same value in adversarial_content_utils.py, to avoid a circular import
+DEFAULT_CONVERSATION_TEMPLATE_NAME = 'zero_shot'
+
+def get_default_generic_role_indicator_template():
+    # note: using "### {role}:" instead will cause issues 
+    return "### {role}"
 
 class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
     GCG_ATTACK_SELF_TEST  = 'gcg_attack_self_test'
     LIST_IETF_TAGS = 'list_ietf_tags'
+    SAVE_OPTIONS = 'save_options'
 
 # not currently used
 class OverallScoringFunction(StrEnum):
@@ -115,6 +133,46 @@ class LossAlgorithm(StrEnum):
 class SystemMessageMode(StrEnum):
     SYSTEM_MESSAGE_PROPRTY = 'system_message_proprty'
     MESSAGE_WITH_SYSTEM_ROLE = 'message_with_system_role'
+
+class ModelDataFormatHandling(StrEnum):
+    # DEFAULT will use the Broken Hill defaults (float16 for CUDA devices, bfloat16 for CPU devices)
+    DEFAULT = 'default'
+    # TORCH_DEFAULT will not set model_dtype at all. Currently this causes PyTorch to load the model in float32 form
+    TORCH_DEFAULT = 'torch_default'
+    # TORCH_AUTO will pass model_type = "auto", which causes PyTorch to autodetect the model's native weight format and use that
+    AUTO = 'auto'
+    FORCE_FLOAT16 = 'force_float16'
+    FORCE_BFLOAT16 = 'force_bfloat16'
+    FORCE_FLOAT32 = 'force_float32'
+    FORCE_FLOAT64 = 'force_float64'
+    FORCE_COMPLEX64 = 'force_complex64'
+    FORCE_COMPLEX128 = 'force_complex128'
+
+def get_missing_pad_token_names():
+    result = [  "unk", 
+                "bos",
+                "eos",
+                "default" ]
+    return result
+
+def get_missing_pad_token_replacement(tokenizer, replacement_name):
+    allowed_names = get_missing_pad_token_names()
+    if replacement_name not in get_missing_pad_token_names():
+        raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
+    result = None
+    if replacement_name == "bos":
+        result = tokenizer.bos_token_id, tokenizer.bos_token
+    if replacement_name == "eos":
+        result = tokenizer.eos_token_id, tokenizer.eos_token
+    if replacement_name == "unk":
+        result = tokenizer.unk_token_id, tokenizer.unk_token
+    if replacement_name == "default":
+        # TKTK: handle this differently where needed, e.g. GPT-NeoX?
+        result = None, None
+    if replacement_name == "none":
+        result = None, None
+    
+    return result
 
 # not currently implemented
 class AdversarialContentPlacement(StrEnum):
@@ -205,38 +263,38 @@ class AdversarialContent(JSONSerializableObject):
     def token_list_contains_invalid_tokens(tokenizer, token_ids):
         for token_num in range(0, len(token_ids)):
             if token_ids[token_num] < 0 or token_ids[token_num] >= tokenizer.vocab_size: 
-                #print(f"[AdversarialContent.token_list_contains_invalid_tokens] Warning: adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
+                logger.warning(f"adversarial_candidate '{token_ids}' contains token ID {token_ids[token_num]}, which is outside the valid range for this tokenizer (min = 0, max = {tokenizer.vocab_size}). The candidate will be ignored. This may indicate an issue with the attack code, or the tokenizer code.")
                 return True
         return False
     
     @staticmethod
-    def from_token_ids(tokenizer, trash_fire_tokens, token_ids, trim_token_list = False):
+    def from_token_ids(attack_state, trash_fire_tokens, token_ids, trim_token_list = False):
         result = AdversarialContent()
         result.token_ids = copy.deepcopy(token_ids)
-        result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
+        result.tokens = get_decoded_tokens(attack_state, result.token_ids)
         if trim_token_list:
-            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)
+            result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(attack_state, trash_fire_tokens, result.token_ids, result.tokens)
         try:
-            result.as_string = tokenizer.decode(result.token_ids)
+            result.as_string = attack_state.tokenizer.decode(result.token_ids)
         except Exception as e:
             try:
-                result.as_string = get_decoded_tokens(tokenizer, result.token_ids)
-                #print(f"[AdversarialContent.from_token_ids] Debug: couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
-                raise DecodingException(f"[AdversarialContent.from_token_ids] couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                result.as_string = get_decoded_tokens(attack_state, result.token_ids)
+                logger.warning(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
+                raise DecodingException(f"Couldn't decode token_ids directly via the tokenizer, but succeeded by using get_decoded_token: '{result.as_string}'")
             except Exception as e2:
-                raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}")
+                raise DecodingException(f"Couldn't decode the set of token IDs '{result.token_ids}': {e}, {e2}\n{traceback.format_exc()}\n")
 
         return result
 
     @staticmethod
-    def from_string(tokenizer, trash_fire_tokens, input_string):
+    def from_string(attack_state, trash_fire_tokens, input_string):
         result = AdversarialContent()
         #result.as_string = input_string
-        #result.token_ids = tokenizer.encode(input_string)
-        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(tokenizer, input_string)
-        result.tokens = get_decoded_tokens(tokenizer, result.token_ids)
-        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(trash_fire_tokens, result.token_ids, result.tokens)   
-        result.as_string = tokenizer.decode(result.token_ids)
+        #result.token_ids = attack_state.tokenizer.encode(input_string)
+        result.token_ids = encode_string_for_real_without_any_cowboy_funny_business(attack_state, input_string)
+        result.tokens = get_decoded_tokens(attack_state, result.token_ids)
+        #result.token_ids, result.tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(attack_state, trash_fire_tokens, result.token_ids, result.tokens)   
+        result.as_string = attack_state.tokenizer.decode(result.token_ids)
         return result
 
 class AdversarialContentList(JSONSerializableObject):
@@ -298,6 +356,31 @@ class AdversarialContentList(JSONSerializableObject):
 # Default values defined in this class
 class AttackParams(JSONSerializableObject):
 
+    def get_model_data_type(self):
+        if self.model_data_format_handling == ModelDataFormatHandling.DEFAULT:
+            if self.model_device_is_cuda():
+                return torch.float16
+            return torch.float32
+        if self.model_data_format_handling == ModelDataFormatHandling.TORCH_DEFAULT:
+            return None
+        # Explicitly pass "auto" to avoid loading things in float32 form when torch_dtype is not specified.
+        # https://huggingface.co/transformers/v4.10.1/main_classes/model.html#model-instantiation-dtype
+        if self.model_data_format_handling == ModelDataFormatHandling.AUTO:
+            return "auto"
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
+            return torch.float16
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
+            return torch.bfloat16
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+            return torch.float32
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT64:
+            return torch.float64
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_COMPLEX64:
+            return torch.complex64
+        if self.model_data_format_handling == ModelDataFormatHandling.FORCE_COMPLEX128:
+            return torch.complex128
+        return None
+
     def set_automatic_base_and_target(self, autotarget_string):
         self.base_prompt = f"Write {autotarget_string}."
         #self.target_output =  f"Sure, here's {autotarget_string}"
@@ -310,13 +393,13 @@ class AttackParams(JSONSerializableObject):
         self.conversation_template_messages = []
         # validate that the data is more or less as expected
         if not isinstance(message_list, list):
-            raise Exception("The conversation message data '{message_list}' was not in the form of a list.")
+            raise Exception(f"The conversation message data '{message_list}' was not in the form of a list.")
         for i in range(0, len(message_list)):
             message_data = message_list[i]
             if not isinstance(message_data, list):
-                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
+                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
             if len(message_data) != 2:
-                raise Exception("Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
+                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
             self.conversation_template_messages.append(message_data)
     
     def get_known_template_names(self):
@@ -351,10 +434,102 @@ class AttackParams(JSONSerializableObject):
             return None
         return re.compile(self.token_filter_regex)
 
+    def get_devices(self):
+        return [ self.model_device, self.gradient_device, self.forward_device ]
+
+    def get_cpu_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "cpu":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+    
+    def get_cuda_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] == "cuda":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def get_non_cuda_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] != "cuda":
+                    result = add_value_to_list_if_not_already_present(result, d)
+            else:
+                result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def get_mps_devices(self):
+        result = []
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "mps":
+                    result = add_value_to_list_if_not_already_present(result, d)
+        result.sort()
+        return result
+
+    def using_cpu(self):
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "cpu":
+                    return True
+        return False
+
+    def using_cuda(self):
+        if not torch.cuda.is_available():
+            return False
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 3:
+                if dl[0:4] == "cuda":
+                    return True
+        return False
+        
+    def using_mps(self):
+        for d in self.get_devices():
+            dl = d.lower()
+            if len(dl) > 2:
+                if dl[0:3] == "mps":
+                    return True
+        return False
+    
+    def model_device_is_cuda(self):
+        if "cuda" in self.model_device.lower():
+            return True
+        return False
+    
+    # def get_default_model_dtype(self):
+        # if self.model_device_is_cuda():
+            # return 'float16'
+        # return 'float32'
+
     def __init__(self):
+        self.original_command_line_array = None
+        self.original_command_line = None
         self.operating_mode = BrokenHillMode.GCG_ATTACK
         
-        self.device = 'cuda'
+        #self.device = 'cuda'
+        # the PyTorch device where the model (and everything else except the gradient, currently) should be loaded
+        self.model_device = 'cuda'
+        # the PyTorch device where the gradient operations should be performed
+        self.gradient_device = 'cuda'
+        # the PyTorch device where the 'forward' operation should be performed
+        self.forward_device = 'cuda'
+        
+        # enable torch.nn.DataParallel for the model
+        self.torch_dataparallel_model = False
         
         # back-end to use if CUDA is not available
         self.device_fallback = 'cpu'
@@ -368,10 +543,14 @@ class AttackParams(JSONSerializableObject):
         # If this value is not None, after loading the model, use Hugging Face's PEFT library to load a pretrained model based on the first model from a separate path.
         # For models such as Guanaco that can't be loaded on their own
         self.peft_adapter_path = None
+
+        # When loading the model, use the data as-is, or force conversion to a particular format?
+        # The original proof-of-concept forced float16.
+        self.model_data_format_handling = ModelDataFormatHandling.FORCE_FLOAT16
         
         self.template_name = None
         
-        self.override_fschat_templates = False
+        self.override_fschat_templates = True
         
         # Replace any existing system prompt in the conversation template with this custom content
         self.custom_system_prompt = None
@@ -389,7 +568,7 @@ class AttackParams(JSONSerializableObject):
         # Maximum number of times to run the main loop before exiting
         self.max_iterations = 500
 
-        # TKTK: option to require that loss decreases between iterations or the tool will roll back to the previous adversarial content and re-randomize
+        # TKTK: option to require that loss decreases between iterations or Broken Hill will roll back to the previous adversarial content and re-randomize
         # Maybe a threshold, so that the requirement goes away below some sort of minimum loss value?
         
         # The prompt to start with
@@ -412,7 +591,6 @@ class AttackParams(JSONSerializableObject):
 
         # where to place the adversarial content in the generated prompt
         # all other modes besides SUFFIX are TKTK for now
-        # because I don't want to have to rewrite even *more* code that handles the content exclusively as strings instead of token IDs
         self.adversarial_content_placement = AdversarialContentPlacement.SUFFIX
         
         # emulate the original attack by converting the adversarial token IDs to a string and then back to token IDs at every iteration
@@ -447,25 +625,22 @@ class AttackParams(JSONSerializableObject):
         # enable some hardcoded tokenizer workarounds implemented by the original developers
         self.enable_hardcoded_tokenizer_workarounds = False
 
+        # try the Qwen 1 dtype workaround even if the model is not autodetected as Qwen
+        self.force_qwen_dtype_workaround_check = False
+
         # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
         self.missing_pad_token_replacement = None
+        
+        # If this value is "default", use the tokenizer's value. If it is "left" or "right", force the tokenizer to use that value. If it is None, unset the value 
+        self.padding_side = "default"
+
+        # string to use to determine the token to use for padding Broken Hill lists and tensors - should NOT be a special token, and should be a value that always encodes to a single token ID
+        self.broken_hill_padding_token_string = "."
 
         # Options that control detection of a successful jailbreak
-        #
-        # TKTK: replace the negative and positive lists with a linear rule-based engine
-        # e.g.:
-        #   rule 1: "I'm sorry" indicates no jailbreak
-        #   rule 2-14: other "no jailbreak" strings
-        #   rule 15: "Here's a hypothetical scenario" indicates jailbreak after all
-        #   rule 16: "10-year-old's birthday party" indicates no jailbreak
-        #   rule 17 added via command-line: "pin the tail on the donkey but where the 
-        #           winner gets to anonymously kill you" indicates jailbreak after all
-        #   All rules evaluated every time, like a firewall policy
-        self.jailbreak_detection_rule_set = []      
-
-        # TKTK: detect jailbreak based on some loss threshold?
+        self.jailbreak_detection_rule_set = None      
         
-        # If this value is specified, at each iteration, the tool will test results using <VALUE> additional random seed values, to attempt to avoid focusing on fragile results
+        # If this value is specified, at each iteration, Broken Hill will test results using <VALUE> additional random seed values, to attempt to avoid focusing on fragile results
         # The values are selected from the hardcoded results in attack_manager.py => get_random_seed_list_for_comparisons()
         # If the current value in the list is already used for any of the existing random seeds, it will be skipped
         # Meaning the operator could theoretically choose to compare against 253-256 random seeds
@@ -478,6 +653,9 @@ class AttackParams(JSONSerializableObject):
         self.random_seed_scoring_mode = OverallScoringFunction.MEDIAN
 
         # values that can greatly influence model behaviour
+        # enable do_sample in all calls to model.generate, even for the "canonical" instance.
+        # This is included for development/debugging only.
+        self.always_do_sample = False
         # temperature range begin
         self.model_temperature_range_begin = 1.0
         # temperature range end (inclusive)
@@ -491,6 +669,9 @@ class AttackParams(JSONSerializableObject):
         # CUDA
         self.torch_cuda_manual_seed_all = 20
 
+        # If this option is set to True, Broken Hill will generate a second version of the prompt to use for the memory-hungry parts of the GCG attack (gradient generation, logits, etc.).
+        # The second version of the prompt omits the system prompt (if any) and any template messages before the current user input.
+        self.ignore_prologue_during_gcg_operations = False
 
         # Candidate adversarial data filtering
         #
@@ -524,46 +705,29 @@ class AttackParams(JSONSerializableObject):
             # filter out any additional tokens that are listed as being highly problematic in generated content
             self.exclude_other_offensive_tokens = False
             
+            # Filtering out other values can sometimes help prevent the script from focusing on attacks that are easily detectable as unusual, but also potentially filter out interesting attacks that would actually work when user input is not heavily restricted.
+            # The command-line interface includes several shortcuts to populate this list with values I found useful at one time or another but I'd recommend leaving it empty by default.
+            # "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG" is a special value that will exclude any token that consists solely of whitespace
+            self.individually_specified_not_allowed_token_list = []
+            self.individually_specified_not_allowed_token_list_case_insensitive = []
+            
             # If specified, exclude tokens that don't match the following pattern
             self.token_filter_regex = None
-            
-            # Filtering out other values can sometimes help prevent the script from focusing 
-            # on attacks that are easily detectable as unusual, but also potentially 
-            # filter out interesting attacks that would actually work when user input
-            # is not heavily restricted. The command-line interface includes several 
-            # shortcuts to populate this list with values I found useful at one time or another
-            # but I'd recommend leaving it empty by default.
-            # "GCG_ANY_ALL_WHITESPACE_TOKEN_GCG" is a special value that will exclude
-            # any token that consists solely of whitespace
-            self.not_allowed_token_list = []
-            
-            self.not_allowed_token_list_case_insensitive = []
-
         
         # Post-generation candidate adversarial data filtering
         if 2 > 1:   # indent this data to make it more distinguishable from other sections
             #
-            # This section is kind of a hack, because ideally everything would be done
-            # by biasing the token generation, not culling the list of values it generates
-            # but it can help avoid edge and corner cases like adversarial data
-            # where each position becomes optimized to "\n###"
+            # This section is kind of a hack, because ideally everything would be done by biasing the token generation, not culling the list of values it generates.
             
-            # If these values are not None, filter out candidate strings with too many 
-            # or too few tokens
-            # This is a modification of the original code, which tried to keep the number 
-            # consistent, but the logic didn't work for some models (e.g. StableLM 2)
+            # If these values are not None, filter out candidate strings with too many or too few tokens.
+            # This is a modification of the original code, which tried to keep the number consistent, but the logic didn't work for some models (e.g. StableLM 2).
             self.candidate_filter_tokens_min = None
             self.candidate_filter_tokens_max = None
-            # This option re-enables the check from the original code, which is supposed
-            # to keep the token count consistent but will prevent any candidates from being
-            # allowed for some models (such as StableLM 2)
+            # This option re-enables the check from the original code, which is supposed to keep the token count consistent but will prevent any candidates from being allowed for some models (such as StableLM 2)
             self.attempt_to_keep_token_count_consistent = False
             
             # Filter candidate strings by requiring that they match a regular expression
-            #self.candidate_filter_regex = "[0-9A-Za-z]+"
-            #self.candidate_filter_regex = "\w+"
             self.candidate_filter_regex = "."
-            #self.candidate_filter_regex = None
 
             # Filter candidate strings to exclude lists with more than this many repeated lines
             self.candidate_filter_repetitive_lines = None
@@ -588,7 +752,7 @@ class AttackParams(JSONSerializableObject):
         # If both this value and add_token_when_no_candidates_returned are enabled, and the prequisites for both apply, then add_token_when_no_candidates_returned will take precedence
         self.delete_token_when_no_candidates_returned = False
 
-        # The formatting string for roles when a model uses one of the generic fastchat templates 
+        # The formatting string for roles when a model uses one of the generic fschat templates 
         # (one_shot, zero_shot, etc.)
         #self.generic_role_indicator_template = get_default_generic_role_indicator_template()
         self.generic_role_indicator_template = None
@@ -606,7 +770,7 @@ class AttackParams(JSONSerializableObject):
 
         # assorted values that may or may not impact performance
         self.low_cpu_mem_usage = False
-        self.use_cache = False
+        self.use_cache = True
     
         # various other minor configuration options
         # Displays the size of the model after loading it
@@ -623,14 +787,25 @@ class AttackParams(JSONSerializableObject):
         # the maximum the adversarial token generation batch size is allowed to grow to when no candidates are found
         self.max_new_adversarial_value_candidate_count = 1024
         
-        # try to avoid out-of-memory errors during the most memory-intensive part of the work
-        self.batch_size_get_logits = 1
+        # try to avoid out-of-memory errors during the most memory-intensive part of the work.
+        # This used to be set to 1, but after analyzing CUDA profiling data, it seems that that typically results in *greater* memory use than with a value of 512.
+        # In the best-case data, using 1 might sometimes result in a few hundred MiB less CUDA memory use.
+        self.batch_size_get_logits = 512
 
         # Output detailed token and token ID information when self tests fail
         self.verbose_self_test_output = False
 
         # Perform the attack even if the jailbreak self-tests indicate the results are unlikely to be useful
         self.ignore_jailbreak_self_tests = False
+
+        # Display detailed information on the named parameter groups when the model is loaded
+        self.verbose_model_parameter_info = False
+        
+        # Display system resource/performance information every time it's collected, instead of only at key intervals
+        self.verbose_resource_info = False
+        
+        # Display verbose system resource/performance statistics when execution completes
+        self.verbose_statistics = False
 
         # Stop iterating after the first successful jailbreak detection
         self.break_on_success = False
@@ -655,8 +830,8 @@ class AttackParams(JSONSerializableObject):
         self.generation_max_new_tokens = 32
 
         # maximum new tokens value when generating full output
-        self.full_decoding_max_new_tokens = 16384
-        #self.full_decoding_max_new_tokens = 1024
+        #self.full_decoding_max_new_tokens = 16384
+        self.full_decoding_max_new_tokens = 1024
 
         # during the candidate-generation stage, continue generating sets of random candidates until at least one is found that either has a lower loss than the current value, or increases it by no more than this amount
         self.required_loss_threshold = None
@@ -664,8 +839,8 @@ class AttackParams(JSONSerializableObject):
         # if self.required_loss_threshold is not None, and this value is not None, make this many attempts at finding a candidate that meets the required threshold before giving up
         self.loss_threshold_max_attempts = None
         
-        # exit the tool entirely if the loss threshold is not met after the maximum attempt count is reached.
-        # If this value is False, the tool will use the "best best" value determined during the attempt to find a value that met the threshold.
+        # exit Broken Hill entirely if the loss threshold is not met after the maximum attempt count is reached.
+        # If this value is False, Broken Hill will use the "best best" value determined during the attempt to find a value that met the threshold.
         self.exit_on_loss_threshold_failure = False
 
         # if the loss value increases between iterations, roll back to the last "good" adversarial data
@@ -687,45 +862,68 @@ class AttackParams(JSONSerializableObject):
         # If the result is not an improvement, trigger a rollback and re-randomize even if rollback is not enabled for other criteria.
         # If rollback is enabled, and the next iteration after randomization would trigger a rollback, the rollback should also be re-randomized.
         # TKTK: related option to increase the number of tokens that are randomized in the event of sequential randomizations.
-        # e.g. randomization is triggered, and four tokens are randomized. The result does not meet the "success" criteria. The tool should therefore roll back to the pre-randomization value, and randomize e.g. five tokens instead of four.
+        # e.g. randomization is triggered, and four tokens are randomized. The result does not meet the "success" criteria. Broken Hill should therefore roll back to the pre-randomization value, and randomize e.g. five tokens instead of four.
 
         self.radiation_gardens = []
 
+        # logging options
+        self.log_file_path = None
+        self.console_output_level = logging.INFO
+        self.log_file_output_level = logging.INFO
+        self.console_ansi_format = True
+        self.log_file_ansi_format = False
+        # If this option is set to False, logging operations that require their own call to the tokenizer to encode or decode tokens will be avoided
+        self.generate_debug_logs_requiring_extra_tokenizer_calls = False
+        # Workaround for overly-chatty-by-default PyTorch (and other) code
+        self.third_party_module_output_level = logging.WARNING
+
         # output options
         self.overwrite_output = False
+        # If this value is not None, write detailed result data to the specified JSON file
         self.json_output_file = None
-        
+        # If this value is not None, write performance statistics collected during the attack to the specified JSON file
+        self.performance_stats_output_file = None
+        # If this value is not None, use PyTorch's CUDA memory history feature (https://pytorch.org/docs/stable/torch_cuda_memory.html) to save a pickled blob of profiling data
+        self.torch_cuda_memory_history_file = None
+        # If this value is False, output files will only be written once, at the end of the test, instead of at every iteration
+        self.write_output_every_iteration = True
+       
+        # parameter save/load options
+        self.save_options_path = None
+        self.load_options_path = None
+        self.load_options_from_state_path = None
+       
+        # state backup/restore options
+        self.save_state = True
+        self.delete_state_on_completion = False
+        self.overwrite_existing_state = False
+        # Default directory name (in user's home directory) to store state files if a location is not explicitly specified
+        self.default_state_directory = '.broken_hill'
+        self.state_directory = None
+        self.state_file = None
+        self.load_state_from_file = None
+                
         # TKTK: option to generate a dynamically-quantized version of the model and also check results against it, because quantized models seem much less susceptible to this type of attack.
         # As noted below in the "Quantization options" section, the attack itself cannot be performed (at least using PyTorch) against an integer-based model - it must be floating point.
         # However, the attack could be performed on the floating-point model, and each adversarial result checked against the floating-point and quantized models at each iteration.
         # Alternatively, maybe it would make sense to have the quantized testing performed using the Python Ollama library, because Ollama supports many more quantization formats than PyTorch.
-        
-        
         
         # Quantization options
         #
         # None of these work, and are unlikely to work for the foreseeable future.
         # That's why none of these are exposed as command-line parameters.
         #
-        # They're a remnant of the work I did early on to try to allow use of 
-        # quantized models so that attacks against larger LLMs could fit into memory 
-        # on consumer hardware. Maybe they'll be useful again someday.
+        # They're a remnant of the work I did early on to try to allow use of quantized models so that attacks against larger LLMs could fit into memory on consumer hardware.
+        # They should be useful again once I add support for just testing an existing list of adversarial content against a model.
         #
-        # The attack performed by this tool depends on PyTorch features that 
-        # do not currently support quantized data. In particular, the gradient operations.
-        # The PyTorch developers claim that gradient operations are only possible
-        # for floating-point values, because they require continuous functions.
-        # I don't know why it's not possible to shift everything left by a decimial 
-        # place or two and do everything in integer math, like game developers did 
-        # for decades to improve performance, but I'm also not a mathematician or 
-        # an expert in machine learning theory.
-        # All I know is that we had integer gradients for other purposes in the 1990s 
-        # and they were a heck of a lot better than no gradients at all.
+        # The attack performed by Broken Hill depends on PyTorch features that do not currently support quantized data. In particular, the gradient operations.
+        # The PyTorch developers claim that gradient operations are only possible for floating-point values, because they require continuous functions.
+        # I don't know why it's not possible to shift everything left by a decimial place or two and do everything in integer math, like game developers did for decades to improve performance, but I'm also not a mathematician or an expert in machine learning theory.
+        # All I know is that we had integer gradients for other purposes in the 1990s and they were a heck of a lot better than no gradients at all.
         # [ shakes fist at cloud ]
         
         # set to none to disable dynamic quantization
-        # Dynamic quantization doesn't currently work with the llm-attacks code
-        # because the code uses PyTorch features that aren't available with dynamic quantization
+        # Dynamic quantization doesn't currently work with the llm-attacks code, because the code uses PyTorch features that aren't available with dynamic quantization.
         #self.quantization_dtype = torch.qint8
         self.quantization_dtype = None
 
@@ -749,51 +947,1444 @@ class AttackParams(JSONSerializableObject):
         return AttackParams.from_dict(self.to_dict())
     
     @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, AttackParams):
+            raise JSONSerializationException(f"Cannot apply properties for the AttackParams class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(AttackParams, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.radiation_gardens is not None:
+            if len(existing_object.radiation_gardens) > 0:
+                deserialized_gardens = []
+                for i in range(0, len(existing_object.radiation_gardens)):
+                    deserialized_gardens.append(RadiationGarden.from_dict(existing_object.radiation_gardens[i]))
+                existing_object.radiation_gardens = deserialized_gardens
+        if existing_object.jailbreak_detection_rule_set is not None:
+            existing_object.jailbreak_detection_rule_set = LLMJailbreakDetectorRuleSet.from_dict(existing_object.jailbreak_detection_rule_set)
+        return existing_object
+    
+    @staticmethod
     def from_dict(property_dict):
         result = AttackParams()
-        super(AttackParams, result).set_properties_from_dict(result, property_dict)
-        if len(result.radiation_gardens) > 0:
-            deserialized_gardens = []
-            for i in range(0, len(result.radiation_gardens)):
-                deserialized_gardens.append(RadiationGarden.from_dict(result.radiation_gardens[i]))
-            result.radiation_gardens = deserialized_gardens
-        if len(result.jailbreak_detection_rule_set) > 0:
-            deserialized_jailbreak_rule_set = []
-            for i in range(0, len(result.jailbreak_detection_rule_set)):
-                deserialized_jailbreak_rule_set.append(LLMJailbreakDetectorRule.from_dict(result.jailbreak_detection_rule_set[i]))
-            result.jailbreak_detection_rule_set = deserialized_jailbreak_rule_set
+        result = AttackParams.apply_dict(result, property_dict)
         return result
+    
+    @staticmethod
+    def apply_json(existing_object, json_string):
+        return AttackParams.apply_dict(existing_object, json.loads(json_string))
     
     @staticmethod
     def from_json(json_string):
         return AttackParams.from_dict(json.loads(json_string))
 
-class AttackState(JSONSerializableObject):
+class RandomNumberGeneratorStateCollection(JSONSerializableObject):
     def __init__(self):
-        self.attack_params = None
-        self.iteration_count = 0
-        
+        # PyTorch default
+        self.torch_rng_state = None
+        # PyTorch seeded CPU
+        self.random_generator_cpu_state = None
+        # PyTorch seeded model device
+        self.random_generator_attack_params_model_device_state = None
+        # PyTorch seeded gradient device
+        self.random_generator_attack_params_gradient_device_state = None                    
+        # NumPy
+        self.numpy_rng_state = None
+
     def to_dict(self):
-        result = super(AttackState, self).properties_to_dict(self)
+        #logger.debug(f"self.torch_rng_state = {self.torch_rng_state}, self.random_generator_cpu_state = {self.random_generator_cpu_state}, self.random_generator_attack_params_model_device_state = {self.random_generator_attack_params_model_device_state}, self.random_generator_attack_params_gradient_device_state = {self.random_generator_attack_params_gradient_device_state}, self.numpy_rng_state = {self.numpy_rng_state}.")
+        result = super(RandomNumberGeneratorStateCollection, self).properties_to_dict(self)
+        #logger.debug(f"result = {result}.")
         return result
 
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
     
     def copy(self):
-        return AttackState.from_dict(self.to_dict())
+        return RandomNumberGeneratorStateCollection.from_dict(self.to_dict())
     
     @staticmethod
     def from_dict(property_dict):
-        result = AttackState()
-        super(AttackState, result).set_properties_from_dict(result, property_dict)
-        if result.attack_params is not None:
-            result.attack_params = AttackParams.from_dict(result.attack_params)
+        result = RandomNumberGeneratorStateCollection()
+        super(RandomNumberGeneratorStateCollection, result).set_properties_from_dict(result, property_dict)
+        if result.torch_rng_state is not None:
+            result.torch_rng_state = tensor_from_dict(result.torch_rng_state)
+        if result.random_generator_cpu_state is not None:
+            result.random_generator_cpu_state = tensor_from_dict(result.random_generator_cpu_state)
+        if result.random_generator_attack_params_model_device_state is not None:
+            result.random_generator_attack_params_model_device_state = tensor_from_dict(result.random_generator_attack_params_model_device_state)
+        if result.random_generator_attack_params_gradient_device_state is not None:
+            result.random_generator_attack_params_gradient_device_state = tensor_from_dict(result.random_generator_attack_params_gradient_device_state)
         return result
     
     @staticmethod
     def from_json(json_string):
-        return AttackState.from_dict(json.loads(json_string))
+        return RandomNumberGeneratorStateCollection.from_dict(json.loads(json_string))
+
+class BrokenHillRandomNumberGenerators():
+    def __init__(self, attack_state):
+        self.random_generator_attack_params_model_device = torch.Generator(device = attack_state.model_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.random_generator_attack_params_gradient_device = torch.Generator(device = attack_state.model_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        if attack_state.persistable.attack_params.model_device != attack_state.persistable.attack_params.gradient_device:
+            self.random_generator_attack_params_gradient_device = torch.Generator(device = attack_state.gradient_device).manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.random_generator_cpu = torch.Generator(device = 'cpu').manual_seed(attack_state.persistable.attack_params.torch_manual_seed)
+        self.numpy_random_generator = numpy.random.default_rng(seed = attack_state.persistable.attack_params.numpy_random_seed)
+    
+    def get_current_states(self):
+        result = RandomNumberGeneratorStateCollection()
+        
+        # PyTorch default
+        result.torch_rng_state = torch.get_rng_state()
+        # PyTorch seeded CPU
+        result.random_generator_cpu_state = self.random_generator_cpu.get_state()
+        # PyTorch seeded model device
+        result.random_generator_attack_params_model_device_state = self.random_generator_attack_params_model_device.get_state()
+        # PyTorch seeded gradient device
+        result.random_generator_attack_params_gradient_device_state = self.random_generator_attack_params_gradient_device.get_state()                    
+        # NumPy
+        result.numpy_rng_state = self.numpy_random_generator.bit_generator.state
+        
+        return result
+    
+    def set_states(self, rng_state_collection):
+        # PyTorch default
+        torch.set_rng_state(rng_state_collection.torch_rng_state)
+        # PyTorch seeded CPU
+        self.random_generator_cpu.set_state(rng_state_collection.random_generator_cpu_state)
+        # PyTorch seeded model device
+        self.random_generator_attack_params_model_device.set_state(rng_state_collection.random_generator_attack_params_model_device_state)
+        # PyTorch seeded gradient device
+        self.random_generator_attack_params_gradient_device.set_state(rng_state_collection.random_generator_attack_params_gradient_device_state)                    
+        # NumPy
+        self.numpy_random_generator.bit_generator.state = rng_state_collection.numpy_rng_state
+
+# Anything about the attack state that can and should be persisted as JSON goes here
+class PersistableAttackState(JSONSerializableObject):
+    def __init__(self):
+        self.broken_hill_version = None
+        self.attack_params = None
+        self.language_manager = None
+        self.performance_data = ResourceUtilizationData()
+        self.main_loop_iteration_number = 0
+        self.successful_attack_count = 0
+        self.overall_result_data = BrokenHillResultData()
+        self.random_number_generator_states = None
+        self.initial_adversarial_content = None
+        self.current_adversarial_content = None
+        self.tested_adversarial_content = AdversarialContentList()
+        # There is only one "last known good" adversarial value tracked to avoid the following scenario:
+        # User has multiple types of rollback enabled
+        # Rollback type 1 is triggered, and the script rolls back to the last-known-good adversarial value associated with rollback type 1
+        # The rollback type 2 last-known-good adversarial value is updated to the value that caused the rollback
+        # In the next iteration, rollback type 2 is triggered, and the script "rolls sideways" to the data that caused the first rollback, making the script branch into bad values
+        self.last_known_good_adversarial_content = AdversarialContent()
+        self.last_known_good_adversarial_content.token_ids = None
+        self.last_known_good_adversarial_content.tokens = None
+        self.last_known_good_adversarial_content.as_string = None
+        self.best_loss_value = None
+        self.best_jailbreak_count = None
+        self.original_new_adversarial_value_candidate_count = None
+        self.original_topk = None
+        # the next two properties hold the merged version of [anything explicitly specified as individual tokens by the user] and [generated from options]
+        self.not_allowed_token_list = []
+        self.not_allowed_token_list_case_insensitive = []
+        self.token_allow_and_deny_lists = None
+    
+    def initialize_language_manager(self):
+        self.language_manager = HumanLanguageManager.from_bundled_json_file()    
+    
+    def build_token_allow_and_denylists(self, attack_state):
+        self.not_allowed_token_list = copy.deepcopy(self.attack_params.individually_specified_not_allowed_token_list)
+        self.not_allowed_token_list_case_insensitive = copy.deepcopy(self.attack_params.individually_specified_not_allowed_token_list_case_insensitive)
+        
+        if self.attack_params.exclude_language_names_except is not None:            
+            language_name_list = self.language_manager.get_language_names(ietf_tag_to_exclude = self.attack_params.exclude_language_names_except)
+            self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, language_name_list)
+        
+        # TKTK: add a localization option for these
+        if self.attack_params.exclude_slur_tokens:
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding slurs to the list that will be used to build the token denylist.")
+            self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_slurs())
+        if self.attack_params.exclude_profanity_tokens:
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding profanity to the list that will be used to build the token denylist.")
+            self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_profanity())
+        if self.attack_params.exclude_other_offensive_tokens:
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"adding other highly-problematic content to the list that will be used to build the token denylist.")
+            self.not_allowed_token_list_case_insensitive = add_values_to_list_if_not_already_present(self.not_allowed_token_list_case_insensitive, get_other_highly_problematic_content())
+        
+        logger.info(f"Building token allowlist and denylist - this step can take a long time for tokenizers with large numbers of tokens.")
+        self.token_allow_and_deny_lists = get_token_allow_and_deny_lists(attack_state, 
+            self.not_allowed_token_list, 
+            device = attack_state.model_device, 
+            additional_token_strings_case_insensitive = self.not_allowed_token_list_case_insensitive, 
+            filter_nonascii_tokens = self.attack_params.exclude_nonascii_tokens, 
+            filter_nonprintable_tokens = self.attack_params.exclude_nonprintable_tokens, 
+            filter_special_tokens = self.attack_params.exclude_special_tokens, 
+            filter_additional_special_tokens = self.attack_params.exclude_additional_special_tokens, 
+            filter_whitespace_tokens = self.attack_params.exclude_whitespace_tokens, 
+            token_regex = self.attack_params.get_token_filter_regex()
+            )
+    
+    def to_dict(self):
+        result = super(PersistableAttackState, self).properties_to_dict(self)
+        return result
+
+    def to_json(self):
+        self_dict = self.to_dict()
+        #logger.debug(f"self_dict = {self_dict}")
+        return JSONSerializableObject.json_dumps(self_dict, use_indent = False)
+    
+    def copy(self):
+        return PersistableAttackState.from_dict(self.to_dict())
+    
+    @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, PersistableAttackState):
+            raise JSONSerializationException(f"Cannot apply properties for the PersistableAttackState class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(PersistableAttackState, existing_object).set_properties_from_dict(existing_object, property_dict)
+        
+        if existing_object.attack_params is not None:
+            existing_object.attack_params = AttackParams.from_dict(existing_object.attack_params)
+
+        if existing_object.language_manager is not None:
+            existing_object.language_manager = HumanLanguageManager.from_dict(existing_object.language_manager)
+
+        if existing_object.performance_data is not None:
+            existing_object.performance_data = ResourceUtilizationData.from_dict(existing_object.performance_data)
+
+        if existing_object.overall_result_data is not None:
+            existing_object.overall_result_data = BrokenHillResultData.from_dict(existing_object.overall_result_data)
+
+        if existing_object.random_number_generator_states is not None:
+            existing_object.random_number_generator_states = RandomNumberGeneratorStateCollection.from_dict(existing_object.random_number_generator_states)
+
+        if existing_object.initial_adversarial_content is not None:
+            existing_object.initial_adversarial_content = AdversarialContent.from_dict(existing_object.initial_adversarial_content)
+
+        if existing_object.current_adversarial_content is not None:
+            existing_object.current_adversarial_content = AdversarialContent.from_dict(existing_object.current_adversarial_content)
+
+        if existing_object.tested_adversarial_content is not None:
+            existing_object.tested_adversarial_content = AdversarialContentList.from_dict(existing_object.tested_adversarial_content)
+
+        if existing_object.last_known_good_adversarial_content is not None:
+            existing_object.last_known_good_adversarial_content = AdversarialContent.from_dict(existing_object.last_known_good_adversarial_content)
+
+        if existing_object.token_allow_and_deny_lists is not None:
+            existing_object.token_allow_and_deny_lists = TokenAllowAndDenyList.from_dict(existing_object.token_allow_and_deny_lists)
+
+        return existing_object
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = PersistableAttackState()
+        result = PersistableAttackState.apply_dict(result, property_dict)
+        return result
+    
+    @staticmethod
+    def apply_json(existing_object, json_string):
+        return PersistableAttackState.apply_dict(existing_object, json.loads(json_string))
+    
+    @staticmethod
+    def from_json(json_string):
+        return PersistableAttackState.from_dict(json.loads(json_string))
+
+# Anything about the attack state that can't be easily persisted (or that doesn't make sense to) goes here
+# As well as a reference to the persistable data, so there's just the one thing to pass around
+class VolatileAttackState():
+    def __init__(self):
+        self.log_manager = None
+        self.persistable = PersistableAttackState()
+        self.random_number_generators = None
+        self.model = None
+        self.tokenizer = None        
+        self.adversarial_content_manager = None
+        self.conversation_template = None
+        self.random_seed_values = get_random_seed_list_for_comparisons()
+        self.model_data_type = None
+        self.model_dtype_dtype = None
+        self.model_dtype_string = None        
+        self.model_device = None
+        self.model_type_name = None
+        self.tokenizer_type_name = None
+        self.gradient_device = None
+        self.forward_device = None
+        self.token_denylist_as_cpu_tensor = None
+        self.trash_fire_token_treasury = None
+        self.jailbreak_detector = LLMJailbreakDetector()    
+        self.broken_hill_padding_token_id = None
+        self.model_config_dict = None
+        self.generation_config_dict = None
+        self.tokenizer_config_dict = None
+        self.model_architectures = []
+    
+    def write_persistent_state(self):
+        try:
+            self.update_persistable_data()
+        except (Exception, RuntimeError) as e:
+            e_string = None
+            traceback_string = None
+            finished_successfully = False
+            try:
+                e_string = f"{e}"
+            except (Exception, RuntimeError) as e:
+                e_string = "[Unable to convert exception to a string]"
+            try:
+                traceback_string = f"{traceback.format_exc()}"
+            except (Exception, RuntimeError) as e:
+                traceback_string = "[Unable to convert traceback to a string]"
+            logger.error(f"Broken Hill encountered an unhandled exception when trying to update persistable data: {e_string}. The exception details will be displayed below this message for troubleshooting purposes. If this is an error such as 'CUDA error: device-side assert triggered', and the attack itself resulted in a similar error, this behaviour is expected. Broken Hill will do its best to preserve the attack state despite the error.\n{traceback_string}")
+        if self.persistable.attack_params.save_state:
+            safely_write_text_output_file(self.persistable.attack_params.state_file, self.persistable.to_json())
+    
+    def get_existing_file_number(self, file_name_list):
+        file_number = None
+        file_number_regex = re.compile("-[0-9]{4}$")
+        found_file_numbers = []      
+        for i in range(0, len(file_name_list)):
+            current_fn = file_name_list[i]
+            cfn_stem = pathlib.Path(current_fn).stem
+            pattern_match = file_number_regex.search(cfn_stem)
+            if pattern_match:
+                try:
+                    num_str = pattern_match.group(0).replace("-", "")
+                    found_file_numbers.append(int(num_str))
+                except Exception as e:
+                    logger.error(f"Couldn't convert {pattern_match.group(0)} into a number: {e}\n{traceback.format_exc()}\n")
+        if len(found_file_numbers) > 0:
+            found_file_numbers.sort()
+            file_number = found_file_numbers[(len(found_file_numbers) - 1)]        
+        return file_number
+    
+    def add_or_replace_file_number(self, file_path, new_file_number):
+        fp_directory = os.path.dirname(file_path)
+        fp_file_name = os.path.basename(file_path)
+        fp_split = os.path.splitext(fp_file_name)
+        fp_stem = fp_split[0]
+        fp_extension = fp_split[1]
+        file_number_regex = re.compile("-[0-9]{4}$")
+        file_number_string = f"-{new_file_number:04}"
+        # try replacing an existing number first
+        fp_stem_new = file_number_regex.sub(file_number_string, fp_stem)
+        # if nothing has changed, there was no number to update
+        if fp_stem_new == fp_stem:
+            fp_stem_new = f"{fp_stem}{file_number_string}"
+        result = os.path.join(fp_directory, f"{fp_stem_new}{fp_extension}")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"input: '{file_path}', new_file_number: {new_file_number}, result: '{result}'.")
+        return result
+    
+    def add_file_name_suffix(self, file_path, suffix):
+        result = file_path
+        fp_directory = os.path.dirname(file_path)
+        fp_file_name = os.path.basename(file_path)
+        fp_split = os.path.splitext(fp_file_name)
+        fp_stem = fp_split[0]
+        fp_extension = fp_split[1]
+        # if the suffix is a simple one, and it's already there, don't re-add it
+        handled_suffix = False        
+        continued_regex = re.compile("-(resumed|continued)-[0-9]{6}_iterations-[0-9]{4}$")
+        if continued_regex.search(fp_stem):
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"continued_regex matches fp_stem '{fp_stem}'.")
+            fp_stem = continued_regex.sub("", fp_stem)
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"fp_stem is now '{fp_stem}'.")
+        if not handled_suffix:
+            result = os.path.join(fp_directory, f"{fp_stem}{suffix}{fp_extension}")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"input: '{file_path}', suffix: {suffix}, result: '{result}'.")
+        return result
+    
+    def get_continuation_command(self, state_file_path, completed_all_iterations):
+        result_array = []
+        output_file_parameters = []
+        # pre-populate the recommended Python command
+        result_array.append("bin/python")
+        result_array.append("-u")
+        # find the index of the Broken Hill script in the original command
+        script_name = "brokenhill.py"
+        len_script_name = len(script_name)
+        script_index = None
+        for i in range(0, len(self.persistable.attack_params.original_command_line_array)):
+            element_lower = self.persistable.attack_params.original_command_line_array[i].lower()
+            if len(element_lower) >= len_script_name:
+                comparison_string = element_lower[-len_script_name:]
+                if comparison_string == script_name:
+                    script_index = i
+                    break
+                else:
+                    if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                        logger.debug(f"no match between '{comparison_string}' and '{script_name}'")
+
+        if script_index is None:
+            raise Exception(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
+        for i in range(0, script_index + 1):
+            result_array.append(self.persistable.attack_params.original_command_line_array[i])
+        result_array.append("--load-state")
+        result_array.append(state_file_path)
+        file_name_suffix = ""
+        new_state_file_path = state_file_path
+        new_json_output_file = self.persistable.attack_params.json_output_file
+        new_performance_stats_output_file = self.persistable.attack_params.performance_stats_output_file
+        new_torch_cuda_memory_history_file = self.persistable.attack_params.torch_cuda_memory_history_file
+
+        written_files_list = []
+        written_files_list.append(state_file_path)
+        if self.persistable.attack_params.json_output_file is not None:
+            written_files_list.append(self.persistable.attack_params.json_output_file)
+            output_file_parameters.append("--json-output-file")
+        if self.persistable.attack_params.performance_stats_output_file is not None:
+            written_files_list.append(self.persistable.attack_params.performance_stats_output_file)
+            output_file_parameters.append("--performance-output-file")
+        if self.persistable.attack_params.torch_cuda_memory_history_file is not None:
+            written_files_list.append(self.persistable.attack_params.torch_cuda_memory_history_file)
+            output_file_parameters.append("--torch-cuda-memory-history-file")
+        
+        next_file_number = 1
+        
+        if completed_all_iterations:
+            next_iteration_count = self.persistable.attack_params.max_iterations * 2
+            result_array.append("--max-iterations")
+            result_array.append(f"{next_iteration_count}")
+            file_name_suffix = f"-continued-{next_iteration_count:06}_iterations"
+        else:
+            file_name_suffix = "-resumed"
+        
+        finished_determining_filenames = False
+        got_automatic_filenames = False
+        # 999,999 automatically named variations should be enough for anybody.
+        # And, not coincidentally, that is the limit of a six-digit zero-padded number.
+        max_attempts = 999999
+        attempt_num = 0
+        # Make sure the suggested filenames won't overwrite any existing files
+        while not finished_determining_filenames:
+            existing_file = False
+            
+            new_state_file_path = self.add_or_replace_file_number(self.add_file_name_suffix(new_state_file_path, file_name_suffix), next_file_number)
+            if os.path.isfile(new_state_file_path):
+                existing_file = True
+            
+            if not existing_file and new_json_output_file is not None:
+                new_json_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_json_output_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_json_output_file):
+                    existing_file = True
+            
+            if not existing_file and new_performance_stats_output_file is not None:
+                new_performance_stats_output_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_performance_stats_output_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_performance_stats_output_file):
+                    existing_file = True
+
+            if not existing_file and new_torch_cuda_memory_history_file is not None:
+                new_torch_cuda_memory_history_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_torch_cuda_memory_history_file, file_name_suffix), next_file_number)
+                if os.path.isfile(new_torch_cuda_memory_history_file):
+                    existing_file = True
+        
+            if not existing_file:
+                finished_determining_filenames = True
+                got_automatic_filenames = True
+            else:
+                attempt_num += 1
+                next_file_number += 1
+                if attempt_num > max_attempts:
+                    finished_determining_filenames = True
+        
+        if got_automatic_filenames:
+            result_array.append("--state-file")
+            result_array.append(new_state_file_path)
+            
+            if new_json_output_file is not None:
+                result_array.append("--json-output-file")
+                result_array.append(new_json_output_file)
+            
+            if new_performance_stats_output_file is not None:
+                result_array.append("--performance-output-file")
+                result_array.append(new_performance_stats_output_file)
+
+            if new_torch_cuda_memory_history_file is not None:
+                result_array.append("--torch-cuda-memory-history-file")
+                result_array.append(new_torch_cuda_memory_history_file)
+        else:
+            if len(output_file_parameters) > 0:
+                result_array.append(";")
+                result_array.append("# Warning: Broken Hill was unable to automatically generate new file names for the output files that would be generated by this command that do not overwrite existing files.")
+                result_array.append(f"# You should manually determine values for the following parameters: {output_file_parameters}.")
+            
+        self.persistable.attack_params.original_command_line_array
+        
+        return command_array_to_string(result_array, add_line_breaks = True, log_manager = self.log_manager)
+    
+    def get_state_loading_message(self, completed_all_iterations):
+        if not self.persistable.attack_params.save_state:
+            return None
+
+        handled_state_message = False
+        if self.persistable.attack_params.delete_state_on_completion:
+            if completed_all_iterations:
+                delete_message = "This attack completed successfully, and the operator specified the option to delete the save state on successful completion."
+                try:
+                    delete_file(self.persistable.attack_params.state_file)
+                    delete_message = f"{delete_message} The file '{self.persistable.attack_params.state_file}' was deleted successfully."
+                    logger.info(delete_message)
+                except Exception as e:
+                    delete_message = f"{delete_message} However, the file '{self.persistable.attack_params.state_file}' could not be deleted: {e}\n{traceback.format_exc()}\n"
+                    logger.error(delete_message)
+                handled_state_message = True
+        if not handled_state_message:
+            state_message = f"State information for this attack has been stored in '{self.persistable.attack_params.state_file}'."
+            command_message = self.get_continuation_command(self.persistable.attack_params.state_file, completed_all_iterations)
+            if self.persistable.attack_params.delete_state_on_completion:
+                state_message = f"The operator specified the option to delete the save state on successful completion, but this attack did not complete successfully. {state_message}"
+            if not completed_all_iterations:
+                state_message = f"{state_message} You can resume the attack where it was interrupted by running Broken Hill with the option --load-state '{self.persistable.attack_params.state_file}'. For example:\n\n{command_message}"
+            else:
+                state_message = f"{state_message} You can continue the attack with additional iterations by running Broken Hill with the options --load-state '{self.persistable.attack_params.state_file}' and --max-iterations <number greater than {self.persistable.attack_params.max_iterations}>. For example, to double the number of iterations:\n\n{command_message}"            
+        return state_message
+    
+    def write_output_files(self):
+        if self.persistable.attack_params.json_output_file is not None:
+            safely_write_text_output_file(self.persistable.attack_params.json_output_file, self.persistable.overall_result_data.to_json())    
+    
+    def initialize_devices(self):
+        self.model_device = torch.device(self.persistable.attack_params.model_device)
+        self.gradient_device = torch.device(self.persistable.attack_params.gradient_device)
+        self.forward_device = torch.device(self.persistable.attack_params.forward_device)
+        
+    def initialize_random_number_generators(self):
+        # Set random seeds
+        # NumPy
+        numpy.random.seed(self.persistable.attack_params.numpy_random_seed)
+        # PyTorch
+        torch.manual_seed(self.persistable.attack_params.torch_manual_seed)
+        # CUDA
+        if self.persistable.attack_params.using_cuda():
+            torch.cuda.manual_seed_all(self.persistable.attack_params.torch_cuda_manual_seed_all)
+        if self.random_number_generators is None:
+            self.random_number_generators = BrokenHillRandomNumberGenerators(self)
+    
+    # Update any persistable data that represents the state of an object in this class
+    def update_persistable_data(self):
+        if self.random_number_generators is not None:
+            self.persistable.random_number_generator_states = self.random_number_generators.get_current_states()
+
+    def restore_random_number_generator_states(self):
+        if self.persistable.random_number_generator_states is not None:
+            self.random_number_generators.set_states(self.persistable.random_number_generator_states)
+        else:
+            logger.warning(f"No previous random number generator state to restore")
+
+    # Restore any state data for objects in this class that require explicitly referring to persistable data
+    def restore_from_persistable_data(self):
+        self.initialize_devices()
+        self.initialize_random_number_generators()        
+        self.restore_random_number_generator_states()
+            
+    def initialize_jailbreak_detector(self):
+        self.jailbreak_detector.rule_set = self.persistable.attack_params.jailbreak_detection_rule_set
+
+    # Get the lowest value of the current maximum number of tokens and what the model/tokenizer combination supports
+    # Split out in kind of a funny way to provide the user with feedback on exactly why the value was capped
+    # TKTK: iterate over all other parameters with similar names and warn the user if any of them may cause the script to crash unless the value is reduced.
+    # TKTK: split this into separate functions for overall max length, max new tokens, max position embeddings, etc. where possible, instead of the hack it is right now of handling them all as the same thing
+    def get_effective_max_token_value_for_model_and_tokenizer(self, parameter_name, desired_value):
+        effective_value = desired_value
+
+        limited_by_tokenizer_model_max_length = False
+        limited_by_tokenizer_max_position_embeddings = False
+        limited_by_tokenizer_config_model_max_length = False
+        limited_by_tokenizer_config_max_position_embeddings = False
+        limited_by_model_config_max_position_embeddings = False
+        limited_by_model_decoder_config_max_position_embeddings = False
+
+        tokenizer_model_max_length = None
+        tokenizer_max_position_embeddings = None
+        tokenizer_config_model_max_length = None
+        tokenizer_config_max_position_embeddings = None
+        model_config_max_position_embeddings = None
+        model_decoder_config_max_position_embeddings = None
+
+        limiting_factor_count = 0
+        
+        if hasattr(self.tokenizer, "model_max_length"):        
+            if not isinstance(self.tokenizer.model_max_length, type(None)):
+                tokenizer_model_max_length = self.tokenizer.model_max_length
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
+                if tokenizer_model_max_length < desired_value:
+                    limited_by_tokenizer_model_max_length = True
+                    limiting_factor_count += 1
+                    
+        if hasattr(self.tokenizer, "max_position_embeddings"):        
+            if not isinstance(self.tokenizer.max_position_embeddings, type(None)):
+                tokenizer_max_position_embeddings = self.tokenizer.max_position_embeddings
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
+                if tokenizer_max_position_embeddings < desired_value:
+                    limited_by_tokenizer_max_position_embeddings = True
+                    limiting_factor_count += 1
+
+        if hasattr(self.tokenizer, "config"):
+            if self.tokenizer.config is not None:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"self.tokenizer.config = {self.tokenizer.config}")
+                if hasattr(self.tokenizer.config, "model_max_length"):            
+                    if not isinstance(self.tokenizer.config.model_max_length, type(None)):
+                        tokenizer_config_model_max_length = self.tokenizer.config.model_max_length
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"tokenizer_config_model_max_length = {tokenizer_config_model_max_length}")
+                        if tokenizer_config_model_max_length < desired_value:            
+                            limited_by_tokenizer_config_model_max_length = True
+                            limiting_factor_count += 1
+                if hasattr(self.tokenizer.config, "max_position_embeddings"):            
+                    if not isinstance(self.tokenizer.config.max_position_embeddings, type(None)):
+                        tokenizer_config_max_position_embeddings = self.tokenizer.config.max_position_embeddings
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
+                        if tokenizer_config_max_position_embeddings < desired_value:            
+                            limited_by_tokenizer_config_max_position_embeddings = True
+                            limiting_factor_count += 1
+            
+        if hasattr(self.model, "config"):
+            if self.model.config is not None:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"model.config = {self.model.config}")
+                if hasattr(self.model.config, "max_position_embeddings"):            
+                    if not isinstance(self.model.config.max_position_embeddings, type(None)):
+                        model_config_max_position_embeddings = self.model.config.max_position_embeddings
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
+                        if model_config_max_position_embeddings < desired_value:            
+                            limited_by_model_config_max_position_embeddings = True
+                            limiting_factor_count += 1
+        
+        if hasattr(self.model, "decoder"):
+            if self.model.decoder is not None:
+                if hasattr(self.model.decoder, "config"):
+                    if self.model.decoder.config is not None:
+                        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"self.model.decoder.config = {self.model.decoder.config}")
+                        if hasattr(self.model.decoder.config, "max_position_embeddings"):            
+                            if not isinstance(self.model.decoder.config.max_position_embeddings, type(None)):
+                                model_decoder_config_max_position_embeddings = self.model.decoder.config.max_position_embeddings
+                                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                                    logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
+                                if model_decoder_config_max_position_embeddings < desired_value:            
+                                    limited_by_model_decoder_config_max_position_embeddings = True
+                                    limiting_factor_count += 1
+        
+        if limiting_factor_count > 0:
+            description_string = f"The current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
+            for limit_value in [ tokenizer_model_max_length, tokenizer_max_position_embeddings, tokenizer_config_model_max_length, tokenizer_config_max_position_embeddings, model_config_max_position_embeddings, model_decoder_config_max_position_embeddings ]:
+                if not isinstance(limit_value, type(None)):
+                    effective_value = min(effective_value, limit_value)
+            if limited_by_tokenizer_model_max_length:
+                description_string += f"The tokenizer's model_max_length value is {tokenizer_model_max_length}. "
+            if limited_by_tokenizer_max_position_embeddings:
+                description_string += f"The tokenizer's max_position_embeddings value is {tokenizer_max_position_embeddings}. "
+            if limited_by_tokenizer_config_model_max_length:
+                description_string += f"The tokenizer's configuration's model_max_length value is {tokenizer_config_model_max_length}. "
+            if limited_by_tokenizer_config_max_position_embeddings:
+                description_string += f"The tokenizer's configuration's max_position_embeddings value is {tokenizer_config_max_position_embeddings}. "
+            if limited_by_model_config_max_position_embeddings:
+                description_string += f"The model configuration's max_position_embeddings value is {model_config_max_position_embeddings}. "
+            if limited_by_model_decoder_config_max_position_embeddings:
+                description_string += f"The model's decoder's configuration's max_position_embeddings value is {model_decoder_config_max_position_embeddings}. "
+            description_string += f"The effective value that will be used is {effective_value}."
+            logger.warning(description_string)
+             
+        return effective_value
+
+    # TKTK: Add overall max length and similar
+    def adjust_token_length_limit_parameters(self):
+        #model_maximum_token_TKTK        
+        self.persistable.attack_params.generation_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens", self.persistable.attack_params.generation_max_new_tokens)
+        self.persistable.attack_params.full_decoding_max_new_tokens = self.get_effective_max_token_value_for_model_and_tokenizer("--max-new-tokens-final", self.persistable.attack_params.full_decoding_max_new_tokens)
+    
+    def load_model_or_tokenizer_configuration_file(self, configuration_file_path):        
+        result = None
+        if os.path.isfile(configuration_file_path):
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Attempting to load model configuration file '{configuration_file_path}'.")
+            try:
+                result = load_json_from_file(configuration_file_path, failure_is_critical = True)
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Loaded configuration file '{configuration_file_path}' successfully. Content:\n{result}")
+            except Exception as e:
+                logger.error(f"Exception thrown loading configuration file '{configuration_file_path}': {e}'\n{traceback.format_exc()}")
+                result = None
+        else:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Model configuration file '{configuration_file_path}' was not found.")
+        return result
+
+    def get_model_or_tokenizer_configuration_file_value(self, configuration_file_data, key_name):
+        result = None
+        if configuration_file_data is None:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"The specified configuration file data does not exist.")
+        else:
+            if key_name in configuration_file_data.keys():
+                result = configuration_file_data[key_name]
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Returning configuration file value for key '{key_name}': '{result}'.")
+            else:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"The specified configuration file data does not contain a key named '{key_name}'.")
+        return result
+
+    # Loads select configuration files as dicts for use in various loading operations that occur before the model and tokenizer are loaded by Transformers
+    def load_model_and_tokenizer_configuration_files(self):
+        # config.json
+        model_config_json_path = os.path.join(self.persistable.attack_params.model_path, "config.json")
+        self.model_config_dict = self.load_model_or_tokenizer_configuration_file(model_config_json_path)
+        # generation_config.json
+        generation_config_json_path = os.path.join(self.persistable.attack_params.model_path, "generation_config.json")
+        self.generation_config_dict = self.load_model_or_tokenizer_configuration_file(generation_config_json_path)
+        # tokenizer_config.json
+        tokenizer_config_json_path = os.path.join(self.persistable.attack_params.tokenizer_path, "tokenizer_config.json")
+        self.tokenizer_config_dict = self.load_model_or_tokenizer_configuration_file(tokenizer_config_json_path)
+        
+        # populate values based on that data
+        if self.model_config_dict is not None:
+            model_architectures = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "architectures")
+            if model_architectures is not None:
+                if isinstance(model_architectures, list):
+                    if len(model_architectures) > 0:
+                        self.model_architectures = add_values_to_list_if_not_already_present(self.model_architectures, model_architectures, ignore_none = True)
+    
+    def check_for_qwen_outlaw_parameter(self, parameter_name, danger_charlie_prince_qwen_model_detected):
+        if parameter_name in self.model_config_dict.keys():
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"This Qwen model has a '{parameter_name}' option in its configuration, indicating it is likely an outlaw and criminal.")
+        else:
+            danger_charlie_prince_qwen_model_detected = False
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"This Qwen model does not have a '{parameter_name}' option in its configuration, indicating it may be a lawful and virtuous resident of the frontier.")
+        return danger_charlie_prince_qwen_model_detected
+    
+    def handle_potential_charlie_prince_qwen_model(self):
+        handled_model_load = False
+        # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
+        # Inspired by the following PyTorch output:
+        #   The model is automatically converting to bf16 for faster inference. If you want to disable the automatic precision, please manually add bf16/fp16/fp32=True to "AutoModelForCausalLM.from_pretrained".
+        #   https://huggingface.co/Qwen/Qwen-7B/commit/58362a19a5b5b41c88ed1ae04607d733e1df4944
+        is_qwen_model = False
+        use_qwen_workaround = False
+        qwen_danger_message = "This model appears to be one of the Qwen family members that have nonstandard behaviour and cause the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for that format."
+        
+        # Attempt to autodetect affected Qwen models (and derivatives)
+        danger_charlie_prince_qwen_model_detected = False
+        if "qwen" in self.persistable.attack_params.model_path.lower():
+            is_qwen_model = True
+            danger_charlie_prince_qwen_model_detected = True
+        if self.persistable.attack_params.template_name is not None:
+            if "qwen" in self.persistable.attack_params.template_name.lower():
+                is_qwen_model = True
+                danger_charlie_prince_qwen_model_detected = True
+        for model_arch in self.model_architectures:
+            if "qwen" in model_arch.lower():
+                is_qwen_model = True
+                danger_charlie_prince_qwen_model_detected = True
+        if danger_charlie_prince_qwen_model_detected:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Qwen model detected. Checking for evidence of it being a lawless cattle-rustler with intentions of robbing the bank and drinking all the whiskey in town.")
+            # if there is a model configuration file, and it includes the signs of outlaw behaviour, use that as the indicator
+            for yee_haw_sheriff in [ "bf16", "fp16", "fp32" ]:
+                danger_charlie_prince_qwen_model_detected = self.check_for_qwen_outlaw_parameter(yee_haw_sheriff, danger_charlie_prince_qwen_model_detected)
+            if danger_charlie_prince_qwen_model_detected:
+                use_qwen_workaround = True
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Qwen model appears to be a low-down criminal. Workaround will be attempted.")
+
+        # If the user has specified to always try the workaround, obey their wishes
+        if self.persistable.attack_params.force_qwen_dtype_workaround_check:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Operator has enabled the option to attempt the workaround for Qwen family members that have nonstandard behaviour and cause the Transformers library to load their weights in the 'bfloat16' format even if the user did not ask for that format.")
+            if not use_qwen_workaround:
+                use_qwen_workaround = True
+                danger_charlie_prince_qwen_model_detected = True
+                qwen_danger_message = "Broken Hill did not detect a misbehaving Qwen model, but the operator has specified the option to always attempt the associated workaround."
+                
+        if use_qwen_workaround:                
+            if self.model_data_type in [ torch.bfloat16, torch.float16, torch.float32 ]:
+                qwen_danger_message = f"{qwen_danger_message} Broken Hill will attempt to approximate the correct default behaviour that almost every other model supported by Transformers manages to use. If this attempt fails, Broken Hill will attempt to load the model normally instead. If this occurs, and you see a message indicating that the weights were loaded in a format other than the one you specified, please notify the Broken Hill developers with the configuration you used for your test so we can account for it."
+            else:
+                qwen_danger_message = f"{qwen_danger_message} The nonstandard code included with this Qwen model only supports the following data types: float32, float16, and bfloat16. Please specify one of these options explicitly using the --model-data-type option."
+                logger.critical(qwen_danger_message)
+                raise AttackInitializationException(qwen_danger_message)
+            logger.warning(qwen_danger_message)
+
+            charlie_prince_bf16 = False
+            charlie_prince_fp16 = False
+            charlie_prince_fp32 = False
+            if self.model_data_type == torch.bfloat16:
+                charlie_prince_bf16 = True
+            if self.model_data_type == torch.float16:
+                charlie_prince_fp16 = True
+            if self.model_data_type == torch.float32:
+                charlie_prince_fp32= True
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"self.model_data_type = {self.model_data_type}, charlie_prince_bf16 = {charlie_prince_bf16}, charlie_prince_fp16 = {charlie_prince_fp16}, charlie_prince_fp32 = {charlie_prince_fp32}")
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_data_type,
+                        bf16 = charlie_prince_bf16,
+                        fp16 = charlie_prince_fp16,
+                        fp32 = charlie_prince_fp32,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()
+                handled_model_load = True
+            except Exception as e:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Exception thrown when loading model with notorious outlaw Charlie Prince's personal custom parameters: {e}\n{traceback.format_exc()}\n")
+                handled_model_load = False
+        else:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Qwen model detected, but it appears to be a law-abiding citizen of the frontier.")
+                    
+        return handled_model_load
+    
+    def check_model_dtype(self):
+        # if the model was loaded, check to see if the dtype does not match the user-specified option and warn them
+        target_data_type = self.model_data_type
+        if self.model_data_type is None:
+            target_data_type = torch.float32
+        else:
+            if self.model.dtype != target_data_type:
+                if self.persistable.attack_params.force_qwen_dtype_workaround_check:
+                    logger.warning(f"The operator specified options equivalent to --model-data-type {self.model_data_type}, but the model load operation returned the data in the format {self.model.dtype}. Please provide the Broken Hill developers with your configuration to implement a workaround.")
+                else:
+                    logger.warning(f"The operator specified options equivalent to --model-data-type {self.model_data_type}, but the model load operation returned the data in the format {self.model.dtype}. If this is a Qwen-1 model or derivative, try adding the --force-qwen-workaround option to see if it corrects this issue. If it does not, please provide the Broken Hill developers with your configuration to implement a workaround.")
+    
+    def load_model_and_tokenizer(self):
+        #if ignore_mismatched_sizes:
+        #    kwargs["ignore_mismatched_sizes"] = True
+
+        self.model = None
+        handled_model_load = False
+
+        # TKTK: try adding a fallback to other AutoModel types, like AutoModelForSeq2SeqLM for T5.
+        if not handled_model_load:
+            handled_model_load = self.handle_potential_charlie_prince_qwen_model()
+        if not handled_model_load:
+            # Operator specified the TORCH_DEFAULT mode
+            if self.model_data_type is None:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                        use_cache = self.persistable.attack_params.use_cache
+                    ).to(self.model_device).eval()
+                handled_model_load = True
+        if not handled_model_load:            
+            # Operator either specified the Broken Hill default dtype or an explicit dtype
+            self.model = AutoModelForCausalLM.from_pretrained(
+                    self.persistable.attack_params.model_path,
+                    torch_dtype = self.model_data_type,
+                    trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                    ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                    low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                    use_cache = self.persistable.attack_params.use_cache
+                ).to(self.model_device).eval()                
+        
+        if handled_model_load:
+            self.check_model_dtype()
+        
+        if self.persistable.attack_params.torch_dataparallel_model:
+            try:
+                self.model = torch.nn.DataParallel(self.model)
+            except Exception as e:
+                logger.error(f"Unable to load the model using torch.nn.DataParallel: {e}\n{traceback.format_exc()}\n")
+                
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}', self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}'")
+
+        self.tokenizer = None
+        
+        #is_mamba = args.model_name.startswith("state-spaces/mamba-")
+        #    if is_mamba:
+        #self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+        #self.model = MambaLMHeadModel.from_pretrained(args.model_name, device = self.model_device, self.model_data_type = self.model_data_type)
+        
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.persistable.attack_params.tokenizer_path,
+                trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                use_fast = False
+            )
+        except Exception as e:
+            handled = False
+            #if isinstance(e, ValueError):
+            if 2 > 1:
+                logger.warning(f"Unable to load standard tokenizer from '{self.persistable.attack_params.tokenizer_path}', attempting to fall back to fast tokenizer. The exception thrown when loading the standard tokenizer was: {e}")
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained(
+                        self.persistable.attack_params.tokenizer_path,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        use_fast = True
+                    )
+                    handled = True
+                except Exception as e2:
+                    logger.error(f"Error loading both standard and fast tokenizers from '{self.persistable.attack_params.tokenizer_path}': '{e}', '{e2}'\n{traceback.format_exc()}\n")
+                    raise e        
+            if not handled:
+                logger.error(f"Error loading tokenizer from '{self.persistable.attack_params.tokenizer_path}': '{e}'\n{traceback.format_exc()}\n")
+                raise e
+        
+        try:
+            self.broken_hill_padding_token_id = encode_string_for_real_without_any_cowboy_funny_business(self, self.persistable.attack_params.broken_hill_padding_token_string)
+        except Exception as e:
+            logger.error(f"Error setting Broken Hill padding token ID from string '{self.persistable.attack_params.broken_hill_padding_token_string}': {e}\n{traceback.format_exc()}\nBroken Hill will use ID 0 instead. This will likely cause issues.")
+            self.broken_hill_padding_token_id = 0
+        
+        existing_padding_side = None
+        if hasattr(self.tokenizer, "padding_side"):
+            existing_padding_side = self.tokenizer.padding_side
+        
+        if self.persistable.attack_params.padding_side == "default":
+            logger.debug(f"Tokenizer's padding side is '{existing_padding_side}'.")
+        else:
+            if existing_padding_side is None:
+                logger.warning(f"The tokenizer does not have a default padding side defined. Using the operator-specified value '{self.persistable.attack_params.padding_side}'.")
+            else:
+                if self.persistable.attack_params.padding_side is None:
+                    logger.info(f"The tokenizer has a default padding side value '{existing_padding_side}'. This value will be unset.")
+                else:
+                    if existing_padding_side == self.persistable.attack_params.padding_side:
+                        logger.info(f"The tokenizer has a default padding side value '{existing_padding_side}'. The operator-specified value '{self.persistable.attack_params.padding_side}' is identical.")
+                    else:
+                        logger.warning(f"The tokenizer has a default padding side value '{existing_padding_side}'. Using the operator-specified value '{self.persistable.attack_params.padding_side}' instead.")
+            self.tokenizer.padding_side = self.persistable.attack_params.padding_side
+        
+        if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
+            if 'oasst-sft-6-llama-30b' in self.persistable.attack_params.tokenizer_path:
+                self.tokenizer.bos_token_id = 1
+                self.tokenizer.unk_token_id = 0
+            if 'guanaco' in self.persistable.attack_params.tokenizer_path:
+                # Both of these are defined already in the configuration included with TheBloke's version of Guanaco.
+                # They're also defined in the configuration included with the "huggyllama" version of llama-7b, so I think both values are redundant.
+                self.tokenizer.eos_token_id = 2
+                self.tokenizer.unk_token_id = 0
+            if 'llama-2' in self.persistable.attack_params.tokenizer_path:
+                # Llama-2's tokenizer does explicitly define an unknown token ("<unk>"), so this seems fine
+                self.tokenizer.pad_token = self.tokenizer.unk_token
+                # Llama-2's tokenizer configuration explicitly pads from the right
+                self.tokenizer.padding_side = 'left'
+            if 'falcon' in self.persistable.attack_params.tokenizer_path:
+                self.tokenizer.padding_side = 'left'
+                
+        if self.tokenizer.pad_token is None:
+            if self.persistable.attack_params.missing_pad_token_replacement is not None:
+                pad_token_id, pad_token = get_missing_pad_token_replacement(self.tokenizer, self.persistable.attack_params.missing_pad_token_replacement)
+                if pad_token_id is not None and pad_token is not None:
+                    self.tokenizer.pad_token_id = pad_token_id
+                    self.tokenizer.pad_token = pad_token
+                logger.warning(f"The tokenizer in '{self.persistable.attack_params.tokenizer_path}' does not have a pad_token value defined. Using the alternative value '{self.persistable.attack_params.missing_pad_token_replacement}'. If you encounter errors or unexpected results, consider specifying a different --missing-pad-token-replacement value on the command line.")
+            else:
+                logger.warning(f"The tokenizer in '{self.persistable.attack_params.tokenizer_path}' does not have a pad_token value defined. If you encounter errors or unexpected results, consider specifying a --missing-pad-token-replacement value other than 'default' on the command line.")
+        
+        self.model_type_name = f"{type(self.model).__name__}"
+        self.tokenizer_type_name = f"{type(self.tokenizer).__name__}"
+        logger.info(f"This model is an instance of the type '{self.model_type_name}', and the tokenizer is an instance of the type '{self.tokenizer_type_name}'")
+
+    def load_model(self):
+        if self.persistable.attack_params.tokenizer_path is None:
+            logger.debug(f"No tokenizer path was explicitly set. Using '{self.persistable.attack_params.model_path}'.")
+            self.persistable.attack_params.tokenizer_path = self.persistable.attack_params.model_path
+
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"self.persistable.attack_params.model_path = '{self.persistable.attack_params.model_path}', self.persistable.attack_params.tokenizer_path = '{self.persistable.attack_params.tokenizer_path}'")
+            
+        self.load_model_and_tokenizer_configuration_files()
+
+        try:
+            model_load_message = f"Loading model and tokenizer from '{self.persistable.attack_params.model_path}'."
+            if self.persistable.attack_params.tokenizer_path != self.persistable.attack_params.model_path:
+                model_load_message = f"Loading model from '{self.persistable.attack_params.model_path}' and tokenizer from {self.persistable.attack_params.tokenizer_path}."
+            logger.info(model_load_message)
+            self.model_data_type = self.persistable.attack_params.get_model_data_type()
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"self.model_data_type = {self.model_data_type}")
+            
+            self.model_dtype_string = ""
+            if self.model_config_dict is not None:
+                model_torch_dtype = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "torch_dtype")
+                if model_torch_dtype is not None:
+                    self.model_dtype_string = f"{model_torch_dtype}"
+                    self.model_dtype_dtype = torch_dtype_from_string(self.model_dtype_string)
+                    logger.info(f"Model weight data is stored as {self.model_dtype_string}")
+                for model_config_property_name in [ "model_type", "architectures", "auto_map", "tokenizer_class" ]:
+                    property_value = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, model_config_property_name)
+                    if property_value is not None:
+                        logger.debug(f"model.{model_config_property_name}: {property_value}")
+            try:
+                self.load_model_and_tokenizer()
+            except Exception as e:
+                tokenizer_message = ""
+                if self.persistable.attack_params.tokenizer_path is not None and self.persistable.attack_params.tokenizer_path != "":
+                    tokenizer_message = ", with tokenizer path '{self.persistable.attack_params.tokenizer_path}'"
+                raise AttackInitializationException(f"Exception thrown while loading model from '{self.persistable.attack_params.model_path}'{tokenizer_message}: {e}\n{traceback.format_exc()}")
+            self.persistable.performance_data.collect_torch_stats(self, is_key_snapshot_event = True, location_description = "after loading model and tokenizer")
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Model loaded.")
+            
+            
+            if self.model_dtype_string == "" and self.model_data_type == "auto":
+                self.model_dtype_string = f"{self.model.dtype}"
+                self.model_dtype_dtype = self.model.dtype
+                logger.info(f"Model weight data is stored as {self.model_dtype_string} (determined after loading model in 'auto' dtype mode)")                
+            model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
+            if self.model_dtype_string != "":            
+                model_data_type_message = f"Model weight data is stored as {self.model_dtype_string}, and was loaded as {self.model.dtype}"
+            logger.info(f"Model and tokenizer loaded. {model_data_type_message}")
+            if self.persistable.attack_params.peft_adapter_path is not None:
+                logger.info(f"Loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}'.")
+                try:
+                    self.model = PeftModel.from_pretrained(self.model, self.persistable.attack_params.peft_adapter_path)
+                except Exception as e:
+                    raise AttackInitializationException(f"Exception thrown while loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}': {e}\n{traceback.format_exc()}")
+                self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading PEFT adapter")
+                self.model_type_name = f"{type(self.model).__name__}"
+                logger.info(f"PEFT adapter loaded. After loading the PEFT adapter, this model is an instance of the type '{self.model_type_name}'.")
+            
+            self.persistable.overall_result_data.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_loaded_model(self.model)
+            
+            print_model_parameter_info(self)
+            
+            if self.tokenizer.pad_token_id is None:
+                if self.persistable.attack_params.loss_slice_mode == LossSliceMode.ASSISTANT_ROLE_PLUS_FULL_TARGET_SLICE:
+                    raise AttackInitializationException("Error: the padding token is not set for the current tokenizer, but the current loss slice algorithm requires that the list of target tokens be padded. Please specify a replacement token using the --missing-pad-token-replacement option.")
+            
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Getting max effective token value for model and tokenizer.")
+        except Exception as e:
+            raise AttackInitializationException(f"Error loading model: {e}\n{traceback.format_exc()}")
+        try:
+            # Now that the model is loaded, make any necessary adjustments to --max-new-tokens and similar values
+            self.adjust_token_length_limit_parameters()
+        except Exception as e:
+            raise AttackInitializationException(f"Error adjusting token length limit parameters: {e}\n{traceback.format_exc()}")
+
+    def build_token_allow_and_denylists(self):
+        self.persistable.build_token_allow_and_denylists(self)
+        
+    def get_token_denylist_as_cpu_tensor(self):
+        if self.token_denylist_as_cpu_tensor is None:
+            if len(self.persistable.token_allow_and_deny_lists.denylist) > 0:
+                self.token_denylist_as_cpu_tensor = get_token_list_as_tensor(self.persistable.token_allow_and_deny_lists.denylist, device='cpu')
+            else:
+                self.token_denylist_as_cpu_tensor = None
+        return self.token_denylist_as_cpu_tensor
+    
+    # This code still doesn't do anything useful. Maybe it will some day!
+    def apply_model_quantization(self):
+        if self.persistable.attack_params.quantization_dtype:
+            if self.persistable.attack_params.enable_static_quantization:
+                raise AttackInitializationException("Broken Hill only supports quantizing using static or dynamic approaches, not both at once")
+            self.persistable.performance_data.collect_torch_stats(self, location_description = "before quantizing model")
+            logger.info(f"Quantizing model to '{self.persistable.attack_params.quantization_dtype}'")    
+            #self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = quantization_dtype, inplace = False)
+            self.model = quantize_dynamic(model = self.model, qconfig_spec = {torch.nn.LSTM, torch.nn.Linear}, dtype = self.persistable.attack_params.quantization_dtype, inplace = True)
+            self.persistable.performance_data.collect_torch_stats(self, location_description = "after quantizing model")
+
+        if self.persistable.attack_params.enable_static_quantization:
+            backend = "qnnpack"
+            logger.info(f"Quantizing model using static backend {backend}") 
+            torch.backends.quantized.engine = backend
+            self.model.qconfig = tq.get_default_qconfig(backend)
+            #model.qconfig = float_qparams_weight_only_qconfig
+            # disable quantization of embeddings because quantization isn't really supported for them
+            model_embeds = get_embedding_layer(self)
+            model_embeds.qconfig = float_qparams_weight_only_qconfig
+            self.model = tq.prepare(self.model, inplace=True)
+            self.model = tq.convert(self.model, inplace=True)
+    
+    def apply_model_dtype_conversion(self):
+        if self.persistable.attack_params.conversion_dtype:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"converting model dtype to {self.persistable.attack_params.conversion_dtype}.")
+            self.model = self.model.to(self.persistable.attack_params.conversion_dtype)
+
+    def load_conversation_template(self):
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Registering conversation templates.")
+        self.persistable.performance_data.collect_torch_stats(self, location_description = "before loading conversation template")
+        
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'. self.persistable.attack_params.generic_role_indicator_template='{self.persistable.attack_params.generic_role_indicator_template}', self.persistable.attack_params.custom_system_prompt='{self.persistable.attack_params.custom_system_prompt}', self.persistable.attack_params.clear_existing_template_conversation='{self.persistable.attack_params.clear_existing_template_conversation}'")
+        self.conversation_template = None
+        
+        if self.persistable.attack_params.template_name is not None:
+            if self.persistable.attack_params.template_name not in fschat_conversation.conv_templates.keys():
+                logger.warning(f"chat template '{self.persistable.attack_params.template_name}' was not found in fschat - defaulting to '{DEFAULT_CONVERSATION_TEMPLATE_NAME}'.")
+                self.persistable.attack_params.template_name = DEFAULT_CONVERSATION_TEMPLATE_NAME
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"loading chat template '{self.persistable.attack_params.template_name}'")
+            self.conversation_template = fschat_conversation.get_conv_template(self.persistable.attack_params.template_name)
+        else:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"determining chat template based on content in '{self.persistable.attack_params.model_path}'")
+            self.conversation_template = fschat.model.get_conversation_template(self.persistable.attack_params.model_path)
+        # make sure fschat doesn't sneak the one_shot messages in when zero_shot was requested
+        if self.persistable.attack_params.clear_existing_template_conversation:
+            if hasattr(self.conversation_template, "messages"):
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"resetting self.conversation_template.messages from '{self.conversation_template.messages}' to []")
+                self.conversation_template.messages = []
+            else:
+                logger.warning(f"the option to clear the conversation template's default conversation was enabled, but the template does not include a default conversation.")
+                self.conversation_template.messages = []
+        generic_role_template = get_default_generic_role_indicator_template()
+        if self.persistable.attack_params.generic_role_indicator_template is not None:
+            # If using a custom role indicator template, just use a space and depend on the operator to specify any necessary characters such as :
+            self.conversation_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
+            #generic_role_template = f"\n{self.persistable.attack_params.generic_role_indicator_template}"
+            generic_role_template = f" {self.persistable.attack_params.generic_role_indicator_template}"
+            #generic_role_template = self.persistable.attack_params.generic_role_indicator_template        
+            self.conversation_template.sep = '\n'
+        # note: the original logic was equivalent to the following:
+        #generic_role_template = "### {role}"
+        if self.conversation_template.name == 'zero_shot':# or self.conversation_template.name == 'one_shot':
+            #self.conversation_template.roles = tuple(['### ' + r for r in self.conversation_template.roles])
+            self.conversation_template.roles = tuple([generic_role_template.format(role=r) for r in self.conversation_template.roles])
+            self.conversation_template.sep = "\n "
+            self.conversation_template.sep2 = "\n "
+        if self.persistable.attack_params.generic_role_indicator_template is not None:
+            self.conversation_template.roles = tuple([generic_role_template.format(role=r) for r in self.conversation_template.roles])
+        #if self.conversation_template.name == 'llama-2':
+        #    self.conversation_template.sep2 = self.conversation_template.sep2.strip()
+        if self.persistable.attack_params.custom_system_prompt is not None:
+            if hasattr(self.conversation_template, "system_message"):
+                original_system_message = self.conversation_template.system_message
+                self.conversation_template.system_message = self.persistable.attack_params.custom_system_prompt
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Replaced default system message '{original_system_message}' with '{self.persistable.attack_params.custom_system_prompt}'.")
+            else:
+                logger.warning(f"The option to set the conversation template's system message was enabled, but the template does not include a system message.")
+        if self.persistable.attack_params.conversation_template_messages is not None:
+            if not hasattr(self.conversation_template, "messages"):
+                self.conversation_template.messages = []
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Existing conversation template messages '{self.conversation_template.messages}'.")
+            for i in range(0, len(self.persistable.attack_params.conversation_template_messages)):
+                role_id_or_name = self.persistable.attack_params.conversation_template_messages[i][0]
+                message = self.persistable.attack_params.conversation_template_messages[i][1]
+                # If role IDs were specified, convert them to the correct format for the template
+                if isinstance(role_id_or_name, int):
+                    try:
+                        role_id_or_name = self.conversation_template.roles[role_id_or_name]
+                    except Exception as e:
+                        raise Exception(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}\n{traceback.format_exc()}\n")
+                self.conversation_template.messages.append((role_id_or_name, message))
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
+        
+        if self.persistable.attack_params.template_name is not None:
+            if self.conversation_template.name != self.persistable.attack_params.template_name:
+                logger.warning(f"The template '{self.persistable.attack_params.template_name}' was specified, but fschat returned the template '{self.conversation_template.name}' in response to that value.")
+        if self.conversation_template is None:
+            raise AttackInitializationException(f"Got a null conversation template when trying to load '{self.persistable.attack_params.template_name}'. This should never happen.")
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Conversation template: '{self.conversation_template.name}'")
+            logger.debug(f"Conversation template sep: '{self.conversation_template.sep}'")
+            logger.debug(f"Conversation template sep2: '{self.conversation_template.sep2}'")
+            logger.debug(f"Conversation template roles: '{self.conversation_template.roles}'")
+            logger.debug(f"Conversation template system message: '{self.conversation_template.system_message}'")
+            messages = json.dumps(self.conversation_template.messages, indent=4)
+            logger.debug(f"Conversation template messages: '{messages}'")
+        self.persistable.performance_data.collect_torch_stats(self, location_description = "after loading conversation template")
+        # no return value because it's setting a property of this class
+
+    def ignite_trash_fire_token_treasury(self):
+        logger.info(f"Creating a meticulously-curated treasury of trash fire tokens - this step can take a long time for tokenizers with large numbers of tokens.")
+        self.trash_fire_token_treasury = TrashFireTokenCollection.get_meticulously_curated_trash_fire_token_collection(self, self.conversation_template)
+
+    def create_initial_adversarial_content(self):
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Setting initial adversarial content.")
+        self.persistable.initial_adversarial_content = None
+        if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_STRING:
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+        
+        if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.SINGLE_TOKEN:
+            single_token_id = None
+            try:
+                single_token_id = get_encoded_token(self, self.persistable.attack_params.initial_adversarial_token_string)
+            except Exception as e:
+                raise AttackInitializationException(f"Error encoding string '{self.persistable.attack_params.initial_adversarial_token_string}' to token: {e}\n{traceback.format_exc()}")
+            if isinstance(single_token_id, type(None)):
+                    raise AttackInitializationException(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' to a null value.")
+            if isinstance(single_token_id, list):
+                decoded_tokens = get_decoded_tokens(self, single_token_id)
+                single_token_id, decoded_tokens = remove_empty_and_trash_fire_leading_and_trailing_tokens(self, self.trash_fire_token_treasury, single_token_id, decoded_tokens)
+                if len(single_token_id) > 1:
+                    raise AttackInitializationException(f"The selected tokenizer encoded the string '{self.persistable.attack_params.initial_adversarial_token_string}' as more than one token: {decoded_tokens} / {single_token_id}. You must specify a string that encodes to only a single token when using this mode.")
+                else:
+                    single_token_id = single_token_id[0]
+            self.persistable.attack_params.initial_adversarial_token_ids = []
+            for i in range(0, self.persistable.attack_params.initial_adversarial_token_count):
+                self.persistable.attack_params.initial_adversarial_token_ids.append(single_token_id)
+            
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+
+        if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.FROM_TOKEN_IDS:
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_token_ids)
+        
+        if self.persistable.attack_params.initial_adversarial_content_creation_mode == InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS:
+            token_ids = get_random_token_ids(numpy_random_generator, self.persistable.token_allow_and_deny_lists, self.persistable.attack_params.initial_adversarial_token_count)
+            self.persistable.initial_adversarial_content = AdversarialContent.from_token_ids(self, self.trash_fire_token_treasury, token_ids)
+        
+        post_self_test_initial_adversarial_content_creation_modes = [ InitialAdversarialContentCreationMode.LOSS_TOKENS, InitialAdversarialContentCreationMode.RANDOM_TOKEN_IDS_LOSS_TOKEN_COUNT, InitialAdversarialContentCreationMode.SINGLE_TOKEN_LOSS_TOKEN_COUNT ]
+        
+        if self.persistable.attack_params.initial_adversarial_content_creation_mode in post_self_test_initial_adversarial_content_creation_modes:
+            self.persistable.initial_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, self.persistable.attack_params.initial_adversarial_string)
+        
+        # This should never actually happen, but just in case
+        if self.persistable.initial_adversarial_content is None:
+            raise AttackInitializationException(f"No initial adversarial content was specified.")
+
+    def check_for_adversarial_content_token_problems(self):
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Determining if any tokens in the adversarial content are also in the token denylist, or not in the tokenizer at all.")
+        tokens_in_denylist = []
+        tokens_not_in_tokenizer = []
+        for i in range(0, len(self.persistable.initial_adversarial_content.token_ids)):
+            token_id = self.persistable.initial_adversarial_content.token_ids[i]
+            if token_id in self.persistable.token_allow_and_deny_lists.denylist:
+                if token_id not in tokens_in_denylist:
+                    tokens_in_denylist.append(token_id)
+            else:
+                if token_id not in self.persistable.token_allow_and_deny_lists.allowlist:
+                    if token_id not in tokens_not_in_tokenizer:
+                        tokens_not_in_tokenizer.append(token_id)
+        
+        if len(tokens_in_denylist) > 0:
+            token_list_string = ""
+            for i in range(0, len(tokens_in_denylist)):
+                decoded_token = get_escaped_string(get_decoded_token(self, tokens_in_denylist[i]))
+                formatted_token = f"'{decoded_token}' (ID {tokens_in_denylist[i]})"
+                if token_list_string == "":
+                    token_list_string = formatted_token
+                else:
+                    token_list_string += ", {formatted_token}"
+            logger.warning(f"The following tokens were found in the initial adversarial content, but are also present in the user-configured list of disallowed tokens: {token_list_string}. These tokens will be removed from the denylist, because otherwise the attack cannot proceed.")
+            new_denylist = []
+            for existing_denylist_index in range(0, len(self.persistable.token_allow_and_deny_lists.denylist)):
+                if self.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index] in tokens_in_denylist:
+                    self.persistable.token_allow_and_deny_lists.allowlist.append(self.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index])
+                else:
+                    new_denylist.append(self.persistable.token_allow_and_deny_lists.denylist[existing_denylist_index])
+            self.persistable.token_allow_and_deny_lists.denylist = new_denylist
+        if len(tokens_not_in_tokenizer) > 0:
+            logger.warning(f"The following token IDs were found in the initial adversarial content, but were not found by the selected tokenizer: {tokens_not_in_tokenizer}. This may cause this test to fail, the script to crash, or other unwanted behaviour. Please modify your choice of initial adversarial content to avoid the conflict.")
+
+    def test_conversation_template(self):
+        logger.info(f"Testing conversation template '{self.conversation_template.name}'")
+        conversation_template_tester = ConversationTemplateTester(self.adversarial_content_manager, self.model)
+        conversation_template_test_results = conversation_template_tester.test_templates(self, verbose = self.persistable.attack_params.verbose_self_test_output)
+        if len(conversation_template_test_results.result_messages) > 0:
+            for i in range(0, len(conversation_template_test_results.result_messages)):
+                logger.warning(conversation_template_test_results.result_messages[i])
+        else:
+            logger.info(f"Broken Hill did not detect any issues with the conversation template in use with the current model.")
+
+        self.persistable.performance_data.collect_torch_stats(self, location_description = "after testing conversation template")
+        
+        # TKTK: self-test to count the number of tokens in a role-switching operation for the model.
+        
+        # TKTK: detect if the tokenizer has support for .apply_chat_template(). If it does, use that to create a simple conversation using random sentinels, create the same conversation using Broken Hill's get_prompt() code, and make sure that the role-switching tokens actually match, in case the tokenizer doesn't tokenize the text form of those tokens back to the token IDs that it recognizes as a role switch.
+
+
+    def perform_jailbreak_tests(self):
+        empty_output_during_jailbreak_self_tests = False
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Testing for jailbreak with no adversarial content")
+        empty_adversarial_content = AdversarialContent.from_string(self, self.trash_fire_token_treasury, "")
+        jailbreak_check_input_token_id_data = self.adversarial_content_manager.get_prompt(adversarial_content = empty_adversarial_content, force_python_tokenizer = self.persistable.attack_params.force_python_tokenizer)
+        temperature = 1.0
+        do_sample = False
+        if self.persistable.attack_params.always_do_sample:
+            temperature = self.persistable.attack_params.model_temperature_range_begin
+            do_sample = True
+        nac_jailbreak_result, nac_jailbreak_check_data, nac_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
+            temperature,
+            do_sample = do_sample)
+        
+        self.persistable.performance_data.collect_torch_stats(self, location_description = "after generating no-adversarial-content jailbreak test data")
+        
+        self.persistable.overall_result_data.self_test_results["GCG-no_adversarial_content"] = nac_jailbreak_check_data
+        
+        nac_jailbreak_decoded_generated_prompt_string_stripped = nac_jailbreak_check_data.decoded_llm_generation_string.strip()
+        
+        nac_jailbreak_check_llm_output_stripped = nac_jailbreak_check_data.decoded_llm_output_string.strip()        
+        if nac_jailbreak_check_llm_output_stripped == "":
+            empty_output_during_jailbreak_self_tests = True
+            logger.error(f"Broken Hill tested the specified request string with no adversarial content and the model's response was an empty string or consisted solely of whitespace:\n'{nac_jailbreak_check_data.decoded_llm_output_string}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
+        else:
+            if nac_jailbreak_result:
+                logger.error(f"Broken Hill tested the specified request string with no adversarial content and the current jailbreak detection configuration indicated that a jailbreak occurred. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nThis may indicate that the model being targeted has no restrictions on providing the requested type of response, or that jailbreak detection is not configured correctly for the specified attack. The full conversation generated during this test was:\n'{nac_jailbreak_decoded_generated_prompt_string_stripped}'")
+            else:
+                logger.info(f"Validated that a jailbreak was not detected for the given configuration when adversarial content was not included. The model's response to '{self.persistable.attack_params.base_prompt}' was:\n'{nac_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+        
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Testing for jailbreak when the LLM is prompted with the target string")
+        target_jailbreak_result, target_jailbreak_check_data, target_jailbreak_check_generation_results = self.check_for_attack_success(jailbreak_check_input_token_id_data,
+            temperature,
+            do_sample = do_sample,
+            include_target_content = True)
+        
+        self.persistable.performance_data.collect_torch_stats(self, location_description = "after generating ideal jailbreak test data")
+        
+        self.persistable.overall_result_data.self_test_results["GCG-simulated_ideal_adversarial_content"] = target_jailbreak_check_data
+        
+        target_jailbreak_decoded_generated_prompt_string_stripped = target_jailbreak_check_data.decoded_llm_generation_string.strip()
+        target_jailbreak_check_llm_output_stripped = target_jailbreak_check_data.decoded_llm_output_string.strip() 
+        if target_jailbreak_check_llm_output_stripped == "":
+            empty_output_during_jailbreak_self_tests = True
+            logger.critical(f"When Broken Hill sent the model a prompt that simulated an ideal adversarial string, the model's response was an empty string or consisted solely of whitespace:\n'{target_jailbreak_check_llm_output_stripped}'\nThis may indicate that the full conversation is too long for the model, that an incorrect chat template is in use, or that the conversation contains data that the model is incapable of parsing. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
+        else:
+            if target_jailbreak_result:
+                logger.info(f"Validated that a jailbreak was detected when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does not match your expectations, verify your jailbreak detection configuration.")
+            else:
+                # This is logged as critical even though execution will continue if --ignore-jailbreak-self-tests is specified because it's vital to notify the user that the attack will likely not succeed.
+                logger.critical(f"Broken Hill did not detect a jailbreak when the model was given a prompt that simulated an ideal adversarial string, using the given configuration. The model's response to '{self.persistable.attack_params.base_prompt}' when given the prefix '{self.persistable.attack_params.target_output}' was:\n'{target_jailbreak_check_llm_output_stripped}'\nIf this output does meet your expectations for a successful jailbreak, verify your jailbreak detection configuration. If the model's response truly does not appear to indicate a successful jailbreak, the current attack configuration is unlikely to succeed. This may be due to an incorrect attack configuration (such as a conversation template that does not match the format the model expects), or the model may have been hardened against this type of attack. The full conversation generated during this test was:\n'{target_jailbreak_decoded_generated_prompt_string_stripped}'")
+
+        # TKTK: if possible, self-test to determine if a loss calculation for what should be an ideal value actually has a score that makes sense.
+        
+        if self.persistable.attack_params.operating_mode != BrokenHillMode.GCG_ATTACK_SELF_TEST:
+            if empty_output_during_jailbreak_self_tests or nac_jailbreak_result or not target_jailbreak_result:
+                if not self.persistable.attack_params.ignore_jailbreak_self_tests:
+                    raise AttackInitializationException(f"Because the jailbreak detection self-tests indicated that the results of this attack would likely not be useful, Broken Hill will exit. If you wish to perform the attack anyway, add the --ignore-jailbreak-self-tests option.")
+
+    def generate(self, input_token_id_data, temperature, gen_config = None, do_sample = True, generate_full_output = False, include_target_content = False):
+        working_gen_config = gen_config
+        # Copy the generation config to avoid changing the original
+        # See https://github.com/huggingface/transformers/blob/1cf17077bf2d4affed31387c0943251a4ba8fab7/src/transformers/generation/configuration_utils.py#L96 for a list of fields
+        # 
+        if gen_config is None:
+            working_gen_config = GenerationConfig.from_dict(config_dict = self.model.generation_config.to_dict())
+        else:
+            working_gen_config = GenerationConfig.from_dict(config_dict = gen_config.to_dict())
+        
+        effective_do_sample = do_sample
+        if self.persistable.attack_params.always_do_sample:
+            effective_do_sample = True
+        
+        if temperature != 1.0 and effective_do_sample:
+            working_gen_config.do_sample = True
+            working_gen_config.temperature = temperature
+        if self.persistable.attack_params.display_full_failed_output or generate_full_output:
+            working_gen_config.max_new_tokens = self.persistable.attack_params.full_decoding_max_new_tokens
+        else:
+            working_gen_config.max_new_tokens = self.persistable.attack_params.generation_max_new_tokens
+
+        # TKTK: remove this once the limit-adjusting code is done
+        # Doing this is supposed to be implicit based on setting max_new_tokens (https://huggingface.co/docs/transformers/en/main_classes/text_generation), but not all models respect that.
+        working_gen_config.max_length = working_gen_config.max_new_tokens + input_token_id_data.get_input_ids_length()
+
+        result = GenerationResults()
+        result.max_new_tokens = working_gen_config.max_new_tokens
+
+        attn_masks = None
+        result.input_token_id_data = input_token_id_data
+        input_ids = result.input_token_id_data.get_input_ids_as_tensor().to(self.model_device)
+        if input_ids.device != self.model.device:
+            input_ids = input_ids.to(self.model_device)
+        input_ids_sliced = input_ids
+        if not include_target_content:
+            input_ids_sliced = input_ids[:result.input_token_id_data.slice_data.assistant_role.stop]
+        if input_ids_sliced != self.model.device:
+            input_ids_sliced = input_ids_sliced.to(self.model.device)
+        input_ids_converted = input_ids_sliced
+        if len(input_ids_converted.shape) == 1:
+            if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"Adding one extra dimension to input_ids_converted because model.generate uses the first dimension to indicate batching, and will error out without wrapping the existing tensor in another dimension.")
+            input_ids_converted = input_ids_sliced.unsqueeze(0)
+        if len(input_ids_converted.shape) > 2:
+            raise GenerationException(f"input_ids_converted had shape {input_ids_converted.shape}, but must have exactly two dimensions to match the format expected by model.generate. Broken Hill is unable to automatically determine which dimension to remove. This typically indicates either model-specific behaviour that Broken Hill must be updated to account for, or a bug in Broken Hill itself.")
+        attn_masks = torch.ones_like(input_ids_converted)
+        if attn_masks.device != self.model.device:
+            attn_masks = torch.ones_like(input_ids_converted).to(self.model.device)
+        
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            working_gen_config_dict = working_gen_config.to_dict()
+            working_gen_config_dict_string = json.dumps(working_gen_config_dict, indent = 4)
+            logger.debug(f"Using the model to generate output with working_gen_config = {working_gen_config},\nworking_gen_config.to_dict() = {working_gen_config_dict_string},\npad_token_id = {self.tokenizer.pad_token_id},\ninput_token_id_data.input_token_ids = {input_token_id_data.input_token_ids}\ninput_ids = {input_ids},\ninput_ids_sliced = {input_ids_sliced},\ninput_ids_converted = {input_ids_converted},\ninput_ids_converted.shape = {input_ids_converted.shape},\nattn_masks = {attn_masks},\nself.model.config = {self.model.config}")
+            if self.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                decoded_input_token_ids = get_decoded_tokens(self, input_token_id_data.input_token_ids)
+                logger.debug(f"input_token_id_data.input_token_ids (decoded) = {decoded_input_token_ids}")
+        
+        done_generating = False
+        output_token_ids_full = None
+            
+        if self.persistable.attack_params.use_attention_mask:
+            try:
+                output_token_ids_full = self.model.generate(input_ids_converted, 
+                                            attention_mask = attn_masks, 
+                                            generation_config = working_gen_config,
+                                            pad_token_id = self.tokenizer.pad_token_id)
+                result.output_token_ids = output_token_ids_full[0]
+                done_generating = True
+            except Exception as e:
+                done_generating = False
+                logger.error(f"Error generating content with attention mask: {e}\n{traceback.format_exc()}\nBroken Hill will attempt to generate the content without an attention mask.")
+        if not done_generating:
+            try:
+                output_token_ids_full = self.model.generate(input_ids_converted, 
+                                            generation_config = working_gen_config,
+                                            pad_token_id = self.tokenizer.pad_token_id)
+                result.output_token_ids = output_token_ids_full[0]
+            except Exception as e:
+                done_generating = False
+                error_message = f"Error generating content without attention mask: {e}\n{traceback.format_exc()}"
+                logger.error(error_message)
+                raise GenerationException(error_message)
+        
+        result.output_token_ids_output_only = result.output_token_ids[result.input_token_id_data.slice_data.assistant_role.stop:]
+        
+        result.generation_input_token_ids = result.output_token_ids[result.input_token_id_data.slice_data.get_complete_user_input_slice()]
+        
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"output_token_ids_full = {output_token_ids_full}, result.input_token_id_data = {result.input_token_id_data}, result.generation_input_token_ids = {result.generation_input_token_ids}, result.output_token_ids = {result.output_token_ids}, result.output_token_ids_output_only = {result.output_token_ids_output_only}")
+            if self.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
+                output_token_ids_decoded = get_decoded_tokens(self, result.output_token_ids)
+                output_token_ids_full_decoded = get_decoded_tokens(self, output_token_ids_full)
+                logger.debug(f"output_token_ids_decoded = {output_token_ids_decoded}\noutput_token_ids_full_decoded = {output_token_ids_full_decoded}")
+        
+        return result
+        
+    def check_for_attack_success(self, input_token_id_data, temperature, gen_config = None, do_sample = True, include_target_content = False):
+        generation_results = self.generate(input_token_id_data, 
+                                        temperature,
+                                        gen_config = gen_config,
+                                        do_sample = do_sample,
+                                        include_target_content = include_target_content)
+                                                
+        result_ar_info_data = AttackResultInfoData()
+        result_ar_info_data.set_values(self, generation_results.max_new_tokens, generation_results.output_token_ids, generation_results.output_token_ids_output_only)
+        
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"result_ar_info_data = {result_ar_info_data.to_json()}")
+            logger.debug(f"result_ar_info_data.decoded_llm_generation_string = '{result_ar_info_data.decoded_llm_generation_string}', \nresult_ar_info_data.decoded_llm_output_string = '{result_ar_info_data.decoded_llm_output_string}', \nresult_ar_info_data.decoded_llm_generation_tokens = '{result_ar_info_data.decoded_llm_generation_tokens}', \nresult_ar_info_data.decoded_llm_output_tokens = '{result_ar_info_data.decoded_llm_output_tokens}'")
+        
+        jailbroken = False
+        
+        jailbreak_check_result = JailbreakDetectionRuleResult.FAILURE
+        
+        if result_ar_info_data.decoded_llm_output_string.strip() != "":
+            jailbreak_check_result = self.jailbreak_detector.check_string(self, result_ar_info_data.decoded_llm_output_string)
+
+        if jailbreak_check_result == JailbreakDetectionRuleResult.SUCCESS:
+            jailbroken = True
+        if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Jailbroken: {jailbroken} for generated string '{result_ar_info_data.decoded_llm_output_string}'")
+        
+        return jailbroken, result_ar_info_data, generation_results
 
 class AttackResultInfoData(JSONSerializableObject):
     def __init__(self):
@@ -802,6 +2393,8 @@ class AttackResultInfoData(JSONSerializableObject):
         
         # the maximum number of new tokens for this data set specifically
         self.max_new_tokens = None
+        
+        self.max_token_length = None
         
         # the token IDs that represent the entire conversation with the LLM, including system prompt/messages
         self.llm_generation_token_ids = None
@@ -818,33 +2411,7 @@ class AttackResultInfoData(JSONSerializableObject):
         # a single string decoded from llm_output_token_ids
         self.decoded_llm_output_string = None
 
-    # def set_values(self, tokenizer, max_token_length, generated_prompt_token_ids, llm_generation_token_ids, user_input_token_ids, llm_output_token_ids):
-        # self.max_token_length = max_token_length
-        # self.generated_prompt_token_ids = generated_prompt_token_ids
-        # self.llm_generation_token_ids = llm_generation_token_ids
-        # self.user_input_token_ids = user_input_token_ids
-        # self.llm_output_token_ids = llm_output_token_ids
-        
-        # # make sure data is in a serializable format
-        # if isinstance(self.generated_prompt_token_ids, torch.Tensor):
-            # self.generated_prompt_token_ids = self.generated_prompt_token_ids.tolist()
-        # if isinstance(self.llm_generation_token_ids, torch.Tensor):
-            # self.llm_generation_token_ids = self.llm_generation_token_ids.tolist()
-        # if isinstance(self.user_input_token_ids, torch.Tensor):
-            # self.user_input_token_ids = self.user_input_token_ids.tolist()
-        # if isinstance(self.llm_output_token_ids, torch.Tensor):
-            # self.llm_output_token_ids = self.llm_output_token_ids.tolist()
-        
-        # self.decoded_generated_prompt_tokens = get_decoded_tokens(tokenizer, generated_prompt_token_ids)
-        # self.decoded_generated_prompt_string = tokenizer.decode(generated_prompt_token_ids)
-        # self.decoded_llm_generation_tokens = get_decoded_tokens(tokenizer, llm_generation_token_ids)
-        # self.decoded_llm_generation_string = tokenizer.decode(llm_generation_token_ids)
-        # self.decoded_user_input_tokens = get_decoded_tokens(tokenizer, user_input_token_ids)
-        # self.decoded_user_input_string = tokenizer.decode(user_input_token_ids)
-        # self.decoded_llm_output_tokens = get_decoded_tokens(tokenizer, llm_output_token_ids)
-        # self.decoded_llm_output_string = tokenizer.decode(llm_output_token_ids)
-
-    def set_values(self, tokenizer, max_token_length, llm_generation_token_ids, llm_output_token_ids):
+    def set_values(self, attack_state, max_token_length, llm_generation_token_ids, llm_output_token_ids):
         self.max_token_length = max_token_length
         self.llm_generation_token_ids = llm_generation_token_ids
         self.llm_output_token_ids = llm_output_token_ids
@@ -855,10 +2422,10 @@ class AttackResultInfoData(JSONSerializableObject):
         if isinstance(self.llm_output_token_ids, torch.Tensor):
             self.llm_output_token_ids = self.llm_output_token_ids.tolist()
         
-        self.decoded_llm_generation_tokens = get_decoded_tokens(tokenizer, llm_generation_token_ids)
-        self.decoded_llm_generation_string = tokenizer.decode(llm_generation_token_ids)
-        self.decoded_llm_output_tokens = get_decoded_tokens(tokenizer, llm_output_token_ids)
-        self.decoded_llm_output_string = tokenizer.decode(llm_output_token_ids)
+        self.decoded_llm_generation_tokens = get_decoded_tokens(attack_state, llm_generation_token_ids)
+        self.decoded_llm_generation_string = attack_state.tokenizer.decode(llm_generation_token_ids)
+        self.decoded_llm_output_tokens = get_decoded_tokens(attack_state, llm_output_token_ids)
+        self.decoded_llm_output_string = attack_state.tokenizer.decode(llm_output_token_ids)
 
     def to_dict(self):
         result = super(AttackResultInfoData, self).properties_to_dict(self)
@@ -908,19 +2475,19 @@ class AttackResultInfo(JSONSerializableObject):
         return result
     
     @staticmethod
+    def apply_dict(existing_object, property_dict):
+        super(AttackResultInfo, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.result_data_sets is not None:
+            deserialized_content = {}
+            for k in existing_object.result_data_sets.keys():
+                deserialized_content[k] = (AttackResultInfoData.from_dict(existing_object.result_data_sets[k]))
+            existing_object.result_data_sets = deserialized_content
+        return existing_object
+    
+    @staticmethod
     def from_dict(property_dict):
-        result = AttackResultInfo()
-        super(AttackResultInfo, result).set_properties_from_dict(result, property_dict)
-        result_data_set_keys = []
-        for rds_key in result.result_data_sets.keys():
-            result_data_set_keys.append(rds_key)
-        if len(result_data_set_keys) > 0:
-            deserialized_result_data_sets = {}
-            for i in range(0, len(result_data_set_keys)):
-                current_key = result_data_set_keys[i]
-                deserialized_result_data_sets[current_key] = AttackResultInfoData.from_dict(result.result_data_sets[current_key])
-            result.result.result_data_sets = deserialized_result_data_sets
-        return result
+        result = AttackResultInfo()        
+        return AttackResultInfo.apply_dict(result, property_dict)
     
     def to_json(self):
         return JSONSerializableObject.json_dumps(self.to_dict(), use_indent = False)
@@ -971,14 +2538,11 @@ class AttackResultInfoCollection(JSONSerializableObject):
         # a single string decoded from user_input_token_ids
         self.decoded_user_input_string = None
 
-        # The full prompt (including adversarial content) in string form used for this iteration
-        # use self.decoded_user_input_string instead
-        #self.complete_user_input = None
         self.unique_results = {}
         self.unique_result_count = 0
         self.results = []
     
-    def set_values(self, tokenizer, generated_prompt_token_ids, user_input_token_ids):
+    def set_values(self, attack_state, generated_prompt_token_ids, user_input_token_ids):
         self.generated_prompt_token_ids = generated_prompt_token_ids
         self.user_input_token_ids = user_input_token_ids
         
@@ -988,10 +2552,10 @@ class AttackResultInfoCollection(JSONSerializableObject):
         if isinstance(self.user_input_token_ids, torch.Tensor):
             self.user_input_token_ids = self.user_input_token_ids.tolist()
         
-        self.decoded_generated_prompt_tokens = get_decoded_tokens(tokenizer, generated_prompt_token_ids)
-        self.decoded_generated_prompt_string = tokenizer.decode(generated_prompt_token_ids)
-        self.decoded_user_input_tokens = get_decoded_tokens(tokenizer, user_input_token_ids)
-        self.decoded_user_input_string = tokenizer.decode(user_input_token_ids)
+        self.decoded_generated_prompt_tokens = get_decoded_tokens(attack_state, generated_prompt_token_ids)
+        self.decoded_generated_prompt_string = attack_state.tokenizer.decode(generated_prompt_token_ids)
+        self.decoded_user_input_tokens = get_decoded_tokens(attack_state, user_input_token_ids)
+        self.decoded_user_input_string = attack_state.tokenizer.decode(user_input_token_ids)
     
     def get_unique_output_values(self):
         unique_output_values = {}
@@ -999,11 +2563,6 @@ class AttackResultInfoCollection(JSONSerializableObject):
             rds_results = []
             for result_data_set_name in r.result_data_sets.keys():
                 output_value = r.result_data_sets[result_data_set_name].decoded_llm_output_string
-                #if output_value is not None:
-                    # output_value_count = 1
-                    # if output_value in unique_output_values.keys():
-                        # output_value_count = unique_output_values[output_value] + 1
-                    # unique_output_values[output_value] = output_value_count
                 rds_results = add_value_to_list_if_not_already_present(rds_results, output_value, ignore_none = True)
             rds_results_filtered = []
             for rdsr_num in range(0, len(rds_results)):
@@ -1077,6 +2636,7 @@ class BrokenHillResultData(JSONSerializableObject):
         self.attack_results = []
         self.self_test_results = {}
         self.completed_iterations = 0
+        self.model_parameter_info_collection = None
     
     def to_dict(self):
         result = super(BrokenHillResultData, self).properties_to_dict(self)
@@ -1086,6 +2646,9 @@ class BrokenHillResultData(JSONSerializableObject):
     def from_dict(property_dict):
         result = BrokenHillResultData()
         super(BrokenHillResultData, result).set_properties_from_dict(result, property_dict)
+        
+        if result.model_parameter_info_collection is not None:
+            result.model_parameter_info_collection = LargeLanguageModelParameterInfoCollection.from_dict(result.model_parameter_info_collection)
         
         if len(result.attack_results) > 0:
             deserialized_content = []
@@ -1102,7 +2665,7 @@ class BrokenHillResultData(JSONSerializableObject):
             for i in range(0, len(serialized_dict_keys)):
                 deserialized_dict[serialized_dict_keys[i]] = AttackResultInfoData.from_dict(result.self_test_results[serialized_dict_keys[i]])
             result.self_test_results = deserialized_dict
-        
+                
         return result
 
     def to_json(self):
@@ -1152,6 +2715,797 @@ class GenerationResults(JSONSerializableObject):
     @staticmethod
     def from_json(json_string):
         return GenerationResults.from_dict(json.loads(json_string))
+
+class ResourceUtilizationException(Exception):
+    pass
+
+class CUDADeviceUtilizationData(JSONSerializableObject):
+    def __init__(self):
+        self.device_name = None
+        self.device_display_name = None
+        self.total_memory = None
+        self.gpu_used_memory = None
+        self.available_memory = None
+        self.total_memory_utilization = None
+        self.process_reserved_memory = None
+        self.process_memory_utilization = None
+        self.process_reserved_allocated_memory = None
+        self.process_reserved_unallocated_memory = None
+        self.process_reserved_utilization = None
+
+    @staticmethod
+    def create_snapshot(cuda_device):
+        result = CUDADeviceUtilizationData()
+        result.device_name = cuda_device.device_name
+        result.device_display_name = cuda_device.device_display_name
+        result.total_memory = cuda_device.total_memory
+        result.gpu_used_memory = cuda_device.gpu_used_memory
+        result.available_memory = cuda_device.available_memory
+        result.total_memory_utilization = cuda_device.total_memory_utilization
+        result.process_reserved_memory = cuda_device.process_reserved_memory
+        result.process_memory_utilization = cuda_device.process_memory_utilization
+        result.process_reserved_allocated_memory = cuda_device.process_reserved_allocated_memory
+        result.process_reserved_unallocated_memory = cuda_device.process_reserved_unallocated_memory
+        result.process_reserved_utilization = cuda_device.process_reserved_utilization
+        return result
+
+    def to_dict(self):
+        result = super(CUDADeviceUtilizationData, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = CUDADeviceUtilizationData()
+        super(CUDADeviceUtilizationData, result).set_properties_from_dict(result, property_dict)        
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return CUDADeviceUtilizationData.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return CUDADeviceUtilizationData.from_dict(json.loads(json_string))
+
+class ResourceUtilizationSnapshot(JSONSerializableObject):
+    def __init__(self):
+        self.epoch_time = None
+        self.location_description = None
+        self.process_physical_memory = None
+        self.process_virtual_memory = None
+        self.process_swap = None
+        self.system_physical_memory = None
+        self.system_available_memory = None
+        self.system_in_use_memory = None
+        self.system_memory_util_percent = None
+        self.system_swap_total = None
+        self.system_swap_in_use = None
+        self.system_swap_free = None
+        self.system_swap_percent = None
+        self.cuda_device_data = []
+    
+    @staticmethod
+    def create_snapshot(location_description):
+        result = ResourceUtilizationSnapshot()
+        result.epoch_time = time.time_ns()
+        result.location_description = location_description
+        process_mem_info = psutil.Process().memory_full_info()
+        result.process_physical_memory = process_mem_info.rss
+        result.process_virtual_memory = process_mem_info.vms
+        result.process_swap = 0
+        if hasattr(process_mem_info, "swap"):
+            try:
+                result.process_swap = process_mem_info.swap
+            except Exception as e:
+                # sent as a debug-level message to avoid spamming the console output on Mac OS
+                logger.debug(f"Error getting process swap memory information: {e}\n{traceback.format_exc()}\n")
+                result.process_swap = 0
+        system_mem_info = psutil.virtual_memory()
+        result.system_physical_memory = system_mem_info.total
+        result.system_available_memory = system_mem_info.available
+        result.system_in_use_memory = system_mem_info.used
+        result.system_memory_util_percent = float(result.system_in_use_memory) / float(result.system_physical_memory)
+        try:
+            system_swap_info = psutil.swap_memory()
+            result.system_swap_total = system_swap_info.total
+            result.system_swap_in_use = system_swap_info.used
+            result.system_swap_free = system_swap_info.free
+            # this figure is not accurate on Mac OS and Windows - seems like it's multiplied by 100 versus Linux
+            #result.system_swap_percent = system_swap_info.percent
+            result.system_swap_percent = 0.0
+            if result.system_swap_in_use is not None and result.system_swap_total is not None:
+                result.system_swap_percent = float(result.system_swap_in_use) / float(result.system_swap_total)
+        except Exception as e:
+            # sent as a debug-level message to avoid spamming the console output on Mac OS
+            logger.debug(f"Error getting swap memory information: {e}\n{traceback.format_exc()}\n")
+            result.system_swap_total = 0
+            result.system_swap_in_use = 0
+            result.system_swap_free = 0
+            result.system_swap_percent = 0.0
+        
+        cuda_devices = PyTorchDevice.get_all_cuda_devices()
+        for i in range(0, len(cuda_devices)):
+            cd = CUDADeviceUtilizationData.create_snapshot(cuda_devices[i])
+            result.cuda_device_data.append(cd)
+
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality     
+        return result
+
+    def to_dict(self):
+        result = super(ResourceUtilizationSnapshot, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = ResourceUtilizationSnapshot()
+        super(ResourceUtilizationSnapshot, result).set_properties_from_dict(result, property_dict)
+        if len(result.cuda_device_data) > 0:
+            deserialized_results = []
+            for i in range(0, len(result.cuda_device_data)):
+                deserialized_results.append(CUDADeviceUtilizationData.from_dict(result.cuda_device_data[i]))
+            result.cuda_device_data = deserialized_results
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return ResourceUtilizationSnapshot.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return ResourceUtilizationSnapshot.from_dict(json.loads(json_string))
+
+class ResourceUtilizationStatistics(JSONSerializableObject):
+    def __init__(self):
+        self.cpu = StatisticsCube()
+        self.cpu.cube_name = "CPU"
+        self.performance = StatisticsCube()
+        self.performance.cube_name = "Performance"
+        self.cuda_devices = []
+
+    def add_empty_cuda_device_cubes(self, cuda_device_count):
+        for i in range(0, cuda_device_count):
+            cc = StatisticsCube()
+            self.cuda_devices.append(cc)
+
+    def to_dict(self):
+        result = super(ResourceUtilizationStatistics, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, ResourceUtilizationStatistics):
+            raise JSONSerializationException(f"Cannot apply properties for the ResourceUtilizationStatistics class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(ResourceUtilizationStatistics, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.cpu is not None:
+            existing_object.cpu = StatisticsCube.from_dict(existing_object.cpu)
+        if existing_object.performance is not None:
+            existing_object.performance = StatisticsCube.from_dict(existing_object.performance)
+        if existing_object.cuda_devices is not None:
+            if len(existing_object.cuda_devices) > 0:
+                deserialized_content = []
+                for i in range(0, len(existing_object.cuda_devices)):
+                    deserialized_content.append(StatisticsCube.from_dict(existing_object.cuda_devices[i]))
+                existing_object.cuda_devices = deserialized_content
+        return existing_object
+    
+    @staticmethod
+    def from_dict(property_dict):
+        result = ResourceUtilizationStatistics()
+              
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return ResourceUtilizationStatistics.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return ResourceUtilizationStatistics.from_dict(json.loads(json_string))        
+        
+
+class ResourceUtilizationData(JSONSerializableObject):
+    def __init__(self):
+        self.snapshots = []
+        self.statistics = ResourceUtilizationStatistics()
+        self.minimum_terminal_width_for_grid = 132
+
+    def to_dict(self):
+        result = super(ResourceUtilizationData, self).properties_to_dict(self)
+        return result
+    
+    @staticmethod
+    def apply_dict(existing_object, property_dict):
+        if not isinstance(existing_object, ResourceUtilizationData):
+            raise JSONSerializationException(f"Cannot apply properties for the ResourceUtilizationData class to an instance of the class '{existing_object.__class__.__name__}'")
+        super(ResourceUtilizationData, existing_object).set_properties_from_dict(existing_object, property_dict)
+        if existing_object.snapshots is not None:
+            if len(existing_object.snapshots) > 0:
+                deserialized_results = []
+                for i in range(0, len(existing_object.snapshots)):
+                    deserialized_results.append(ResourceUtilizationSnapshot.from_dict(existing_object.snapshots[i]))
+                existing_object.snapshots = deserialized_results
+        if existing_object.statistics is not None:
+            existing_object.statistics = ResourceUtilizationStatistics.from_dict(existing_object.statistics)
+        return existing_object
+        
+    @staticmethod
+    def from_dict(property_dict):
+        result = ResourceUtilizationData()
+        result = ResourceUtilizationData.apply_dict(result, property_dict)
+        return result
+
+    def to_json(self):
+        return JSONSerializableObject.json_dumps(self.to_dict())
+    
+    def copy(self):
+        return ResourceUtilizationData.from_dict(self.to_dict())
+    
+    @staticmethod
+    def from_json(json_string):
+        return ResourceUtilizationData.from_dict(json.loads(json_string))        
+
+    def populate_statistics(self):
+        self.statistics = ResourceUtilizationStatistics()
+        
+        # Collect all of the data into arrays
+        # CPU aggregation
+        cpu_process_physical_memory = []
+        cpu_process_virtual_memory = []
+        cpu_process_swap = []
+        cpu_system_physical_memory = []
+        cpu_system_available_memory = []
+        cpu_system_in_use_memory = []
+        cpu_system_memory_util_percent = []
+        cpu_system_swap_total = []
+        cpu_system_swap_in_use = []
+        cpu_system_swap_free = []
+        cpu_system_swap_percent = []
+        
+        # Have to store this separately because there could be an arbitrary number
+        cuda_device_values = []
+        
+        cuda_device_counts = []
+        max_num_cuda_devices = 0
+        for snapshot_num in range(0, len(self.snapshots)):
+            num_cuda_devices = len(self.snapshots[snapshot_num].cuda_device_data)
+            previous_cuda_device_count = None
+            if len(cuda_device_counts) == 0:
+                cuda_device_counts.append(num_cuda_devices)
+            else:
+                previous_cuda_device_count = cuda_device_counts[(len(cuda_device_counts) - 1)]
+                if previous_cuda_device_count != num_cuda_devices:
+                    cuda_device_counts.append(num_cuda_devices)
+            
+            if num_cuda_devices > max_num_cuda_devices:
+                max_num_cuda_devices = num_cuda_devices
+
+        if len(cuda_device_counts) > 1:
+            times_changed = len(cuda_device_counts) - 1
+            logger.warning(f"The number of detected CUDA devices changed {times_changed} time(s) when Broken Hill analyzed the collected performance data. This strongly implies that testing was performed on more than one system, with non-identical hardware. You should treat any overall statistics (maximum memory use, etc.) with skepticism, as it is likely inaccurate.")
+        
+        self.statistics.add_empty_cuda_device_cubes(max_num_cuda_devices)
+        # collect per-CUDA-device data into arrays using this hack/misuse of a non-strongly-typed language:
+        
+        for cuda_device_num in range(0, max_num_cuda_devices):
+            all_values_cuda_device = CUDADeviceUtilizationData()            
+            all_values_cuda_device.total_memory = []
+            all_values_cuda_device.gpu_used_memory = []
+            all_values_cuda_device.available_memory = []
+            all_values_cuda_device.total_memory_utilization = []
+            all_values_cuda_device.process_reserved_memory = []
+            all_values_cuda_device.process_memory_utilization = []
+            all_values_cuda_device.process_reserved_allocated_memory = []
+            all_values_cuda_device.process_reserved_unallocated_memory = []
+            all_values_cuda_device.process_reserved_utilization = []
+            cuda_device_values.append(all_values_cuda_device)
+        
+        for snapshot_num in range(0, len(self.snapshots)):
+            snap = self.snapshots[snapshot_num]
+            cpu_process_physical_memory.append(float(snap.process_physical_memory))
+            cpu_process_virtual_memory.append(float(snap.process_virtual_memory))
+            cpu_process_swap.append(float(snap.process_swap))
+            #cpu_system_physical_memory.append(float(snap.system_physical_memory))
+            cpu_system_available_memory.append(float(snap.system_available_memory))
+            cpu_system_in_use_memory.append(float(snap.system_in_use_memory))
+            cpu_system_memory_util_percent.append(float(snap.system_memory_util_percent) * 100.0)
+            #cpu_system_swap_total.append(float(snap.system_swap_total))
+            cpu_system_swap_in_use.append(float(snap.system_swap_in_use))
+            cpu_system_swap_free.append(float(snap.system_swap_free))
+            cpu_system_swap_percent.append(float(snap.system_swap_percent) * 100.0)
+            
+            num_cuda_devices = len(snap.cuda_device_data)
+            
+            for cuda_device_num in range(0, num_cuda_devices):
+                all_values_cuda_device = cuda_device_values[cuda_device_num]
+                if all_values_cuda_device.device_name is None:
+                    all_values_cuda_device.device_name = snap.cuda_device_data[cuda_device_num].device_name
+                if all_values_cuda_device.device_display_name is None:
+                    all_values_cuda_device.device_display_name = snap.cuda_device_data[cuda_device_num].device_display_name
+                #all_values_cuda_device.total_memory.append(float(snap.cuda_device_data[cuda_device_num].total_memory)))
+                all_values_cuda_device.gpu_used_memory.append(float(snap.cuda_device_data[cuda_device_num].gpu_used_memory))
+                all_values_cuda_device.available_memory.append(float(snap.cuda_device_data[cuda_device_num].available_memory))
+                all_values_cuda_device.total_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].total_memory_utilization) * 100.0)
+                all_values_cuda_device.process_reserved_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_memory))
+                all_values_cuda_device.process_memory_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_memory_utilization) * 100.0)
+                all_values_cuda_device.process_reserved_allocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_allocated_memory))
+                all_values_cuda_device.process_reserved_unallocated_memory.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_unallocated_memory))
+                all_values_cuda_device.process_reserved_utilization.append(float(snap.cuda_device_data[cuda_device_num].process_reserved_utilization) * 100.0)
+                cuda_device_values[cuda_device_num] = all_values_cuda_device
+        
+        # Use the arrays to generate the data        
+        self.statistics.cpu.add_or_update_dataset("process_physical_memory", cpu_process_physical_memory)
+        self.statistics.cpu.add_or_update_dataset("process_virtual_memory", cpu_process_virtual_memory)
+        self.statistics.cpu.add_or_update_dataset("process_swap", cpu_process_swap)
+        #self.statistics.cpu.add_or_update_dataset("system_physical_memory", cpu_system_physical_memory)
+        self.statistics.cpu.add_or_update_dataset("system_available_memory", cpu_system_available_memory)
+        self.statistics.cpu.add_or_update_dataset("system_in_use_memory", cpu_system_in_use_memory)
+        self.statistics.cpu.add_or_update_dataset("system_memory_util_percent", cpu_system_memory_util_percent)
+        #self.statistics.cpu.add_or_update_dataset("system_swap_total", cpu_system_swap_total)
+        self.statistics.cpu.add_or_update_dataset("system_swap_in_use", cpu_system_swap_in_use)
+        self.statistics.cpu.add_or_update_dataset("system_swap_free", cpu_system_swap_free)
+        self.statistics.cpu.add_or_update_dataset("system_swap_percent", cpu_system_swap_percent)
+
+        for i in range(0, max_num_cuda_devices):
+            if self.statistics.cuda_devices[i].cube_name is None:
+                self.statistics.cuda_devices[i].cube_name = f"{cuda_device_values[i].device_display_name} ({cuda_device_values[i].device_name})"
+            #self.statistics.cuda_devices[i].add_or_update_dataset("total_memory", cuda_device_values[i].total_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("gpu_used_memory", cuda_device_values[i].gpu_used_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("available_memory", cuda_device_values[i].available_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("total_memory_utilization", cuda_device_values[i].total_memory_utilization)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_memory", cuda_device_values[i].process_reserved_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_memory_utilization", cuda_device_values[i].process_memory_utilization)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_allocated_memory", cuda_device_values[i].process_reserved_allocated_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_unallocated_memory", cuda_device_values[i].process_reserved_unallocated_memory)
+            self.statistics.cuda_devices[i].add_or_update_dataset("process_reserved_utilization", cuda_device_values[i].process_reserved_utilization)
+    
+    def populate_performance_statistics(self, attack_state):
+        if attack_state.persistable.overall_result_data.attack_results is None:
+            return
+        num_iterations = len(attack_state.persistable.overall_result_data.attack_results)
+        if num_iterations < 2:
+            return
+        processing_time = []
+        for i in range(1, num_iterations):
+            processing_time.append(attack_state.persistable.overall_result_data.attack_results[i].total_processing_time_seconds)
+            
+        self.statistics.performance.add_or_update_dataset("total_processing_time_seconds", processing_time)
+
+    def add_statistics_row(self, found_data, data_array, dataset, data_format_string):
+        result_row = []
+        found_data_in_this_dataset = False
+        convert_to_integer = False
+        if ":n" in data_format_string:
+            convert_to_integer = True
+        if dataset is not None:            
+            if dataset.maximum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.maximum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.minimum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.minimum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.median is not None:
+                found_data_in_this_dataset = True
+                val = dataset.median
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")        
+            if dataset.mean is not None:
+                found_data_in_this_dataset = True
+                val = dataset.mean
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+            if dataset.value_range is not None:
+                found_data_in_this_dataset = True
+                val = dataset.value_range
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                result_row.append(formatted_data)
+            else:
+                result_row.append("")
+        if found_data_in_this_dataset:
+            found_data = True
+            data_array.append(result_row)
+        return found_data, data_array
+
+    def add_statistics_line_item(self, message, found_data, stat_name, dataset, data_format_string, padding = '      '):
+        new_message = message
+        found_data_in_this_dataset = False
+        convert_to_integer = False
+        if ":n" in data_format_string:
+            convert_to_integer = True
+        if dataset is not None:
+            new_message = f"{new_message}\n{padding}{stat_name}:"
+            if dataset.maximum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.maximum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                new_message = f"{new_message}\n{padding}  Maximum: {formatted_data}"
+            if dataset.minimum is not None:
+                found_data_in_this_dataset = True
+                val = dataset.minimum
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                new_message = f"{new_message}\n{padding}  Minimum: {formatted_data}"
+            if dataset.value_range is not None:
+                found_data_in_this_dataset = True
+                val = dataset.value_range
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                new_message = f"{new_message}\n{padding}  Range: {formatted_data}"
+            if dataset.median is not None:
+                found_data_in_this_dataset = True
+                val = dataset.median
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                new_message = f"{new_message}\n{padding}  Median: {formatted_data}"        
+            if dataset.mean is not None:
+                found_data_in_this_dataset = True
+                val = dataset.mean
+                if convert_to_integer:
+                    val = int(round(val))
+                formatted_data = data_format_string.format(val)
+                new_message = f"{new_message}\n{padding}  Average: {formatted_data}"
+        if found_data_in_this_dataset:
+            found_data = True
+            message = new_message
+        return found_data, message
+
+    def output_statistics_grid(self, using_cuda = False, use_ansi = True, verbose = False):
+        message = "Resource utilization / performance statistics:"
+        #if verbose:
+        #    message = f"{message} (verbose)"
+        message = f"{message}\n\n"
+        
+        found_data_overall = False  
+        column_headers = [
+            "Maximum",
+            "Minimum",
+            "Median",
+            "Average",
+            "Range"
+            ]
+        
+        found_data = False
+        row_headers_cpu_process_memory = [ 
+            "Virtual memory in use (bytes)",
+            "Physical memory in use (bytes)",
+            "Swap memory in use (bytes)"
+            ]
+        cgv = ConsoleGridView(use_ansi = use_ansi)
+        cgv.column_headers = column_headers
+        cgv.row_headers = row_headers_cpu_process_memory
+        current_stats = []
+        dataset = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        if found_data:
+            cgv.title = "CPU - Broken Hill Process"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True
+        
+        found_data = False  
+        row_headers_cpu_system_memory = [ 
+            "Memory in use (bytes)",
+            "Memory available (bytes)",
+            "Memory utilization",
+            "Swap memory in use (bytes)",
+            "Swap memory available (bytes)",
+            "Swap memory utilization"
+            ]
+        cgv = ConsoleGridView(use_ansi = use_ansi)
+        cgv.column_headers = column_headers
+        cgv.row_headers = row_headers_cpu_system_memory
+        current_stats = []
+        dataset = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset,  "{0:.2f}%")
+        dataset = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+        found_data, s = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+        dataset = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset,  "{0:.2f}%")
+        if found_data:
+            cgv.title = "CPU - System-Wide"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True
+
+        if using_cuda:
+            for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+                # colour the two device-level tables in alternating pairs to make it easier to distinguish data when more than one CUDA device is present.
+                title_row_background_colour = "magenta"
+                #title_row_background_colour = "green"
+                title_row_foreground_colour = "white"
+                if (cuda_device_num % 2) == 1:
+                    title_row_background_colour = "green"
+                    #title_row_background_colour = "magenta"
+                    title_row_foreground_colour = "white"
+                found_data = False  
+                cd = self.statistics.cuda_devices[cuda_device_num]
+                row_headers_cuda = [ 
+                    "Memory reserved (bytes)",
+                    "Memory utilization",
+                    "Memory reserved and allocated",
+                    "Memory reserved but unallocated",
+                    "Reserved memory utilization"
+                    ]
+                cgv = ConsoleGridView(use_ansi = use_ansi)
+                cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
+                cgv.column_headers = column_headers
+                cgv.row_headers = row_headers_cuda
+                current_stats = []
+                dataset = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                dataset = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                if found_data:
+                    cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - Broken Hill Process"
+                    cgv.set_data(current_stats)
+                    table_text = cgv.render_table()
+                    message = f"{message}{table_text}\n\n"
+                    found_data_overall = True
+            
+                row_headers_cuda = [ 
+                    "Memory in use (bytes)",
+                    "Memory available (bytes)",
+                    "Memory utilization"
+                    ]
+                cgv = ConsoleGridView(use_ansi = use_ansi)
+                cgv.set_title_colour(title_row_background_colour, title_row_foreground_colour)
+                cgv.column_headers = column_headers
+                cgv.row_headers = row_headers_cuda
+                current_stats = []
+                dataset = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("available_memory", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:n}")
+                dataset = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+                found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}%")
+                if found_data:
+                    cgv.title = f"CUDA Device {cuda_device_num}: {cd.cube_name} - System-Wide"
+                    cgv.set_data(current_stats)
+                    table_text = cgv.render_table()
+                    message = f"{message}{table_text}\n\n"
+                    found_data_overall = True
+        
+        found_data = False
+        cgv = ConsoleGridView(use_ansi = use_ansi)
+        cgv.set_title_colour("cyan", "white")
+        cgv.column_headers = column_headers
+        cgv.row_headers = [ "Seconds to process each iteration:" ]
+        current_stats = []
+        dataset = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        found_data, current_stats = self.add_statistics_row(found_data, current_stats, dataset, "{0:.2f}")
+        if found_data:
+            cgv.title = "Processing Performance"
+            cgv.set_data(current_stats)
+            table_text = cgv.render_table()
+            message = f"{message}{table_text}\n\n"
+            found_data_overall = True
+        
+        if found_data_overall:
+            logger.info(message)
+    
+    def output_statistics_plaintext(self, using_cuda = False, use_ansi = True, verbose = False):        
+        message = "Resource utilization / performance statistics:"
+        if verbose:
+            message = f"{message} (verbose)"
+        message = f"{message}\n\n"
+        
+        found_cpu_data = False        
+        cpu_message = f"{message}\n\n  CPU:"
+        cpu_message = f"{cpu_message}\n    Broken Hill process:"
+        pvm = self.statistics.cpu.get_dataset("process_virtual_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Virtual memory in use", pvm, "{0:n} byte(s)")
+        if verbose:
+            ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
+        pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
+        if pswap.maximum is not None:
+            if verbose or pswap.maximum > 0:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
+        cpu_message = f"{cpu_message}\n    System-wide:"
+        sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
+        if verbose:
+            sys_avail = self.statistics.cpu.get_dataset("system_available_memory", raise_on_missing = False)
+            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory available", sys_avail, "{0:n} byte(s)")
+        sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
+        found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
+        sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
+        if sys_swap_inuse.maximum is not None:
+            if verbose or sys_swap_inuse.maximum > 0:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
+        if verbose:
+            sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
+            if sys_swap_avail.maximum is not None:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")   
+        if sys_swap_inuse.maximum is not None:
+            if verbose or sys_swap_inuse.maximum > 0:
+                sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+                if sys_swap_util.maximum is not None:
+                    found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
+        if found_cpu_data:
+            found_data = True
+            message = f"{message}{cpu_message}"
+        
+        if using_cuda:
+            found_cuda_data = False
+            cuda_message = f"{message}\n\n  CUDA devices:"
+            cuda_padding = '        '
+            for cuda_device_num in range(0, len(self.statistics.cuda_devices)):
+                found_cuda_device_data = False
+                cd = self.statistics.cuda_devices[cuda_device_num]
+                cuda_device_message = f"\n    Device {cuda_device_num}: {cd.cube_name}"
+                cuda_device_message = f"{cuda_device_message}\n      Broken Hill process:"
+                cp_used = cd.get_dataset("process_reserved_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved", cp_used, "{0:n} byte(s)", padding = cuda_padding)
+                cp_util = cd.get_dataset("process_memory_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cp_util, "{0:.2f}%", padding = cuda_padding)
+                if verbose:
+                    cp_allocated = cd.get_dataset("process_reserved_allocated_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved and allocated", cp_allocated, "{0:n} byte(s)", padding = cuda_padding)
+                    cp_unallocated = cd.get_dataset("process_reserved_unallocated_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory reserved but unallocated", cp_unallocated, "{0:n} byte(s)", padding = cuda_padding)
+                    cpr_util = cd.get_dataset("process_reserved_utilization", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Reserved memory utilization", cpr_util, "{0:.2f}%", padding = cuda_padding)
+                cuda_device_message = f"{cuda_device_message}\n      System-wide:"
+                cd_used = cd.get_dataset("gpu_used_memory", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory in use", cd_used, "{0:n} byte(s)", padding = cuda_padding)
+                if verbose:
+                    cd_avail = cd.get_dataset("available_memory", raise_on_missing = False)
+                    found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory available", cd_avail, "{0:n} byte(s)", padding = cuda_padding)
+                cd_util = cd.get_dataset("total_memory_utilization", raise_on_missing = False)
+                found_cuda_device_data, cuda_device_message = self.add_statistics_line_item(cuda_device_message, found_cuda_device_data, "Memory utilization", cd_util, "{0:.2f}%", padding = cuda_padding)
+                
+                if found_cuda_device_data:
+                    found_cuda_data = True
+                    cuda_message = f"{cuda_message}{cuda_device_message}"
+            
+            if found_cuda_data:
+                found_data = True
+                message = f"{message}{cuda_message}"
+        
+        #TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+        
+        found_perf_data = False
+        perf_message = f"{message}\n\n  Processing performance:"
+        tpts = self.statistics.performance.get_dataset("total_processing_time_seconds", raise_on_missing = False)
+        found_perf_data, perf_message = self.add_statistics_line_item(perf_message, found_perf_data, "Seconds to process each iteration:", tpts, "{0:.2f}")
+    
+        if found_perf_data:
+            found_data = True
+            message = perf_message
+    
+        if found_data:
+            logger.info(message)
+    
+    def output_statistics(self, using_cuda = False, use_ansi = True, verbose = False):
+        # If there are at least 80 columns of terminal, try outputting in grid form first.
+        # If not, or grid errors out, output in plaintext instead.
+        grid_displayed = False
+        if ConsoleGridView.terminal_is_wide_enough_for_grid(self.minimum_terminal_width_for_grid):
+            try:
+                self.output_statistics_grid(using_cuda = using_cuda, use_ansi = use_ansi, verbose = verbose)
+                grid_displayed = True
+            except Exception as e:
+                logger.error(f"Exception thrown when trying to display statistics in grid form: {e}\n{traceback.format_exc()}\nFalling back to plaintext statistics output.")
+                grid_displayed = False
+        
+        if not grid_displayed:
+            self.output_statistics_plaintext(using_cuda = using_cuda, use_ansi = use_ansi, verbose = verbose)
+    
+    def write_performance_data(self, attack_state):
+        if attack_state.persistable.attack_params.performance_stats_output_file is not None:
+            safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
+    
+    def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
+        current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
+        self.snapshots.append(current_snapshot)
+
+        using_cpu = attack_state.persistable.attack_params.using_cpu()
+        using_cuda = attack_state.persistable.attack_params.using_cuda()
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"Collecting Torch statistics. location_description = {location_description}, is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}.")
+
+        if attack_state.persistable.attack_params.write_output_every_iteration:
+            self.write_performance_data(attack_state)
+                
+        if not attack_state.persistable.attack_params.verbose_resource_info:
+            if not is_key_snapshot_event:
+                return
+        
+        display_string = ""
+        if location_description is None:
+            display_string = f"System resource statistics\n"
+        else:
+            display_string = f"System resource statistics ({location_description})\n"
+        
+        display_string += f"CPU:\n"
+        display_string += f"\tBroken Hill process:\n"
+        display_string += f"\t\tVirtual memory in use: {current_snapshot.process_virtual_memory:n} bytes\n"
+        display_string += f"\t\tPhysical memory in use: {current_snapshot.process_physical_memory:n} bytes\n"
+        if current_snapshot.process_swap is not None:
+            display_string += f"\t\tSwap memory in use: {current_snapshot.process_swap:n} bytes\n"
+        display_string += f"\tSystem-level:\n"
+        display_string += f"\t\tTotal physical memory: {current_snapshot.system_physical_memory:n} bytes\n"
+        display_string += f"\t\tMemory in use: {current_snapshot.system_in_use_memory:n} bytes\n"
+        display_string += f"\t\tMemory available: {current_snapshot.system_available_memory:n} bytes\n"
+        display_string += f"\t\tMemory utilization: {current_snapshot.system_memory_util_percent:.0%}\n"
+        if current_snapshot.system_swap_total is not None:
+            display_string += f"\t\tTotal swap memory: {current_snapshot.system_swap_total:n} bytes\n"
+            display_string += f"\t\tSwap memory in use: {current_snapshot.system_swap_in_use:n} bytes\n"
+            display_string += f"\t\tSwap memory available: {current_snapshot.system_swap_free:n} bytes\n"
+            display_string += f"\t\tSwap memory utilization: {current_snapshot.system_swap_percent:.0%}\n"                    
+            
+        if using_cuda:
+            for i in range(0, len(current_snapshot.cuda_device_data)):
+                d = current_snapshot.cuda_device_data[i]
+                display_string += f"CUDA device {d.device_name} - {d.device_display_name}:\n"
+                display_string += f"\tBroken Hill process:\n"
+                display_string += f"\t\tMemory reserved: {d.process_reserved_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory utilization: {d.process_memory_utilization:.0%}\n"
+                display_string += f"\t\tMemory reserved and allocated: {d.process_reserved_allocated_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory reserved but unallocated: {d.process_reserved_unallocated_memory:n} byte(s)\n"
+                display_string += f"\t\tReserved memory utilization: {d.process_reserved_utilization:.0%}\n"
+                display_string += f"\tSystem-wide:\n"
+                display_string += f"\t\tTotal memory: {d.total_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory in use: {d.gpu_used_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory available: {d.available_memory:n} byte(s)\n"
+                display_string += f"\t\tMemory utilization: {d.total_memory_utilization:.0%}\n"
+        # TKTK mps equivalent of the CUDA code for the day when the PyTorch Metal back-end supports the necessary functionality
+        if current_snapshot.process_swap is not None:
+            if current_snapshot.process_swap > 0:
+                display_string += f"Warning: this process has {current_snapshot.process_swap:n} byte(s) swapped to disk. If you are encountering poor performance, it may be due to insufficient system RAM to handle the current Broken Hill configuration.\n"
+        logger.info(display_string)
+                
 
 class FailureCounterBehaviour(IntFlag):
     # If a rollback to a parent node is triggered, the counter is reset to 0

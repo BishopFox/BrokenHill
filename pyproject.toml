@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brokenhill"
+version = "0.34.0"
+description = "A productionized greedy coordinate gradient (GCG) attack tool for use against large language models (LLMs)."
+readme = "README.md"
+authors = [
+  {name = "Ben Lincoln"},
+  {name = "Andy Zou"},
+  {name = "Zifan Wang"},
+  {name = "Matt Fredrikson"},
+  {name = "J. Zico Kolter"},
+]
+maintainers = [
+  {name = "Ben Lincoln"}
+]
+license = {text = "MIT License"}
+requires-python = ">=3.9"
+classifiers = [
+"Development Status :: 4 - Beta",
+"License :: OSI Approved :: MIT License",
+"Programming Language :: Python :: 3",
+]
+dependencies = [
+  "wheel==0.44.0",
+# tested with torch 2.3.1, 2.4.0, 2.5.1
+  "torch==2.5.1",
+# tested with transformers 4.28.1, 4.42.4, 4.44.2, 4.46.2
+  "transformers==4.46.2",
+# undeclared requirement for transformers 4.44.2, can probably be removed once Transformers is upgraded
+#  "expecttest>=0.2.1",
+# tested with ml-collections 0.1.1
+  "ml_collections==0.1.1",
+# tested with fschat 0.2.20, 0.2.36
+# installing from source is highly recommended, and is the default configuration
+# This is the commit from 2024-11-02, known to work with Broken Hill
+  "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat.git@185e1a9369db800b8c4344814bdfbca5c4c4a0f4",
+# if you encounter issues, you can try installing from PyPi instead by commenting out the previous line and uncommenting the next line.
+#  "fschat==0.2.36",
+# tested with psutil 6.0.0
+  "psutil==6.0.0",
+# tested with pandas 2.2.2
+#  "pandas==2.2.2",
+# tested with accelerate 0.32.1, 0.33.0
+  "accelerate==0.33.0",
+# tested with flash_attn 2.6.3
+# Uncommenting the next line may improve results if all testing is conducted exclusively on CUDA devices
+#  "flash_attn==2.6.3",
+# tested with sentencepiece 0.2.0
+  "sentencepiece==0.2.0",
+# tested with causal-conv1d 1.4.0
+# causal-conv1d does not install correctly on Mac OS or Windows
+  "causal-conv1d==1.4.0 ; platform_system == 'Linux'",
+# mamba-ssm is recommended by the state-spaces for the Mamba LLM family, but doesn't install correctly on my system.
+#  "mamba-ssm",
+# needed for Tiny-Llama
+# tested with protobuf 5.28.0
+  "protobuf==5.28.0",
+# needed for Guanaco and other adapter-based models
+# tested with peft 0.12.0
+  "peft==0.12.0",
+# Needed for some releases of Qwen
+# tested with einops 0.8.0
+  "einops==0.8.0",
+# Needed for some releases of Qwen
+# tested with transformers_stream_generator 0.0.5
+  "transformers_stream_generator==0.0.5",
+# Needed for some versions of Phi-3
+# tested with pytest 8.3.3
+  "pytest==8.3.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/BishopFox/BrokenHill"
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.package-data]
+"data" = ["**/*.json", "**/*.txt"]
+"llm_attacks_bishopfox" = ["**/*.json", "**/*.txt"]

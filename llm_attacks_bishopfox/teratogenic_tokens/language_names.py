@@ -1,12 +1,16 @@
 #!/bin/env python
 
 import json
+import logging
 import os
+import traceback
 
 from llm_attacks_bishopfox.json_serializable_object import JSONSerializableObject
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
-from llm_attacks_bishopfox.util.util_functions import get_file_content
+from llm_attacks_bishopfox.util.util_functions import load_json_from_file
+
+logger = logging.getLogger(__name__)
 
 BUNDLED_LANGUAGE_DEFINITION_FILE_NAME = "human_language_names.json"
 
@@ -113,7 +117,11 @@ class HumanLanguageManager(JSONSerializableObject):
     def from_bundled_json_file():
         base_path = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(base_path, BUNDLED_LANGUAGE_DEFINITION_FILE_NAME)
-        file_content = get_file_content(file_path, failure_is_critical = True)
+        file_content = None
+        try:
+            file_content = load_json_from_file(file_path, failure_is_critical = True)
+        except Exception as e:
+            raise HumanLanguageException(f"Could not load JSON data from the file '{file_path}': {e}\n{traceback.format_exc()}")
         if file_content is None:
             raise HumanLanguageException(f"Found no content in the file '{file_path}'")
-        return HumanLanguageManager.from_json(file_content)
+        return HumanLanguageManager.from_dict(file_content)

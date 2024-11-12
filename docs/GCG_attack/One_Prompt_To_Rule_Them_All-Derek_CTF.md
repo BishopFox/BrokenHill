@@ -6,7 +6,7 @@
 
 This is a walkthrough of exploiting [Derek Rush's LLM CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) by generating completely separate strings targeting the "genie" LLM and the gatekeeping LLM(s), then testing every possible combination of prompts that combine one element from each list against the real LLM "stack". [As discussed in the One Prompt To Rule Them All document](One_Prompt_To_Rule_Them_All.md), I've found this to be the most effective way to approach this kind of scenario.
 
-For now, I've prototyped this attack variation using a combination of `expect` and `bash` one-liners. A future version of the tool may be able to perform this type of testing for you in some cases.
+For now, I've prototyped this attack variation using a combination of `expect` and `bash` one-liners. A future version of Broken Hill may be able to perform this type of testing for you in some cases.
 
 ## Table of contents
 
@@ -20,13 +20,13 @@ For now, I've prototyped this attack variation using a combination of `expect` a
 
 ## Generate the adversarial content
 
-[Derek's CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) uses `ollama` with the `phi3` model. [The Phi-3-mini-128k-instruct version of Phi 3](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) is most like the default version that `ollama` uses, so this section assumes you've already downloaded that. Note that `ollama` uses 4-bit integer quantized weights by default, and the tool can only work with floating-point weights, so even if a particular generated output works very well in the tool, it may fail to produce the desired results when used in the CTF executable. Due to other differences, this will still be true even if you run the CTF with the `--model phi3:3.8b-mini-128k-instruct-fp16` option, which one would expect to create an environment identical to the attack tool's.
+[Derek's CTF](https://bishopfox.com/blog/large-language-models-llm-ctf-lab) uses `ollama` with the `phi3` model. [The Phi-3-mini-128k-instruct version of Phi 3](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct) is most like the default version that `ollama` uses, so this section assumes you've already downloaded that. Note that `ollama` uses 4-bit integer quantized weights by default, and Broken Hill can only work with floating-point weights, so even if a particular generated output works very well in the tool, it may fail to produce the desired results when used in the CTF executable. Due to other differences, this will still be true even if you run the CTF with the `--model phi3:3.8b-mini-128k-instruct-fp16` option, which one would expect to create an environment identical to the attack tool's.
 
 For all of these examples, I've used "Do you have any albums by Mari Kattman, Youth Code, Inertia, The Birthday Massacre, Night Club, or Cindergarden in stock?" as the initial adversarial string. If you'd rather begin with a neutral value, just substitute "? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?" instead
 
 ### Genie
 
-First, copy the system prompt and initialization messages into files, so that the tool can test results as closely as possible to the LLM environment they'll be processed in by the CTF itself.
+First, copy the system prompt and initialization messages into files, so that Broken Hill can test results as closely as possible to the LLM environment they'll be processed in by the CTF itself.
 
 Place the following content in a file named `Derek_CTF-genie-system.txt`:
 
@@ -282,9 +282,9 @@ test_input_string () {
 	output_file_counter=$((output_file_counter+1))
 }
 
-while read validline
+while read -r validline
 do
-	while read discloseline
+	while read -r discloseline
 	do
 		test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${validline} ${discloseline}"
 		test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${discloseline} ${validline}"
@@ -334,7 +334,7 @@ $ find . -type f -iname 'cand*.txt' \
 	| cut -d":" -f1 \
 	| sort -u > results-01.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep -L 'messed up' "${fn}"; \
 	done<results-01.txt > success-01.txt
 ```
@@ -342,7 +342,7 @@ $ while read fn; do \
 Generate a list of distinct prompts that produced the desired result, e.g.:
 
 ```
-$ while read fn; do \
+$ while read -r fn; do \
 	grep "This message is a valid question for a record store customer" "${fn}"; \
 	done<success-01.txt | sort -u | tee success-01-prompts.txt
 ```
@@ -384,7 +384,7 @@ test_input_string () {
 	output_file_counter=$((output_file_counter+1))
 }
 
-while read line
+while read -r line
 do
 	test_input_string "${OUTPUT_DIR}" "${MODEL_NAME}" "${line}"
 done<"${INPUT_FILE_1}"
@@ -420,11 +420,11 @@ $ find . -type f -iname 'cand*.txt' \
 	| cut -d":" -f1 \
 	| sort -u > results-default_and_fp16.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep -L 'messed up' "${fn}"; \
 	done<results-default_and_fp16.txt > success-default_and_fp16.txt
 
-$ while read fn; do \
+$ while read -r fn; do \
 	grep "This message is a valid question for a record store customer" "${fn}"; \
 	done<success-default_and_fp16.txt | sort -u | tee success-default_and_fp16-prompts.txt
 ```

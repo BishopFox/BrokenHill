@@ -7,7 +7,10 @@
 # !!             Do not proceed if you wish to avoid reading lists of offensive terms            !!
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+import logging
+import traceback
 
+logger = logging.getLogger(__name__)
 
 
 

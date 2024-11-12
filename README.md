@@ -20,13 +20,11 @@ The original research by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson was pe
 
 Our original goal was to greatly expand the accessibility of this fascinating area of research by producing a tool that could perform the GCG attack against as many models as possible on a GeForce RTX 4090, which is the current-generation consumer GPU with CUDA support that includes the most VRAM (24GiB). The RTX 4090 is still expensive, but buying one outright is (as of this writing) about the same price as renting a cloud instance with an A100 or H100 for one month. Additionally, at least a small fraction of people in the information security field *already* have at least one RTX 4090 for hash-cracking and/or gaming.
 
-The code released by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson only supported a few base models, and while some of those models were available in forms that could fit into VRAM on an RTX 4090, it typically didn't leave enough memory available for the actual attack. 
-
-Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Additional features are planned that will allow some of the work to be offloaded to other AI/ML compute hardware. Making the full attack possible on other hardware (such as Apple devices via Metal) is dependent on future versions of PyTorch.
+As of version 0.34, Broken Hill can also perform processing on devices without CUDA hardware at an acceptable rate (although reduced from the performance CUDA hardware provides), and can even be used on Mac OS and Windows (although it is primarily tested on Linux). This allows the attack to be performed by a much larger audience, and against much larger models than previous versions allowed.
 
 ## Documentation
 
-[Documentation for this tool is in its own directory tree due to the volume of material](docs/README.md).
+[Documentation for Broken Hill is in its own directory tree due to the volume of material](docs/README.md).
 
 [Broken Hill version history](version_history.md)
 
@@ -37,39 +35,37 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 ## Features
 
 * Extensive command-line interface
-* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090 ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)):
-  * Bart
-  * BigBird / BigBirdPegasus
+* Supports numerous model families, many of which are available in sizes small enough to run on an RTX 4090 ([see the "Model notes" document for specific details](docs/GCG_attack/model_notes.md)). Some highlights:
+  * Azurro's APT family
   * Falcon
-  * Gemma
+  * Gemma (including third-party derivatives, such as `Vikhr-Gemma-2B-instruct`)
   * Gemma 2
-  * GPT-2
-  * GPT-J
-  * GPT-Neo
-  * GPT-NeoX
+  * GLM-4
+  * GPT-J, GPT-Neo, and GPT-NeoX
   * Guanaco
-  * Llama (if you have an accurate conversation template)
-  * Llama-2
-  * Llama-3
-  * Mamba
+  * Llama (including third-party derivatives such as `Llama-68M-Chat-v1` and `alpaca-13b`)
+  * Llama-2 (including first- and third-party derivatives, such as Meta-Llama-Guard-2, Swallow, and Youri)
+  * Llama-3 (including first- and third-party derivatives, such as Llama-Guard-3, Swallow, and Youko)
   * MPT
+  * Mamba
+  * Mistral (including derived third-party models such as Intel's Neural Chat)
+  * Mixtral
   * OPT
-  * Pegasus
-  * Phi-1
-  * Phi-2
-  * Phi-3
-  * Pythia
-  * RoBERTa
-  * Qwen
-  * Qwen 2
+  * Orca-2
+  * Phi-1 through Phi-3.5
+  * Pythia (including derived third-party models such as the Pythia-based subset of the OpenAssistant models)
+  * Qwen 1, 1.5, and 2 (including third-party derivatives, such as `nekomata-7b-instruction`)
+  * RedPajama-INCITE
+  * SOLAR
   * SmolLM
-  * StableLM
-  * StableLM 2
+  * Snowflake Arctic
+  * StableLM 1 and 2
   * TinyLlama
   * Vicuna
 * Results can be output in JSON format for filtering/analysis
-* The ability to test each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
-* Self-tests to help validate that that the attack is configured correctly and will produce useful results
+* Supports testing each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
+* Automatic state backup at each iteration, allowing resuming from a checkpoint if an error is encountered, or continuing to perform additional iterations after a test ends.
+* Features self-tests to help validate that that the attack is configured correctly and will produce useful results
   * Validation that conversations are provided in the format the model was trained for
   * Validation that the model does not provide the requested output when no adversarial content is included
   * Validation that the model provides the requested output when given a prompt that simulates the ideal result of a GCG attack
@@ -94,8 +90,6 @@ Note: this tool is only really usable on CUDA (Nvidia) hardware at this time. Ad
 * Configurable randomization rules to help generate more unique variations ("Gamma garden mode")
 * Built-in features to output result data for follow-on work (versus using `jq` in the current version)
 * Improved default jailbreak detection logic
-* Improved output/logging
-* Improved system resource statistics capture to allow users to better tune parameters for performance
 * Additional loss algorithm(s)
 * The ability to operate a cluster of systems running Broken Hill coordinated by a central node
 * Additional attack modes
