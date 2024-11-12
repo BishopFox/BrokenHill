@@ -39,6 +39,30 @@ logger = logging.getLogger(__name__)
 MODEL_SIZE_FACTOR = 3.0
 PYTHON_PROCESS_BUFFER_SIZE = 262144
 
+def get_model_size(model_info, model_test_params):
+    model_size = None
+    model_parameter_count = model_info.get_parameter_count()
+    model_data_type_size_bytes = model_test_params.get_model_data_type_size_bytes()
+    if model_parameter_count is not None:
+        model_size = model_parameter_count * model_data_type_size_bytes
+        logger.debug(f"Model size is model_parameter_count * model_data_type_size_bytes. {model_parameter_count} * {model_data_type_size_bytes} = {model_size}.")
+    else:
+        if model_info.data_type is not None:
+            logger.debug(f"model_info.data_type = {model_info.data_type}.")
+            weight_length = 2.0
+            if "32" in model_info.data_type:
+                weight_length = 4.0
+            if "64" in model_info.data_type:
+                weight_length = 8.0
+            if "128" in model_info.data_type:
+                weight_length = 16.0
+            model_size = int(round((float(model_info.size) / weight_length) * model_data_type_size_bytes))
+            logger.debug(f"Model size is int(round((float(model_info.size) / weight_length) * model_data_type_size_bytes)). ({model_info.size} / {weight_length}) * {model_data_type_size_bytes} = {model_size}.")
+        else:
+            model_size = model_info.size
+            logger.debug(f"Model size is model_info.size. {model_info.size} = {model_size}.")
+    return model_size
+
 def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
     model_info_list = LargeLanguageModelInfoList.from_bundled_json_file()
     exit_test = False
@@ -109,58 +133,34 @@ def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
                     skip_model = True
         
         if not skip_model:
-            model_size_cuda = None
-            model_size_cpu_float32 = None
-            # TKTK: update this to bfloat16 if testing supports it as a better option
-            model_size_cpu_float16 = None
-            model_parameter_count = model_info.get_parameter_count()
-            if model_parameter_count is not None:
-                model_size_cuda = model_parameter_count * 2
-                model_size_cpu_float16 = model_parameter_count * 2
-                model_size_cpu_float32 = model_parameter_count * 4
-            else:
-                model_size_cuda = model_info.size
-                model_size_cpu_float32 = model_info.size
-                model_size_cpu_float16 = model_info.size
-            if model_size_cuda > cuda_cpu_size_threshold:
-                if not test_params.perform_cpu_tests:
-                    skip_message = "skipping this test because it would require CPU processing by PyTorch."
-                    skip_model = True
-                else:
-                    if model_test_params.always_use_bfloat16_for_cpu:
-                        model_test_params.model_data_type = "bfloat16"
-                        if model_size_cpu_float16 > cpu_size_threshold:
-                            if not test_params.perform_cpu_tests_requiring_swap:
-                                skip_message = "skipping this test because it would require use of swap memory."
-                                skip_model = True
-                    else:
-                        model_test_params.model_data_type = "float32"
-                        if model_size_cpu_float32 > cpu_size_threshold:
-                            if model_size_cpu_float16 <= cpu_size_threshold:
-                                if test_params.perform_cpu_tests_requiring_float16:
-                                    model_test_params.model_data_type = "bfloat16"
-                                else:
-                                    skip_message = "skipping this test because it would require use of 16-bit floating point values on a CPU device."
-                                    skip_model = True
-                            else:
-                                if not test_params.perform_cpu_tests_requiring_swap:
-                                    skip_message = "skipping this test because it would require use of swap memory."
-                                    skip_model = True
+            model_size = get_model_size(model_info, model_test_params)            
+            add_denylist_options = True
+            if model_size > cuda_cpu_size_threshold:
+                logger.debug(f"Model size {model_size} is larger than the threshold for this system's CUDA device(s): {cuda_cpu_size_threshold}")
                 model_test_params.model_device = "cpu"
                 model_test_params.gradient_device = "cpu"
                 model_test_params.forward_device = "cpu"
-                
+                model_size = get_model_size(model_info, model_test_params)  
+                # If denylist options slow down CPU processing too much, uncomment this line
+                #add_denylist_options = False
+                if model_size > cpu_size_threshold:
+                    logger.debug(f"Model size {model_size} is larger than the threshold for this system's system memory: {cpu_size_threshold}")
+                    if not test_params.perform_cpu_tests_requiring_swap:
+                        skip_message = "skipping this test because it would require use of swap memory."
+                        skip_model = True
+                else:
+                    logger.debug(f"Model size {model_size} is less than the threshold for this system's system memory: {cpu_size_threshold}")
+                    if not test_params.perform_cpu_tests:
+                        skip_message = "skipping this test because it would require CPU processing by PyTorch."
+                        skip_model = True
             else:
-                # CUDA tests with a denylist are fine
-                denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
-                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, denylist_options)
-                model_test_params.model_data_type = "float16"
+                logger.debug(f"Model size {model_size} is less than the threshold for this system's CUDA device(s): {cuda_cpu_size_threshold}")
                 if not test_params.perform_cuda_tests:
                     skip_message = "skipping this test because it would be processed on a CUDA device."
                     skip_model = True
-                    
-                    
-                    cpu_size_threshold
+            if add_denylist_options:
+                denylist_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens' ]
+                model_test_params.custom_options = add_values_to_list_if_not_already_present(model_test_params.custom_options, denylist_options)
         
         if skip_model:
             skipped_tests.append(model_info.model_name)
@@ -174,36 +174,15 @@ def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
         standard_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-subprocess_output.txt")
         error_output_log_file = os.path.join(test_params.output_file_directory, f"{model_test_params.output_file_base_name}-subprocess_errors.txt")
         
-        #model_command_array = model_test_params.get_command_array()
         # Because it's 2024, and Python still makes it very hard to capture stderr + stdout exactly the way that it would appear in a shell, without deadlocking or running out of buffer space, and while letting the developer set a timeout on execution without some kind of hokey second thread
         model_command_array = model_test_params.get_popen_command_parameter()
         
         logger.info(f"Executing command: {model_command_array}")
         try:
-            #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-            #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
             proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE, preexec_fn=os.setsid)
-            #proc = subprocess.Popen(model_command_array, shell = False, bufsize = PYTHON_PROCESS_BUFFER_SIZE, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
             process_standard_output = None
             process_error_output = None
             timed_out = False
-            # # BEGIN: based on https://stackoverflow.com/questions/31833897/python-read-from-subprocess-stdout-and-stderr-separately-while-preserving-order
-            # sel = selectors.DefaultSelector()
-            # sel.register(proc.stdout, selectors.EVENT_READ)
-            # sel.register(proc.stderr, selectors.EVENT_READ)
-            # continue_reading_output = True
-            # while continue_reading_output:
-                # for key, _ in sel.select():
-                    # #data = key.fileobj.read1().decode()
-                    # data = key.fileobj.readline()
-                    # if not data:
-                        # continue_reading_output = False
-                        # break
-                    # if process_standard_output is None:
-                        # process_standard_output = data
-                    # else:
-                        # process_standard_output = f"{process_standard_output}{data}"
-            # # END: based on https://stackoverflow.com/questions/31833897/python-read-from-subprocess-stdout-and-stderr-separately-while-preserving-order
             process_timeout = model_test_params.get_process_timeout()
             try:
                 process_standard_output, process_error_output = proc.communicate(timeout = process_timeout)
@@ -211,7 +190,6 @@ def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
                 exit_test = True
                 break
             except TimeoutExpired:
-                #proc.kill()
                 # Try to kill the process group first
                 process_id = None
                 process_group_id = None
@@ -224,36 +202,29 @@ def main(test_params, cuda_cpu_size_threshold, cpu_size_threshold):
                     proc.kill()
                 process_standard_output, process_error_output =  proc.communicate()
                 timed_out = True
-            # set returncode property
-            #proc.communicate()
             process_return_code = proc.returncode
             if timed_out:
-                logger.error(f"!!! Error !!!: command timed out after {process_timeout} seconds")
+                logger.error(f"!!! Error !!!: Command timed out after {process_timeout} seconds")
                 failed_tests.append(model_info.model_name)
             else:
                 if process_return_code == 0:
                     logger.info(f"Test executed successfully")
                     succeeded_tests.append(model_info.model_name)
                 else:
-                    logger.error(f"!!! Error !!!: command returned code {process_return_code}")
+                    logger.error(f"!!! Error !!!: Command returned code {process_return_code}")
                     failed_tests.append(model_info.model_name)
             logger.info(f"Log written to '{model_test_params.get_log_path()}'")
             logger.info(f"Console output written to '{model_test_params.get_console_output_path()}'")
             logger.info(f"JSON result data written to '{model_test_params.get_result_json_output_path()}'")
             logger.info(f"JSON performance data written to '{model_test_params.get_performance_json_output_path()}'")
-            logger.info(f"PyTorch CUDA profiling pickle written to '{model_test_params.get_torch_cuda_output_path()}'")
+            if model_test_params.log_torch_cuda_profile_data:
+                logger.info(f"PyTorch CUDA profiling pickle written to '{model_test_params.get_torch_cuda_output_path()}'")
             if process_standard_output is not None:
-                #standard_output = process_standard_output.read()
                 if process_standard_output.decode("utf-8").strip() != "":
-                    #safely_write_text_output_file(standard_output_log_file, standard_output)
-                    #safely_write_text_output_file(standard_output_log_file, process_standard_output, file_mode = "wb")
                     safely_write_text_output_file(standard_output_log_file, process_standard_output)
                     logger.info(f"Standard output written to '{standard_output_log_file}'")
             if process_error_output is not None:
-                #error_output = process_error_output.read()
                 if process_error_output.decode("utf-8").strip() != "":
-                    #safely_write_text_output_file(error_output_log_file, error_output)
-                    #safely_write_text_output_file(error_output_log_file, process_error_output, file_mode = "wb")
                     safely_write_text_output_file(error_output_log_file, process_error_output)
                     logger.info(f"Error output written to '{error_output_log_file}'")
         
@@ -351,13 +322,13 @@ if __name__=='__main__':
     parser.add_argument("--log", type = str,
         help=f"Write output to the specified log file in addition to the console.")
     parser.add_argument("--log-level", type = str,
-        choices = get_log_level_names(),
+        choices = get_log_level_names(), default = "debug",
         help=f"Limit log file entries to severities of the specified level and above.")
     parser.add_argument("--console-level", type = str,
-        choices = get_log_level_names(),
+        choices = get_log_level_names(), default = "info",
         help=f"Limit console output to severities of the specified level and above.")
     parser.add_argument("--third-party-module-level", type = str,
-        choices = get_log_level_names(),
+        choices = get_log_level_names(), default = "warning",
         help=f"Set the default logging level for messages generated by third-party modules. The default is 'warning' because PyTorch in particular is very chatty when set to 'info' or below.")
     parser.add_argument("--debugging-tokenizer-calls", type = str2bool, nargs='?',
         const=True,

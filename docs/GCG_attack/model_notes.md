@@ -61,7 +61,7 @@ This document describes high-level results of testing the GCG attack using vario
 ### ChatGLM and GLM
 
 * Conversation template names:
-  * For GLM-4: `chatglm3`
+  * For GLM-4: `glm4`
 * [Zhipu AI's GLM-4-9B-Chat page at Hugging Face](https://huggingface.co/THUDM/glm-4-9b-chat/blob/main/README_en.md)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
@@ -70,7 +70,58 @@ This document describes high-level results of testing the GCG attack using vario
 
 #### Special considerations
 
+You will need to specify the `--trust-remote-code` option to use these models.
+
+Broken Hill includes a custom `glm4` conversation template based on the `fschat` `chatglm3` template, due to differences in the system prompt formatting.
+
 Currently, only GLM-4 works in Broken Hill due to code provided with earlier versions of the model that is incompatible with modern versions of Transformers. We've tried coming up with instructions to make the earlier versions work, but it looks like a deep rabbit hole.
+
+You may encounter the following error when using GLM-4, depending on whether or not the GLM developers have updated their code by the time you've cloned their repository:
+
+```
+TypeError: ChatGLM4Tokenizer._pad() got an unexpected keyword argument 'padding_side'
+```
+
+As a workaround, you can make the following change to the `tokenization_chatglm.py` file included with the model:
+
+Locate the following code:
+
+```
+def _pad(
+		self,
+		encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
+		max_length: Optional[int] = None,
+		padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+		pad_to_multiple_of: Optional[int] = None,
+		return_attention_mask: Optional[bool] = None,
+) -> dict:
+```
+
+Add a definition for the missing parameter, so that the method signature looks like this:
+
+```
+def _pad(
+		self,
+		encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
+		max_length: Optional[int] = None,
+		padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+		pad_to_multiple_of: Optional[int] = None,
+		return_attention_mask: Optional[bool] = None,
+		padding_side: Optional[str] = "left",
+) -> dict:
+```
+
+Locate this line:
+
+```
+assert self.padding_side == "left"
+```
+
+Comment it out, so it looks like the following:
+    
+```
+#assert padding_side == "left"
+```
 
 #### Specific models tested using Broken Hill:
 
@@ -221,11 +272,28 @@ Even though Guanaco is a model layered on top of Llama, it uses its own conversa
 
 ### Llama
 
+#### First-party models
+
 Broken Hill can successfully load the original Llama model, but we haven't been able to find any documentation on the specific format it expects conversation messages in. Using the templates that seem like they'd work (`llama2`, `zero_shot`, `guanaco`) produces output similar to other models when given input using a conversation template that doesn't match the data the model was trained with. In other words, it's unclear how useful the results are. If you have reliable information on the correct conversation format, please let us know.
 
-#### Specific models tested using Broken Hill:
+##### Specific models tested using Broken Hill:
 
 * [llama-7b](https://huggingface.co/huggyllama/llama-7b)
+
+#### Alpaca
+
+* Conversation template name: `alpaca`
+
+##### Specific models tested using Broken Hill:
+
+* [alpaca-13b](https://huggingface.co/chavinlo/alpaca-13b)
+
+#### Llama-68M-Chat
+
+* Conversation template name: `felladrin-llama-chat`
+
+##### Specific models tested using Broken Hill:
+
 * [Llama-68M-Chat-v1](https://huggingface.co/meta-llama/Felladrin/Llama-68M-Chat-v1)
 
 ### Llama-2

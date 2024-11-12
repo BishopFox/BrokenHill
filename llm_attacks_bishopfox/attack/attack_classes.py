@@ -631,8 +631,8 @@ class AttackParams(JSONSerializableObject):
         # If the tokenizer does not have a padding token defined, and this value is not None, use the specified token instead
         self.missing_pad_token_replacement = None
         
-        # If this value is not None, force the tokenizer to use the specified padding side. Overrides the missing pad token padding side value.
-        self.padding_side = None
+        # If this value is "default", use the tokenizer's value. If it is "left" or "right", force the tokenizer to use that value. If it is None, unset the value 
+        self.padding_side = "default"
 
         # string to use to determine the token to use for padding Broken Hill lists and tensors - should NOT be a special token, and should be a value that always encodes to a single token ID
         self.broken_hill_padding_token_string = "."
@@ -885,6 +885,8 @@ class AttackParams(JSONSerializableObject):
         self.performance_stats_output_file = None
         # If this value is not None, use PyTorch's CUDA memory history feature (https://pytorch.org/docs/stable/torch_cuda_memory.html) to save a pickled blob of profiling data
         self.torch_cuda_memory_history_file = None
+        # If this value is False, output files will only be written once, at the end of the test, instead of at every iteration
+        self.write_output_every_iteration = True
        
         # parameter save/load options
         self.save_options_path = None
@@ -1340,9 +1342,6 @@ class VolatileAttackState():
             output_file_parameters.append("--torch-cuda-memory-history-file")
         
         next_file_number = 1
-        #existing_file_number = self.get_existing_file_number(written_files_list)
-        #if existing_file_number is not None:
-        #    next_file_number = existing_file_number + 1
         
         if completed_all_iterations:
             next_iteration_count = self.persistable.attack_params.max_iterations * 2
@@ -1843,20 +1842,23 @@ class VolatileAttackState():
             logger.error(f"Error setting Broken Hill padding token ID from string '{self.persistable.attack_params.broken_hill_padding_token_string}': {e}\n{traceback.format_exc()}\nBroken Hill will use ID 0 instead. This will likely cause issues.")
             self.broken_hill_padding_token_id = 0
         
-        exiting_padding_side = None
+        existing_padding_side = None
         if hasattr(self.tokenizer, "padding_side"):
-            exiting_padding_side = self.tokenizer.padding_side
+            existing_padding_side = self.tokenizer.padding_side
         
-        if self.persistable.attack_params.padding_side is None:
-            logger.debug(f"Tokenizer's padding side is '{exiting_padding_side}'.")
+        if self.persistable.attack_params.padding_side == "default":
+            logger.debug(f"Tokenizer's padding side is '{existing_padding_side}'.")
         else:
-            if exiting_padding_side is None:
+            if existing_padding_side is None:
                 logger.warning(f"The tokenizer does not have a default padding side defined. Using the operator-specified value '{self.persistable.attack_params.padding_side}'.")
             else:
-                if exiting_padding_side == self.persistable.attack_params.padding_side:
-                    logger.info(f"The tokenizer has a default padding side value '{exiting_padding_side}'. The operator-specified value '{self.persistable.attack_params.padding_side}' is identical.")
+                if self.persistable.attack_params.padding_side is None:
+                    logger.info(f"The tokenizer has a default padding side value '{existing_padding_side}'. This value will be unset.")
                 else:
-                    logger.warning(f"The tokenizer has a default padding side value '{exiting_padding_side}'. Using the operator-specified value '{self.persistable.attack_params.padding_side}' instead.")
+                    if existing_padding_side == self.persistable.attack_params.padding_side:
+                        logger.info(f"The tokenizer has a default padding side value '{existing_padding_side}'. The operator-specified value '{self.persistable.attack_params.padding_side}' is identical.")
+                    else:
+                        logger.warning(f"The tokenizer has a default padding side value '{existing_padding_side}'. Using the operator-specified value '{self.persistable.attack_params.padding_side}' instead.")
             self.tokenizer.padding_side = self.persistable.attack_params.padding_side
         
         if self.persistable.attack_params.enable_hardcoded_tokenizer_workarounds:
@@ -1931,13 +1933,14 @@ class VolatileAttackState():
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Model loaded.")
             
+            
             if self.model_dtype_string == "" and self.model_data_type == "auto":
-                self.model_dtype_string = f"Model weight data is stored as {self.model.dtype} (determined after loading model in 'auto' dtype mode)"
+                self.model_dtype_string = f"{self.model.dtype}"
                 self.model_dtype_dtype = self.model.dtype
-                logger.info(self.model_dtype_string)                
+                logger.info(f"Model weight data is stored as {self.model_dtype_string} (determined after loading model in 'auto' dtype mode)")                
             model_data_type_message = f"Model weight data was loaded as {self.model.dtype}"
             if self.model_dtype_string != "":            
-                model_data_type_message = f"{self.model_dtype_string}, and was loaded as {self.model.dtype}"
+                model_data_type_message = f"Model weight data is stored as {self.model_dtype_string}, and was loaded as {self.model.dtype}"
             logger.info(f"Model and tokenizer loaded. {model_data_type_message}")
             if self.persistable.attack_params.peft_adapter_path is not None:
                 logger.info(f"Loading PEFT model from '{self.persistable.attack_params.peft_adapter_path}'.")
@@ -2791,9 +2794,14 @@ class ResourceUtilizationSnapshot(JSONSerializableObject):
         process_mem_info = psutil.Process().memory_full_info()
         result.process_physical_memory = process_mem_info.rss
         result.process_virtual_memory = process_mem_info.vms
-        result.process_swap = None
+        result.process_swap = 0
         if hasattr(process_mem_info, "swap"):
-            result.process_swap = process_mem_info.swap
+            try:
+                result.process_swap = process_mem_info.swap
+            except Exception as e:
+                # sent as a debug-level message to avoid spamming the console output on Mac OS
+                logger.debug(f"Error getting process swap memory information: {e}\n{traceback.format_exc()}\n")
+                result.process_swap = 0
         system_mem_info = psutil.virtual_memory()
         result.system_physical_memory = system_mem_info.total
         result.system_available_memory = system_mem_info.available
@@ -2804,9 +2812,18 @@ class ResourceUtilizationSnapshot(JSONSerializableObject):
             result.system_swap_total = system_swap_info.total
             result.system_swap_in_use = system_swap_info.used
             result.system_swap_free = system_swap_info.free
-            result.system_swap_percent = system_swap_info.percent
+            # this figure is not accurate on Mac OS and Windows - seems like it's multiplied by 100 versus Linux
+            #result.system_swap_percent = system_swap_info.percent
+            result.system_swap_percent = 0.0
+            if result.system_swap_in_use is not None and result.system_swap_total is not None:
+                result.system_swap_percent = float(result.system_swap_in_use) / float(result.system_swap_total)
         except Exception as e:
-            raise ResourceUtilizationSnapshot(f"Error getting swap memory information: {e}\n{traceback.format_exc()}\n")
+            # sent as a debug-level message to avoid spamming the console output on Mac OS
+            logger.debug(f"Error getting swap memory information: {e}\n{traceback.format_exc()}\n")
+            result.system_swap_total = 0
+            result.system_swap_in_use = 0
+            result.system_swap_free = 0
+            result.system_swap_percent = 0.0
         
         cuda_devices = PyTorchDevice.get_all_cuda_devices()
         for i in range(0, len(cuda_devices)):
@@ -2896,7 +2913,7 @@ class ResourceUtilizationData(JSONSerializableObject):
     def __init__(self):
         self.snapshots = []
         self.statistics = ResourceUtilizationStatistics()
-        self.minimum_terminal_width_for_grid = 80
+        self.minimum_terminal_width_for_grid = 132
 
     def to_dict(self):
         result = super(ResourceUtilizationData, self).properties_to_dict(self)
@@ -3331,8 +3348,9 @@ class ResourceUtilizationData(JSONSerializableObject):
             ppm = self.statistics.cpu.get_dataset("process_physical_memory", raise_on_missing = False)
             found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Physical memory in use", ppm, "{0:n} byte(s)")
         pswap = self.statistics.cpu.get_dataset("process_swap", raise_on_missing = False)
-        if verbose or pswap.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
+        if pswap.maximum is not None:
+            if verbose or pswap.maximum > 0:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", pswap, "{0:n} byte(s)")
         cpu_message = f"{cpu_message}\n    System-wide:"
         sys_inuse = self.statistics.cpu.get_dataset("system_in_use_memory", raise_on_missing = False)
         found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory in use", sys_inuse, "{0:n} byte(s)")
@@ -3342,14 +3360,18 @@ class ResourceUtilizationData(JSONSerializableObject):
         sys_memory_util = self.statistics.cpu.get_dataset("system_memory_util_percent", raise_on_missing = False)
         found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Memory utilization", sys_memory_util, "{0:.2f}%")
         sys_swap_inuse = self.statistics.cpu.get_dataset("system_swap_in_use", raise_on_missing = False)
-        if verbose or sys_swap_inuse.maximum > 0:
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
+        if sys_swap_inuse.maximum is not None:
+            if verbose or sys_swap_inuse.maximum > 0:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory in use", sys_swap_inuse, "{0:n} byte(s)")
         if verbose:
             sys_swap_avail = self.statistics.cpu.get_dataset("system_swap_free", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")        
-        if verbose or sys_swap_inuse.maximum > 0:
-            sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
-            found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
+            if sys_swap_avail.maximum is not None:
+                found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory available", sys_swap_avail, "{0:n} byte(s)")   
+        if sys_swap_inuse.maximum is not None:
+            if verbose or sys_swap_inuse.maximum > 0:
+                sys_swap_util = self.statistics.cpu.get_dataset("system_swap_percent", raise_on_missing = False)
+                if sys_swap_util.maximum is not None:
+                    found_cpu_data, cpu_message = self.add_statistics_line_item(cpu_message, found_cpu_data, "Swap memory utilization", sys_swap_util, "{0:.2f}%")
         if found_cpu_data:
             found_data = True
             message = f"{message}{cpu_message}"
@@ -3419,7 +3441,11 @@ class ResourceUtilizationData(JSONSerializableObject):
         
         if not grid_displayed:
             self.output_statistics_plaintext(using_cuda = using_cuda, use_ansi = use_ansi, verbose = verbose)
-        
+    
+    def write_performance_data(self, attack_state):
+        if attack_state.persistable.attack_params.performance_stats_output_file is not None:
+            safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
+    
     def collect_torch_stats(self, attack_state, is_key_snapshot_event = False, location_description = None):
         current_snapshot = ResourceUtilizationSnapshot.create_snapshot(location_description)
         self.snapshots.append(current_snapshot)
@@ -3429,8 +3455,8 @@ class ResourceUtilizationData(JSONSerializableObject):
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
             logger.debug(f"Collecting Torch statistics. location_description = {location_description}, is_key_snapshot_event = {is_key_snapshot_event}, using_cpu = {using_cpu}, using_cuda = {using_cuda}.")
 
-        if attack_state.persistable.attack_params.performance_stats_output_file is not None:
-            safely_write_text_output_file(attack_state.persistable.attack_params.performance_stats_output_file, self.to_json())
+        if attack_state.persistable.attack_params.write_output_every_iteration:
+            self.write_performance_data(attack_state)
                 
         if not attack_state.persistable.attack_params.verbose_resource_info:
             if not is_key_snapshot_event:

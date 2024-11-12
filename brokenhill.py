@@ -286,8 +286,15 @@ def main(attack_params, log_manager):
 
     # Parameter validation, warnings, and errors
     if attack_state.persistable.attack_params.using_cpu():
-        if attack_state.persistable.attack_params.model_data_format_handling != ModelDataFormatHandling.DEFAULT and attack_state.persistable.attack_params.model_data_format_handling != ModelDataFormatHandling.FORCE_FLOAT32:
-            logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use a non-default PyTorch dtype when loading the model. This will *generally* work with most models on modern (late 2024) versions of PyTorch and Transformers, but will still cause issues for some models, such as GPT-NeoX. If 'float16' is specified, it will also greatly increase runtimes. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default.")
+        using_ok_format = False
+        if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.DEFAULT:
+            using_ok_format = True
+        if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_BFLOAT16:
+            using_ok_format = True
+        if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
+            using_ok_format = True
+        if not using_ok_format:
+            logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use an unsupported PyTorch dtype when loading the model. In particular, if 'float16' is specified, it will also greatly increase runtimes. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default. Consult the documentation for further details.")
     non_cuda_devices = attack_state.persistable.attack_params.get_non_cuda_devices()
     if len(non_cuda_devices) > 0:
         if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT16:
@@ -916,9 +923,8 @@ def main(attack_params, log_manager):
                     attack_results_current_iteration.total_processing_time_seconds = iteration_elapsed.total_seconds()
                     
                     attack_state.persistable.overall_result_data.attack_results.append(attack_results_current_iteration)
-                    attack_state.write_output_files()
-                    #if attack_state.persistable.attack_params.json_output_file is not None:
-                    #    safely_write_text_output_file(attack_state.persistable.attack_params.json_output_file, attack_state.persistable.overall_result_data.to_json())
+                    if attack_state.persistable.attack_params.write_output_every_iteration:
+                        attack_state.write_output_files()
                     
                     rollback_triggered = False
                     
@@ -1009,7 +1015,8 @@ def main(attack_params, log_manager):
                 break
             attack_state.persistable.main_loop_iteration_number += 1
             attack_state.persistable.overall_result_data.completed_iterations = attack_state.persistable.main_loop_iteration_number
-            attack_state.write_persistent_state()
+            if attack_state.persistable.attack_params.write_output_every_iteration:
+                attack_state.write_persistent_state()
 
     except KeyboardInterrupt:
         #import pdb; pdb.Pdb(nosigint=True).post_mortem()
@@ -1019,6 +1026,9 @@ def main(attack_params, log_manager):
     except torch.OutOfMemoryError as toome:
         logger.critical(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback.format_exc()}")
         abnormal_termination = True
+    
+    # Most of the rest of this section uses an extra-cautious approach of wrapping almost everything in try/except logic that will allow the script to continue even if describing an exception results in another exception.
+    # This is to help ensure that any output files really are written to persistent storage, even if the script is interrupted or crashes.
     
     except (Exception, RuntimeError) as e:
         # try/catch when populating these variables so that Broken Hill won't crash if processing the f-string fails
@@ -1055,6 +1065,24 @@ def main(attack_params, log_manager):
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
         logger.critical(f"Broken Hill encountered an exception when trying to collect the final set of performance statistics: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+
+    # if attack_state.persistable.attack_params.write_output_every_iteration is True, this step was just performed and can be skipped
+    if not attack_state.persistable.attack_params.write_output_every_iteration:
+        try:
+            attack_state.persistable.performance_data.write_performance_data(attack_state)
+        except (Exception, RuntimeError) as e:
+            e_string = None
+            traceback_string = None
+            finished_successfully = False        
+            try:
+                e_string = f"{e}"
+            except (Exception, RuntimeError) as e:
+                e_string = "[Unable to convert exception to a string]"
+            try:
+                traceback_string = f"{traceback.format_exc()}"
+            except (Exception, RuntimeError) as e:
+                traceback_string = "[Unable to convert traceback to a string]"
+            logger.critical(f"Broken Hill encountered an exception when trying to write performance data output files: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
 
     try:
         if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None and attack_state.persistable.attack_params.using_cuda():
@@ -1648,7 +1676,7 @@ if __name__=='__main__':
         choices = padding_token_values,
         help=f"If the tokenizer is missing a padding token definition, use an alternative special token instead. Must be one of: {padding_token_values}. If 'default' is specified, no alternative value will be explicitly specified, and the behaviour will be determined by the Transformers library and any other third-party code related to the tokenizer.")
     parser.add_argument("--padding-side", type = str,
-        choices = [ "default", "left", "right" ], default = "default",
+        choices = [ "default", "none", "left", "right" ], default = "default",
         help=f"If this value is not 'default', configure the tokenizer to always used the specified padding side. If this value is 'default', use the tokenizer's value. Must be one of 'default', 'left' or 'right'.")
     parser.add_argument("--json-output-file", type = str,
         help=f"Write detailed result data in JSON format to the specified file.")
@@ -1674,6 +1702,9 @@ if __name__=='__main__':
     parser.add_argument("--delete-state-on-completion", type = str2bool, nargs='?',
         const=True,
         help="If this option is specified, *and* Broken Hill reaches the maximum configured number of iterations (or --break-on-success is specified and Broken Hill discovers a jailbreak), the automatically-generated state file will be deleted. If this option is not specified, the state file will be retained for use with the --load-state option. If --load-state is specified, but --overwrite-existing-state is not specified, *only* the new state file will be deleted upon successful completion. If --load-state and --overwrite-existing-state are both specified, the state file that was used to resume testing will be deleted on successful completion. Using this option is strongly discouraged due to the possibility of unintentionally deleting data.")
+    parser.add_argument("--only-write-files-on-completion", type = str2bool, nargs='?',
+        const=True,
+        help="If this option is specified, Broken Hill will only write the following output files to persistent storage at the end of an attack, or if the attack is interrupted: JSON-formatted result data (--json-output-file), performance statistics (--performance-output-file), and the attack state. This can significantly boost the performance of longer attacks by avoiding repeated writes of increasingly large files. However, if Broken Hill encounters an unhandled error, *all* of the results may be lost. When this option is not specified, result data and state are written to persistent storage at every iteration, and performance statistics are written every time they're collected. This option is mainly included for use in testing, to avoid unnecessarily reducing the lifetime of the test system's disk array.")
     parser.add_argument("--save-options", type = str,
         help=f"Save all of the current attack parameters (default values + any explicitly-specified command-line options) to the specified file in JSON format, then exit.")
     parser.add_argument("--load-options", type = str,
@@ -1737,8 +1768,6 @@ if __name__=='__main__':
         attack_params.model_device = attack_params.device_fallback
         attack_params.gradient_device = attack_params.device_fallback
         attack_params.forward_device = attack_params.device_fallback
-    if mps_available:
-        logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of Broken Hill was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. If you believe that you are using a newer version of PyTorch that has those features implemented, you can try enabling the Metal back-end by specifying the --device mps command-line option. However, it is unlikely to succeed. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")
 
     if args.list_language_tags:
         attack_params.operating_mode = BrokenHillMode.LIST_IETF_TAGS
@@ -1787,7 +1816,11 @@ if __name__=='__main__':
             logger.warning(f"This system appears to have a PyTorch CUDA back-end available, but at least one back-end option has been set to a non-CUDA device instead. This is likely to result in significantly decreased performance versus using the CUDA back-end. If this decision was intentional (e.g. the test system does not have enough CUDA device memory to perform the processing, but does have enough system RAM), you can ignore this message.")
 
     check_pytorch_devices(attack_params)
-        
+
+    if mps_available:
+        if attack_params.using_mps():
+            logger.warning(f"This host appears to be an Apple device with support for the Metal ('mps') PyTorch back-end. At the time this version of Broken Hill was developed, the Metal back-end did not support some features that were critical to the attack code, such as nested tensors. This attack is therefore unlikely to succeed, and you should specify --device cpu instead. This message will be removed when Bishop Fox has verified that the Metal back-end supports the necessary features.")
+
     if args.tokenizer:
         attack_params.tokenizer_path = os.path.abspath(args.tokenizer)
         if not os.path.isdir(attack_params.tokenizer_path):
@@ -2220,6 +2253,8 @@ if __name__=='__main__':
 
     if args.padding_side:
         if args.padding_side == "default":
+            attack_params.padding_side = "default"
+        if args.padding_side == "none":
             attack_params.padding_side = None
         else:
             attack_params.padding_side = args.padding_side
@@ -2284,6 +2319,10 @@ if __name__=='__main__':
                 peft_message += " If you trust the specified adapter and understand the implications of potentially running untrusted Python code, add the --trust-remote-code option to load the adapter."
                 logger.critical(f"{peft_message}")
                 sys.exit(1)
+
+    if args.only_write_files_on_completion:
+        attack_params.write_output_every_iteration = False
+        logger.warning(f"Output files will only be written to persistent storage at the end of the attack, or if the attack is interrupted. ALL OF YOUR PROGRESS WILL BE LOST if this attack fails in a way that causes Broken Hill to exit immediately, such as loss of power or a severe unhandled exception.")
 
     # set up state-saving parameters
     # TKTK: one resuming from a state file is implemented, wrap this entire section a few check:

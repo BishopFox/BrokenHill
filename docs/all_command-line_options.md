@@ -26,7 +26,9 @@ Specify the type to load the model's data.
 
 Recommended choices for CUDA processing: `default`, `bfloat16`, `float16`, or `float32`.
 
-Recommended choices for CPU processing: `default`, `bfloat16`, or `float32`.
+Recommended choices for CPU processing on AMD and Apple Silicon CPUs: `default`, `bfloat16`, or `float32`.
+
+Recommended choices for CPU processing on other CPUs, or when using Windows as the base OS: `float32`.
 
 ### Qwen-1 issues
 
@@ -238,6 +240,16 @@ Use [PyTorch's built-in CUDA profiling feature](https://pytorch.org/docs/stable/
 ### --overwrite-output
 
 If an existing output file of any type already exists, overwrite it. If this option is not specified, Broken Hill will exit instead of overwriting the file.
+
+### --only-write-files-on-completion
+
+If this option is specified, Broken Hill will only write the following output files to persistent storage at the end of an attack, or if the attack is interrupted:
+
+* JSON-formatted result data (`--json-output-file`)
+* Performance statistics (`--performance-output-file`)
+* Attack state
+
+This can significantly boost the performance of longer attacks by avoiding repeated writes of increasingly large files. However, if Broken Hill encounters an unhandled error, *all* of the results may be lost. When this option is not specified, result data and state are written to persistent storage at every iteration, and performance statistics are written every time they're collected. This option is mainly included for use in testing, to avoid unnecessarily reducing the lifetime of the test system's disk array.
 
 ## Self-test options
 

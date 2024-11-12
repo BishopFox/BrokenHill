@@ -36,7 +36,8 @@ dependencies = [
   "ml_collections==0.1.1",
 # tested with fschat 0.2.20, 0.2.36
 # installing from source is highly recommended, and is the default configuration
-  "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat",
+# This is the commit from 2024-11-02, known to work with Broken Hill
+  "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat.git@185e1a9369db800b8c4344814bdfbca5c4c4a0f4",
 # if you encounter issues, you can try installing from PyPi instead by commenting out the previous line and uncommenting the next line.
 #  "fschat==0.2.36",
 # tested with psutil 6.0.0
@@ -51,8 +52,8 @@ dependencies = [
 # tested with sentencepiece 0.2.0
   "sentencepiece==0.2.0",
 # tested with causal-conv1d 1.4.0
-# Note: you will likely need to comment out the next line the first time you install Broken Hill in a virtual environment. After installing, uncomment the line and rerun.
-  "causal-conv1d==1.4.0",
+# causal-conv1d does not install correctly on Mac OS or Windows
+  "causal-conv1d==1.4.0 ; platform_system == 'Linux'",
 # mamba-ssm is recommended by the state-spaces for the Mamba LLM family, but doesn't install correctly on my system.
 #  "mamba-ssm",
 # needed for Tiny-Llama

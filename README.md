@@ -20,7 +20,7 @@ The original research by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson was pe
 
 Our original goal was to greatly expand the accessibility of this fascinating area of research by producing a tool that could perform the GCG attack against as many models as possible on a GeForce RTX 4090, which is the current-generation consumer GPU with CUDA support that includes the most VRAM (24GiB). The RTX 4090 is still expensive, but buying one outright is (as of this writing) about the same price as renting a cloud instance with an A100 or H100 for one month. Additionally, at least a small fraction of people in the information security field *already* have at least one RTX 4090 for hash-cracking and/or gaming.
 
-As of version 0.34, Broken Hill can also perform processing on devices without CUDA hardware at an acceptable rate (although reduced from the performance CUDA hardware provides). This allows the attack to be performed by a much larger audience, and against much larger models than previous versions allowed.
+As of version 0.34, Broken Hill can also perform processing on devices without CUDA hardware at an acceptable rate (although reduced from the performance CUDA hardware provides), and can even be used on Mac OS and Windows (although it is primarily tested on Linux). This allows the attack to be performed by a much larger audience, and against much larger models than previous versions allowed.
 
 ## Documentation
 
@@ -41,8 +41,9 @@ As of version 0.34, Broken Hill can also perform processing on devices without C
   * Gemma (including third-party derivatives, such as `Vikhr-Gemma-2B-instruct`)
   * Gemma 2
   * GLM-4
+  * GPT-J, GPT-Neo, and GPT-NeoX
   * Guanaco
-  * Llama (including third-party derivatives such as `Llama-68M-Chat-v1`)
+  * Llama (including third-party derivatives such as `Llama-68M-Chat-v1` and `alpaca-13b`)
   * Llama-2 (including first- and third-party derivatives, such as Meta-Llama-Guard-2, Swallow, and Youri)
   * Llama-3 (including first- and third-party derivatives, such as Llama-Guard-3, Swallow, and Youko)
   * MPT
@@ -53,7 +54,7 @@ As of version 0.34, Broken Hill can also perform processing on devices without C
   * Orca-2
   * Phi-1 through Phi-3.5
   * Pythia (including derived third-party models such as the Pythia-based subset of the OpenAssistant models)
-  * Qwen 1, 1.5, and 2
+  * Qwen 1, 1.5, and 2 (including third-party derivatives, such as `nekomata-7b-instruction`)
   * RedPajama-INCITE
   * SOLAR
   * SmolLM
@@ -61,7 +62,6 @@ As of version 0.34, Broken Hill can also perform processing on devices without C
   * StableLM 1 and 2
   * TinyLlama
   * Vicuna
-  * Vikhr
 * Results can be output in JSON format for filtering/analysis
 * Supports testing each iteration of adversarial data against the same LLM with multiple different randomization settings, to help weed out fragile results
 * Automatic state backup at each iteration, allowing resuming from a checkpoint if an error is encountered, or continuing to perform additional iterations after a test ends.

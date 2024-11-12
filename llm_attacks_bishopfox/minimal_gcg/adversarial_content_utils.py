@@ -115,6 +115,12 @@ def get_gemma_conversation_template():
     conv_template.stop_str=""
     return conv_template
 
+def get_glm4_conversation_template():
+    conv_template = fschat_conversation.get_conv_template("chatglm3").copy()
+    conv_template.name = "glm4"
+    conv_template.system_template="[gMASK]<sop><|system|>\n{system_message}"
+    return conv_template
+
 def get_gptneox_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name = "gptneox"
@@ -284,6 +290,7 @@ def get_custom_conversation_templates():
     #result.append(get_daredevil_conversation_template())
     result.append(get_felladrin_llama_conversation_template())
     result.append(get_gemma_conversation_template())
+    result.append(get_glm4_conversation_template())
     result.append(get_gptneox_conversation_template())
     result.append(get_guanaco_conversation_template())
     result.append(get_llama2_conversation_template())

@@ -151,7 +151,7 @@ def get_file_content_from_sys_argv(sys_argv, option_flag, return_first = False, 
 def get_file_content(file_path, failure_is_critical = True):
     result = None
     try:
-        with open(file_path) as input_file:
+        with open(file_path, mode="r", encoding="utf-8") as input_file:
             result = input_file.read()        
     except Exception as e:
         print(f"Couldn't read the file '{file_path}': {e}\n{traceback.format_exc()}\n")
@@ -818,4 +818,12 @@ def log_level_name_to_log_level(level_name):
     if ln == "critical":
         return logging.CRITICAL
     raise Exception(f"Couldn't convert '{level_name}' to a log level")
-       
+
+
+def cross_platform_get_terminal_size(default_width = 80, default_height = 40):
+    result = default_width, default_height
+    try:
+        result = shutil.get_terminal_size(fallback = (default_width, default_height))
+    except Exception as e:
+        logger.debug(f"os.get_terminal_size(0) failed: {e}\n{traceback.format_exc()}")
+    return result

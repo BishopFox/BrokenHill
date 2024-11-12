@@ -5,11 +5,19 @@
 This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
 
 * Absolutely massive performance increase for CPU processing, meaning that it is now practical to use Broken Hill even without a CUDA device.
-  * Tentative results indicate about 20-30 times faster. For example, GPT-J and GPT-NeoX would take 10 hours or more to perform a single iteration of the GCG attack prior to the change, versus about 20 minutes now.
-  * There is a tradeoff - CPU processing must take place in either the `bfloat16` or `float32` formats. `float32` results in double the memory usage, and `bfloat16` is less precise by some measures.
-    * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024, but the performance is dramatically worse, and Transformers does not provide any indication or warning of this.
+  * Tentative results indicate about 20-500 times faster, depending on the model and the type of CPU. Some examples:
+    * Prior to the change, performing a two-iteration test against `Phi-3-medium-128k-instruct` took almost four hours when processed on our test system's CPU. Now it takes about 2.5 minutes.
+    * Prior to the change, performing a two-iteration test against `alpaca-13b` took over six hours when processed on our test system's CPU. Now it takes a little over six minutes.
+    * Prior to the change, performing a two-iteration test against `gpt-neox-20b` took almost ten hours when processed on our test system's CPU. Now it takes a little over 20 minutes.
+    * Prior to the change, performing a two-iteration test against `gpt-j-6b` took over 25 hours(!) when processed on our test system's CPU. Now it takes a little over three minutes.
+  * The root cause is that Transformers more or less supports `float16` on CPU devices as of 2024, but the performance can be *dramatically* worse on some processors, and Transformers does not provide any indication or warning of this. Broken Hill inherited code from [the original demonstration produced by the authors of the "Universal and Transferable Adversarial Attacks on Aligned Language Models" paper](https://github.com/llm-attacks/llm-attacks/) that followed the common practice of loading model weights in `float16` format, which is fine for CUDA devices, but disastrous for CPU processing.
+    * Broken Hill now defaults to the `bfloat16` format for CPU processing.
+		* This has proven to be the best choice for our main test system (AMD Ryzen 9 7950X3D), as well as an M1 MacBook.
+          * For increased accuracy, consider `--model-data-type float32` as long as your system has sufficient memory.
+		* For Intel CPUs and/or Windows, you may need to use `--model-data-type float32` for adequate performance, although this will double the memory requirements.
+     * CUDA device processing retains the previous default behaviour of using the `float16` format. Other formats can be specified for either type of device using the new `--model-data-type` option, discussed below.
   * This also provides a resolution for a long-running (in our development environment) issue in which GPT-NeoX and derived models would almost always only output '<|endoftext|>' when they received a generation request on CPU hardware instead of CUDA.
-* Broken Hill now defaults to the `bfloat16` format for CPU processing. For increased accuracy, consider `--model-data-type float32` as long as your system has sufficient memory. CUDA device processing retains the previous default behaviour of using the `float16` format. Other formats can be specified using the new `--model-data-type` option, discussed below.
+* Broken Hill can now be used on Mac OS and Windows in addition to Linux, although we recommend Linux for the best experience, or if you want to take advantage of CUDA hardware.
 * [Broken Hill now automatically backs up the attack state at each iteration so that tests can be resumed if they're ended early, or the operator wants to continue iterating on existing results](docs/all_command-line_options.md#options-related-to-attack-state backup-and-resumption).
   * This is a much more robust option than the "start with the adversarial content from the previous test" approach documented for earlier versions of Broken Hill.
   * The state preserves e.g. all of the random number generator states, so interrupting and resuming a test should be (and is, in our testing) produces results identical to one uninterrupted test.
@@ -55,6 +63,7 @@ This is the most significant update to Broken Hill since its public release in S
   * Gemma-derived models
     * [Vikhr-Gemma-2B-instruct](https://huggingface.co/Vikhrmodels/Vikhr-Gemma-2B-instruct)
   * Llama-derived models
+    * [alpaca-13b](https://huggingface.co/chavinlo/alpaca-13b)
     * [Llama-68M-Chat-v1](https://huggingface.co/meta-llama/Felladrin/Llama-68M-Chat-v1)
   * Llama-2-derived models
     * [Meta-Llama-Guard-2-8B](https://huggingface.co/meta-llama/Meta-Llama-Guard-2-8B)
@@ -74,6 +83,7 @@ This is the most significant update to Broken Hill since its public release in S
 * Added the following custom chat templates:
   * `felladrin-llama-chat`
   * `gemma`
+  * `glm4`
   * `gptneox`
   * `mistral`
   * `mistral-nemo`
@@ -126,7 +136,6 @@ This is the most significant update to Broken Hill since its public release in S
   * Minor correction to the custom `stablelm2` chat template.
   * Many other lesser fixes.
 * Removed a bunch of leftover code that was no longer used to make it slightly easier to understand what was going on.
-
 
 # 0.33 - 2024-10-08
 

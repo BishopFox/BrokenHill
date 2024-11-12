@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 
+from llm_attacks_bishopfox.util.util_functions import cross_platform_get_terminal_size
 from llm_attacks_bishopfox.util.util_functions import strip_ansi_codes
 
 logger = logging.getLogger(__name__)
@@ -322,7 +323,7 @@ class BrokenHillLogManager:
         self.console_handler.setLevel(self.attack_params.console_output_level)
         if self.file_handler is not None:
             self.file_handler.setFormatter(self.file_formatter)
-            self.console_handler.setLevel(self.attack_params.log_file_output_level)
+            self.file_handler.setLevel(self.attack_params.log_file_output_level)
     
     def get_lowest_log_level(self):
         result = self.attack_params.console_output_level
@@ -392,7 +393,7 @@ class ConsoleGridView:
         if max_table_width is not None:
             self.max_table_width = max_table_width
         else:
-            console_columns, console_rows = os.get_terminal_size(0)
+            console_columns, console_rows = cross_platform_get_terminal_size()
             # leave one character on each side for padding
             self.max_table_width = console_columns - 2            
             
@@ -425,7 +426,7 @@ class ConsoleGridView:
 
     @staticmethod
     def terminal_is_wide_enough_for_grid(grid_width):
-        console_columns, console_rows = os.get_terminal_size(0)
+        console_columns, console_rows = cross_platform_get_terminal_size()
         if console_columns >= grid_width:
             return True
         return False
@@ -560,7 +561,7 @@ class ConsoleGridView:
         return self.get_padding_to_right_align(column_width, text_to_align)
     
     def render_table(self):
-        console_columns, console_rows = os.get_terminal_size(0)
+        console_columns, console_rows = cross_platform_get_terminal_size()
         table_padding_left, table_padding_right = self.get_padding_to_center_by_width(console_columns, self.total_width)        
         if table_padding_left < 0 or table_padding_right < 0:
             raise LoggingException(f"The width of the current terminal ({console_columns}) is less than the width of the table ({self.total_width}). This class does not currently handle wrapping row or column headers.")

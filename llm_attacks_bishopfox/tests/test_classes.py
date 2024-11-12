@@ -15,6 +15,8 @@ from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_a
 from llm_attacks_bishopfox.util.util_functions import command_array_to_string
 from llm_attacks_bishopfox.util.util_functions import get_time_string
 
+from torch.cuda import is_available as torch_cuda_is_available
+
 logger = logging.getLogger(__name__)
 
 # placeholder to use in generated command strings for things like > log.txt 2>&1
@@ -25,6 +27,14 @@ class BrokenHillTestException(Exception):
     pass
 
 class BrokenHillTestParams(JSONSerializableObject):
+    
+    @staticmethod
+    def get_default_device():
+        device_name = "cpu"
+        if torch_cuda_is_available():
+            device_name = "cuda"
+        return device_name
+    
     def __init__(self):
         self.test_name = None
         self.base_llm_path = None
@@ -33,10 +43,11 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.python_path = "bin/python"
         self.python_params = [ '-u' ]
         self.broken_hill_path = "./BrokenHill/brokenhill.py"
-        self.model_device = None
+        default_device = BrokenHillTestParams.get_default_device()
+        self.model_device = default_device
         self.model_data_type = None
-        self.gradient_device = None
-        self.forward_device = None
+        self.gradient_device = default_device
+        self.forward_device = default_device
         self.enable_cuda_blocking_mode = True
         self.output_file_directory = None
         self.output_file_base_name = None
@@ -52,19 +63,24 @@ class BrokenHillTestParams(JSONSerializableObject):
         #self.max_iterations = 1
         self.max_iterations = 2
         self.max_new_tokens_final = 128
+        self.data_type_cpu_16bit = "bfloat16"
+        self.data_type_cpu_32bit = "float32"
+        self.data_type_cuda_16bit = "float16"
+        self.data_type_cuda_32bit = "float32"
+        self.default_data_size_cpu = 16
+        self.default_data_size_cuda = 16
         self.perform_cpu_tests = True
-        self.perform_cpu_tests_requiring_float16 = False
         self.perform_cpu_tests_requiring_swap = False
-        self.always_use_bfloat16_for_cpu = True
         self.perform_cuda_tests = True
         self.ignore_jailbreak_test_results = False
         self.verbose_stats = True
         self.verbose_resource_info = True
+        self.write_output_every_iteration = False
         self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens', '--no-ansi' ]
         # ten minute default for CUDA devices
         self.cuda_process_timeout = 600
         # default: one hour
-        self.process_timeout = 3600
+        self.cpu_process_timeout = 3600
         # two hours
         #self.process_timeout = 7200
         self.specific_model_names_to_test = None
@@ -73,6 +89,24 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.model_name_regexes_to_skip = None
         self.log_level = "debug"
         self.console_level = "info"
+    
+    def get_model_data_type_size_bits(self):
+        if "cuda" in self.model_device.lower():
+            return self.default_data_size_cuda
+        return self.default_data_size_cpu
+    
+    def get_model_data_type_size_bytes(self):
+        bitsize = self.get_model_data_type_size_bits()        
+        return int(round((float(bitsize) / 8.0)))
+    
+    def get_model_data_type(self):
+        if "cuda" in self.model_device.lower():
+            if self.default_data_size_cuda == 16:
+                return self.data_type_cuda_16bit
+            return self.data_type_cuda_32bit
+        if self.default_data_size_cpu == 16:
+            return self.data_type_cpu_16bit
+        return self.data_type_cpu_32bit
     
     def get_process_timeout(self):
         if self.model_device == "cpu":
@@ -123,14 +157,6 @@ class BrokenHillTestParams(JSONSerializableObject):
         result = os.path.join(self.output_file_directory, f"{self.output_file_base_name}-log.txt")
         return result
     
-    def get_effective_model_data_type(self):
-        result = self.model_data_type
-        if result is None:
-            result = "float32"
-            if self.model_device is not None:
-                if "cuda" in self.model_device:
-                    result = "float16"
-    
     def get_command_array(self, base_command_array = []):
         result = copy.deepcopy(base_command_array)
         result.append(self.python_path)
@@ -144,9 +170,8 @@ class BrokenHillTestParams(JSONSerializableObject):
         if self.model_device is not None and self.model_device.strip() != "":
             result.append('--model-device')
             result.append(self.model_device)
-        if self.model_data_type is not None:
-            result.append('--model-data-type')
-            result.append(self.model_data_type)
+        result.append('--model-data-type')
+        result.append(self.get_model_data_type())
         if self.gradient_device is not None and self.gradient_device.strip() != "":
             result.append('--gradient-device')
             result.append(self.gradient_device)
@@ -203,6 +228,8 @@ class BrokenHillTestParams(JSONSerializableObject):
                 result.append(self.get_torch_cuda_output_path())        
             result.append('--log')
             result.append(self.get_log_path())
+        if not self.write_output_every_iteration:
+            result.append('--only-write-files-on-completion')
         for i in range(0, len(self.custom_options)):
             result.append(self.custom_options[i])
                
