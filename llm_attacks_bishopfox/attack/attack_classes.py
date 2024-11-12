@@ -67,6 +67,7 @@ from llm_attacks_bishopfox.util.util_functions import tensor_from_dict
 from llm_attacks_bishopfox.util.util_functions import tensor_to_dict
 from llm_attacks_bishopfox.util.util_functions import torch_dtype_from_string
 
+from peft import PeftModel
 from transformers.generation import GenerationConfig
 
 logger = logging.getLogger(__name__)
