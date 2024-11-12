@@ -1,6 +1,6 @@
 # Broken Hill version history
 
-# 0.34 - 2024-11-11
+# 0.34 - 2024-11-12
 
 This is the most significant update to Broken Hill since its public release in September 2024. We performed extensive refactoring in order to add the additional features and functionality. We think we've prevented any regression bugs from making their way into this release, but due to the number of changes it's possible something slipped through.
 
