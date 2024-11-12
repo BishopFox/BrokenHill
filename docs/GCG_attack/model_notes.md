@@ -25,6 +25,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [Qwen](#qwen)
   * [Qwen 2](#qwen-2)
   * [SmolLM](#smollm)
+  * [SOLAR](#solar)
   * [StableLM](#stablelm)
   * [StableLM 2](#stablelm-2)
   * [TinyLlama](#tinyllama)
