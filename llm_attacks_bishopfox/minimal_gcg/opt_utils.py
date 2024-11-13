@@ -17,6 +17,7 @@ from llm_attacks_bishopfox.base.attack_manager import get_embeddings
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import encode_string_for_real_without_any_cowboy_funny_business
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
+from llm_attacks_bishopfox.util.util_functions import BrokenHillValueException
 
 logger = logging.getLogger(__name__)
 
@@ -937,7 +938,7 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
 def get_logits(attack_state, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False):
     
     if adversarial_candidate_list is None or len(adversarial_candidate_list.adversarial_content) < 1:
-        raise ValueError(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
+        raise BrokenHillValueException(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
 
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - begin")
 
@@ -969,7 +970,7 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
             logger.debug(f"test_ids = '{test_ids}'\n decoded_test_ids = '{decoded_test_ids}'")
 
     if not(test_ids[0].shape[0] == number_of_adversarial_token_ids):
-        raise ValueError((
+        raise BrokenHillValueException((
             f"adversarial_candidate_list must have shape "
             f"(n, {number_of_adversarial_token_ids}), " 
             f"got {test_ids.shape}"

@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.34"
-script_date = "2024-11-12"
+script_version = "0.35"
+script_date = "2024-11-13"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -100,6 +100,8 @@ import traceback
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
+from llm_attacks_bishopfox.attack.attack_classes import AssociationRebuildException
+from llm_attacks_bishopfox.attack.attack_classes import AttackInitializationException
 from llm_attacks_bishopfox.attack.attack_classes import AttackParams
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfo
 from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoCollection
@@ -107,6 +109,9 @@ from llm_attacks_bishopfox.attack.attack_classes import AttackResultInfoData
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillMode
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillRandomNumberGenerators
 from llm_attacks_bishopfox.attack.attack_classes import BrokenHillResultData
+from llm_attacks_bishopfox.attack.attack_classes import DecodingException
+from llm_attacks_bishopfox.attack.attack_classes import EncodingException
+from llm_attacks_bishopfox.attack.attack_classes import GenerationException
 from llm_attacks_bishopfox.attack.attack_classes import InitialAdversarialContentCreationMode
 from llm_attacks_bishopfox.attack.attack_classes import LossAlgorithm
 from llm_attacks_bishopfox.attack.attack_classes import LossSliceMode
@@ -117,11 +122,19 @@ from llm_attacks_bishopfox.attack.attack_classes import OverallScoringFunction
 from llm_attacks_bishopfox.attack.attack_classes import PersistableAttackState
 from llm_attacks_bishopfox.attack.attack_classes import VolatileAttackState
 from llm_attacks_bishopfox.attack.attack_classes import get_missing_pad_token_names
+from llm_attacks_bishopfox.base.attack_manager import EmbeddingLayerNotFoundException
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import SeparatorStyleConversionException
+from llm_attacks_bishopfox.dumpster_fires.conversation_templates import ConversationTemplateSerializationException
+from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import TrashFireTokenException
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_token
 from llm_attacks_bishopfox.dumpster_fires.trash_fire_tokens import get_decoded_tokens
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetector
 from llm_attacks_bishopfox.jailbreak_detection.jailbreak_detection import LLMJailbreakDetectorRuleSet
+from llm_attacks_bishopfox.json_serializable_object import JSONSerializationException
+from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelException
+from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelParameterException
 from llm_attacks_bishopfox.logging import BrokenHillLogManager
+from llm_attacks_bishopfox.logging import LoggingException
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
@@ -134,6 +147,10 @@ from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_filtered_cands
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import get_logits
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import target_loss
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import token_gradients
+from llm_attacks_bishopfox.statistics.statistical_tools import StatisticsException
+from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageException
+from llm_attacks_bishopfox.util.util_functions import BrokenHillFileIOException
+from llm_attacks_bishopfox.util.util_functions import BrokenHillValueException
 from llm_attacks_bishopfox.util.util_functions import FakeException
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import comma_delimited_string_to_integer_array
@@ -217,6 +234,9 @@ def check_pytorch_devices(attack_params):
 def main(attack_params, log_manager):
     user_aborted = False
     abnormal_termination = False
+
+    general_error_guidance_message = "\n\nIf this issue is due to a temporary or operator-correctable condition (such as another process using device memory that would otherwise be available to Broken Hill) you may be able to continue execution (after correcting any issues) using the instructions that Broken Hill should generate before exiting.\n"    
+    bug_guidance_message = "\n\nIf this error occurred while using Broken Hill with an LLM in the list of officially tested models, using the recommended options for that model, is not discussed in the troubleshooting documentation, and is not the result of an operator-correctable condition (such as an invalid path, insufficient memory, etc.), please open an issue with the Broken Hill developers, including steps to reproduce the error.\nIf this error occurred while using Broken Hill with an LLM that is not in the list of tested models, you may submit a feature request to add support for the model.\nIf this error occurred while using Broken Hill with an LLM in the list of officially tested models, but *not* using the recommended options for that model, please try using the recommended options instead."    
 
     attack_state = VolatileAttackState()
     attack_state.log_manager = log_manager
@@ -841,7 +861,7 @@ def main(attack_params, log_manager):
                                     prng_seed_index += 1
                                     len_random_seed_values = len(attack_state.random_seed_values)
                                     if prng_seed_index > len_random_seed_values:
-                                        raise MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException(f"Exceeded the number of random seeds available({len_random_seed_values})")
+                                        raise MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException(f"Exceeded the number of random seeds available({len_random_seed_values}).")
                                 else:
                                     got_random_seed = True
                             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -1024,9 +1044,81 @@ def main(attack_params, log_manager):
         user_aborted = True
     
     except torch.OutOfMemoryError as toome:
-        logger.critical(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback.format_exc()}")
+        logger.critical(f"Broken Hill ran out of memory on the specified PyTorch device. If you have not done so already, please consult the Broken Hill documentation regarding the sizes of models you can test given your device's memory. The list of command-line parameters contains several options you can use to reduce the amount of memory used during the attack as well. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback.format_exc()}\n{general_error_guidance_message}")
+        abnormal_termination = True
+
+    except BrokenHillFileIOException as bfio:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while reading or writing a file: {bfio}\n{traceback.format_exc()}\n{general_error_guidance_message}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except JSONSerializationException as je:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while performing JSON serialization or deserialation: {je}\n{traceback.format_exc()}\n{general_error_guidance_message}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except BrokenHillValueException as bve:
+        logger.critical(f"Broken Hill is unable to continue execution due to a value not meeting necessary criteria: {bve}\n{traceback.format_exc()}\n{general_error_guidance_message}\n{bug_guidance_message}")
         abnormal_termination = True
     
+    except AttackInitializationException as aie:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred during the attack initialization phase: {aie}\n{bug_guidance_message}")
+        abnormal_termination = True
+
+    except (GradientCreationException, GradientSamplingException, MellowmaxException) as ge:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while creating or sampling the gradient to create new adversarial content:\n{ge}\n{traceback.format_exc()}\n{general_error_guidance_message}\n{bug_guidance_message}")
+        abnormal_termination = True
+    
+    except LossThresholdException as lte:
+        logger.critical(f"Broken Hill is unable to continue execution due to contraints specified in the current configuration: {lte}\nSome potential options:\n* Begin a new attack with less-restrictive options.\n* Continue the attack using the saved state, but alter the configuration using additional command-line options to avoid this condition.\n* Begin a new attack or continue the current attack with the same configuration, but different random seed values.")
+        abnormal_termination = True
+        
+    except PromptGenerationException as pge:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while generating a prompt: {pge}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except MyCurrentMentalImageOfALargeValueShouldBeEnoughForAnyoneException as six_hundred_forty_kb:
+        logger.critical(f"{six_hundred_forty_kb} If you requested that Broken Hill compare results against more than 16,381 randomized versions of the LLM, please specify a lower value for --random-seed-comparisons or add additional seed values to the hardcoded list in the get_random_seed_list_for_comparisons method. If you did not specify --random-seed-comparisons with a value greater than 16000, please notify the Broken Hill developers with steps to reproduce this condition.")
+        abnormal_termination = True
+        
+    except TrashFireTokenException as tfte:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while trying to bring law to the lawless frontier of LLM tokens: {tfte}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except (PaddingException, NullPaddingTokenException) as pe:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while performing a padding operation: {pe}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except (SeparatorStyleConversionException, ConversationTemplateSerializationException) as cte:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while performing an operation related to conversation templates: {cte}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except HumanLanguageException as hle:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while working with its internal list of human language names: {tfte}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except EmbeddingLayerNotFoundException as ele:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while obtaining the embedding layer from the specified model: {ele}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except GenerationException as gene:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while generating content using the specified model: {gene}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except StatisticsException as se:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while collecting or processing statistics: {se}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except LoggingException as le:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while performing a logging operation: {le}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except (LargeLanguageModelParameterException, LargeLanguageModelException) as llme:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while performing an operation related to large language models: {llme}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+        
+    except AssociationRebuildException as are:
+        logger.critical(f"Broken Hill is unable to continue execution due to an error that occurred while rebuilding associations between search nodes: {are}\n{traceback.format_exc()}\n{bug_guidance_message}")
+        abnormal_termination = True
+
     # Most of the rest of this section uses an extra-cautious approach of wrapping almost everything in try/except logic that will allow the script to continue even if describing an exception results in another exception.
     # This is to help ensure that any output files really are written to persistent storage, even if the script is interrupted or crashes.
     
@@ -1042,7 +1134,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception during the GCG attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception during the GCG attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
         abnormal_termination = True
 
     finished_successfully = True
@@ -1064,7 +1156,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an exception when trying to collect the final set of performance statistics: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an exception when trying to collect the final set of performance statistics: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
 
     # if attack_state.persistable.attack_params.write_output_every_iteration is True, this step was just performed and can be skipped
     if not attack_state.persistable.attack_params.write_output_every_iteration:
@@ -1082,7 +1174,7 @@ def main(attack_params, log_manager):
                 traceback_string = f"{traceback.format_exc()}"
             except (Exception, RuntimeError) as e:
                 traceback_string = "[Unable to convert traceback to a string]"
-            logger.critical(f"Broken Hill encountered an exception when trying to write performance data output files: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+            logger.critical(f"Broken Hill encountered an exception when trying to write performance data output files: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
 
     try:
         if attack_state.persistable.attack_params.torch_cuda_memory_history_file is not None and attack_state.persistable.attack_params.using_cuda():
@@ -1091,7 +1183,7 @@ def main(attack_params, log_manager):
                 torch.cuda.memory._dump_snapshot(attack_state.persistable.attack_params.torch_cuda_memory_history_file)
                 logger.info(f"Wrote PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}'.")
             except Exception as e:
-                logger.error(f"Couldn't write PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}': {e}")
+                logger.error(f"Couldn't write PyTorch CUDA profile data to '{attack_state.persistable.attack_params.torch_cuda_memory_history_file}': {e}\n{bug_guidance_message}")
     except (Exception, RuntimeError) as e:
         e_string = None
         traceback_string = None
@@ -1104,7 +1196,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an exception when trying to write the CUDA profile data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an exception when trying to write the CUDA profile data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
 
     end_dt = get_now()
     end_ts = get_time_string(end_dt)
@@ -1130,7 +1222,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception when trying to process performance data: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to process performance data: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
 
     try:
         if attack_state.persistable.attack_params.json_output_file is not None:
@@ -1148,7 +1240,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write result data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write result data to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
     
     try:
         if attack_state.persistable.attack_params.save_state:
@@ -1166,7 +1258,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write the attack state to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to write the attack state to persistent storage: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
     
     if attack_state.persistable.attack_params.log_file_path is not None:
             logger.info(f"This attack has been logged to '{attack_state.persistable.attack_params.log_file_path}'.")
@@ -1184,7 +1276,7 @@ def main(attack_params, log_manager):
             traceback_string = f"{traceback.format_exc()}"
         except (Exception, RuntimeError) as e:
             traceback_string = "[Unable to convert traceback to a string]"
-        logger.critical(f"Broken Hill encountered an unhandled exception when trying to generate a performance report for the attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}")
+        logger.critical(f"Broken Hill encountered an unhandled exception when trying to generate a performance report for the attack: {e_string}. The exception details will be displayed below this message for troubleshooting purposes.\n{traceback_string}\n{bug_guidance_message}")
     
     completed_all_iterations = True
     if user_aborted:

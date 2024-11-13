@@ -288,7 +288,7 @@ def remove_empty_and_trash_fire_leading_and_trailing_tokens(attack_state, trash_
     len_token_array = len(token_array)
     len_decoded_token_array = len(decoded_token_array)
     if len_token_array != len_decoded_token_array:
-        raise Exception(f"The length of the token and decoded token arrays must match. Inputs were '{token_array}' (length: {len_token_array}) and '{decoded_token_array}' (length: {len_decoded_token_array})")
+        raise TrashFireTokenException(f"The length of the token and decoded token arrays must match. Inputs were '{token_array}' (length: {len_token_array}) and '{decoded_token_array}' (length: {len_decoded_token_array})")
 
     first_non_empty_token = 0
     last_non_empty_token = len_decoded_token_array - 1
@@ -566,7 +566,7 @@ def find_index_of_token(attack_state, trash_fire_tokens, string_to_search_for, t
     exception_message = ""
     for i in range(0, len(failure_messages)):
         exception_message += f"{failure_messages[i]}\n\n"
-    raise Exception(exception_message)
+    raise TrashFireTokenException(exception_message)
 
 # # dynamically determine the last token in a set of tokens 
 # # that get_prompt should consider
@@ -581,7 +581,7 @@ def find_index_of_token(attack_state, trash_fire_tokens, string_to_search_for, t
         # if not token_is_a_pile_of_garbage_why_is_this_not_standardized_yet_you_ml_cowboys:
             # result = i
     # if isinstance(result, type(None)):
-        # raise Exception(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
+        # raise TrashFireTokenException(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
     # #logger.debug(f"last non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} ('{decoded_tokens[start_index:range_end]}') is index {result}, '{decoded_tokens[result]}'")
     # return result
 
@@ -596,7 +596,7 @@ def find_index_of_token(attack_state, trash_fire_tokens, string_to_search_for, t
             # #logger.debug(f"first non-garbage token in '{decoded_tokens}' from index {start_index} to {range_end} is index {i}, '{decoded_tokens[i]}'")
             # return i
     # if isinstance(result, type(None)):
-        # raise Exception(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
+        # raise TrashFireTokenException(f"Could not find a token that wasn't an absolute dumpster fire in '{decoded_tokens}' from index {start_index} to {range_end}, please, stop the madness right now.")
     # return result
 
 class TrashFireTokenCollection:

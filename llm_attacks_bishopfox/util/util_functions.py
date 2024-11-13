@@ -29,6 +29,9 @@ class RequiredValueIsNoneException(Exception):
 class BrokenHillFileIOException(Exception):
     pass
 
+class BrokenHillValueException(Exception):
+    pass
+
 # for debugging
 class FakeException(Exception):
     pass
@@ -289,13 +292,13 @@ def delete_file(file_path, raise_on_missing = False):
     file_path_object = pathlib.Path(file_path)
     if not os.path.isfile(file_path):
         if raise_on_missing:
-            raise Exception(f"The file '{file_path}' does not exist.")
+            raise BrokenHillFileIOException(f"The file '{file_path}' does not exist.")
         return
     try:
         file_path_object.unlink() 
     except Exception as e:
         err_message = f"Couldn't delete the file '{file_path}': {e}."
-        raise Exception(err_message)
+        raise BrokenHillFileIOException(err_message)
 
 # write content to a temporary file first, then delete any existing output file, then move the temporary file to the output file location
 # Prevents overwriting a complete output file with partial output in the event of a crash
@@ -307,10 +310,10 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 pathlib.Path(file_directory_path).mkdir(parents = True, exist_ok = True)
             except Exception as e:
                 err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist, and Broken Hill could not create it: {e}\n{traceback.format_exc()}\n"
-                raise Exception(err_message)
+                raise BrokenHillFileIOException(err_message)
         else:
             err_message = f"The directory specified for the file '{file_path}' ('{file_directory_path}') does not exist."
-            raise Exception(err_message)
+            raise BrokenHillFileIOException(err_message)
     # thanks for deprecating mktemp, Python devs!
     temporary_path = None
     try:
@@ -318,7 +321,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
         os.close(born_2_lose)
     except Exception as e:
         err_message = f"Couldn't create a temporary file in '{file_directory_path}': {e}\n{traceback.format_exc()}\n"
-        raise Exception(err_message)
+        raise BrokenHillFileIOException(err_message)
     temporary_path_object = pathlib.Path(temporary_path)
     file_path_object = pathlib.Path(file_path)
     # if append mode, copy the existing file to the temporary location first
@@ -329,7 +332,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 shutil.copy(file_path, temporary_path)
             except Exception as e:
                 err_message = f"Couldn't copy the existing file '{file_path}' to the temporary path '{temporary_path}': {e}\n{traceback.format_exc()}\n"
-                raise Exception(err_message)
+                raise BrokenHillFileIOException(err_message)
     successful_write = False
     try:
         with open(temporary_path, file_mode) as output_file:
@@ -348,7 +351,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
             successful_write = True
         except Exception as e2:
             err_message = f"Couldn't write to the temporary file '{temporary_path}' in either text mode ('{e}') or binary mode('{e2}')\n{traceback.format_exc()}\n"
-            raise Exception(err_message)
+            raise BrokenHillFileIOException(err_message)
     successful_delete = False
     if successful_write:
         if os.path.isfile(file_path):
@@ -357,7 +360,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
                 successful_delete = True
             except Exception as e:
                 err_message = f"Couldn't delete the existing file '{file_path}' to replace it with the newly-generated file: {e}\n{traceback.format_exc()}\n"
-                raise Exception(err_message)
+                raise BrokenHillFileIOException(err_message)
         else:
             successful_delete = True
     successful_replace = False
@@ -367,7 +370,7 @@ def safely_write_text_output_file(file_path, content, file_mode = "w", create_di
             successful_replace = True
         except Exception as e:
             err_message = f"Couldn't rename the temporary file '{temporary_path}' to '{file_path}': {e}\n{traceback.format_exc()}\n"
-            raise Exception(err_message)
+            raise BrokenHillFileIOException(err_message)
     if successful_write and successful_delete and successful_replace:
         return file_path            
     return None
@@ -746,7 +749,7 @@ def torch_dtype_from_string(string):
         return torch.int32
     if s == "int64":
         return torch.int64
-    raise Exception(f"Unrecognized PyTorch data type: '{string}'")
+    raise BrokenHillValueException(f"Unrecognized PyTorch data type: '{string}'")
 
 def torch_dtype_to_string(dtype):
     if dtype == torch.float16:
@@ -773,7 +776,7 @@ def torch_dtype_to_string(dtype):
         return "int32"
     if dtype == torch.int64:
         return "int64"
-    raise Exception(f"Unrecognized PyTorch data type: '{dtype}'")
+    raise BrokenHillValueException(f"Unrecognized PyTorch data type: '{dtype}'")
 
 def torch_dtype_to_bit_count(dtype):
     if dtype == torch.float16:
@@ -800,7 +803,7 @@ def torch_dtype_to_bit_count(dtype):
         return 32
     if dtype == torch.int64:
         return 64
-    raise Exception(f"Unrecognized PyTorch data type: '{dtype}'")
+    raise BrokenHillValueException(f"Unrecognized PyTorch data type: '{dtype}'")
 
 def get_log_level_names():
     return ["debug", "info", "warning", "error", "critical"]
@@ -817,7 +820,7 @@ def log_level_name_to_log_level(level_name):
         return logging.ERROR
     if ln == "critical":
         return logging.CRITICAL
-    raise Exception(f"Couldn't convert '{level_name}' to a log level")
+    raise BrokenHillValueException(f"Couldn't convert '{level_name}' to a log level")
 
 
 def cross_platform_get_terminal_size(default_width = 80, default_height = 40):

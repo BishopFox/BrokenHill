@@ -53,6 +53,7 @@ from llm_attacks_bishopfox.logging import ConsoleGridView
 #from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import get_default_generic_role_indicator_template
 from llm_attacks_bishopfox.statistics.statistical_tools import StatisticsCube
 from llm_attacks_bishopfox.teratogenic_tokens.language_names import HumanLanguageManager
+from llm_attacks_bishopfox.util.util_functions import BrokenHillValueException
 from llm_attacks_bishopfox.util.util_functions import PyTorchDevice
 from llm_attacks_bishopfox.util.util_functions import add_value_to_list_if_not_already_present
 from llm_attacks_bishopfox.util.util_functions import add_values_to_list_if_not_already_present
@@ -158,7 +159,7 @@ def get_missing_pad_token_names():
 def get_missing_pad_token_replacement(tokenizer, replacement_name):
     allowed_names = get_missing_pad_token_names()
     if replacement_name not in get_missing_pad_token_names():
-        raise Exception(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
+        raise BrokenHillValueException(f"Unrecognized padding token replacement name: '{replacement_name}' - must be one of '{allowed_names}'")
     result = None
     if replacement_name == "bos":
         result = tokenizer.bos_token_id, tokenizer.bos_token
@@ -393,13 +394,13 @@ class AttackParams(JSONSerializableObject):
         self.conversation_template_messages = []
         # validate that the data is more or less as expected
         if not isinstance(message_list, list):
-            raise Exception(f"The conversation message data '{message_list}' was not in the form of a list.")
+            raise BrokenHillValueException(f"The conversation message data '{message_list}' was not in the form of a list.")
         for i in range(0, len(message_list)):
             message_data = message_list[i]
             if not isinstance(message_data, list):
-                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
+                raise BrokenHillValueException(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list.")
             if len(message_data) != 2:
-                raise Exception(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
+                raise BrokenHillValueException(f"Entry {i} of the conversation message data ('{message_data}') was not in the form of a list with two entries.")
             self.conversation_template_messages.append(message_data)
     
     def get_known_template_names(self):
@@ -1318,7 +1319,7 @@ class VolatileAttackState():
                         logger.debug(f"no match between '{comparison_string}' and '{script_name}'")
 
         if script_index is None:
-            raise Exception(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
+            raise BrokenHillValueException(f"Could not find a reference to the Broken Hill script ('{script_name}') in the following array of command-line elements: {self.persistable.attack_params.original_command_line_array}")
         for i in range(0, script_index + 1):
             result_array.append(self.persistable.attack_params.original_command_line_array[i])
         result_array.append("--load-state")
@@ -1830,11 +1831,13 @@ class VolatileAttackState():
                     )
                     handled = True
                 except Exception as e2:
-                    logger.error(f"Error loading both standard and fast tokenizers from '{self.persistable.attack_params.tokenizer_path}': '{e}', '{e2}'\n{traceback.format_exc()}\n")
-                    raise e        
+                    error_message = f"Error loading both standard and fast tokenizers from '{self.persistable.attack_params.tokenizer_path}': '{e}', '{e2}'\n{traceback.format_exc()}\n"
+                    logger.error(error_message)
+                    raise AttackInitializationException(error_message)
             if not handled:
-                logger.error(f"Error loading tokenizer from '{self.persistable.attack_params.tokenizer_path}': '{e}'\n{traceback.format_exc()}\n")
-                raise e
+                error_message = f"Error loading tokenizer from '{self.persistable.attack_params.tokenizer_path}': '{e}'\n{traceback.format_exc()}\n"
+                logger.error(error_message)
+                raise AttackInitializationException(error_message)
         
         try:
             self.broken_hill_padding_token_id = encode_string_for_real_without_any_cowboy_funny_business(self, self.persistable.attack_params.broken_hill_padding_token_string)
@@ -2079,7 +2082,7 @@ class VolatileAttackState():
                     try:
                         role_id_or_name = self.conversation_template.roles[role_id_or_name]
                     except Exception as e:
-                        raise Exception(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}\n{traceback.format_exc()}\n")
+                        raise BrokenHillValueException(f"Could not convert the role ID '{role_id_or_name}' to an entry in the template's list of roles ('{self.conversation_template.roles}'): {e}\n{traceback.format_exc()}\n")
                 self.conversation_template.messages.append((role_id_or_name, message))
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"Customized conversation template messages: '{self.conversation_template.messages}'.")
