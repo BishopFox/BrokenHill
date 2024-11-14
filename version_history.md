@@ -1,5 +1,9 @@
 # Broken Hill version history
 
+# 0.36 - 2024-11-14
+
+* Minor bug fix to handle less common errors more gracefully.
+
 # 0.35 - 2024-11-13
 
 * Added additional error handling to make output more readable in the event of certain exceptions.

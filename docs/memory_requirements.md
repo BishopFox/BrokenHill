@@ -2,13 +2,13 @@
 
 This document currently lists general guidelines for requirement device memory based on ad hoc testing. It will be updated with additional information and more specific figures as we collect them.
 
-*Note:* the memory required for testing is on the device where processing occurs. e.g. to perform a GCG attack against a model with 2 billion parameters, for `--device cuda` and `--model-data-type default` or `--model-data-type float16`, you would need an Nvidia GPU with at least 24 GiB of VRAM. For `--device cpu`, system memory is used instead. If you specify `--model-data-type float32`, be aware that the memory requirements are doubled.
+*Note:* the memory required for testing is on the device where processing occurs. e.g. to perform a GCG attack against a model with 2 billion parameters, for `--device cuda` and `--model-data-type default` or `--model-data-type float16`, you would need an Nvidia GPU with at least 24 GiB of VRAM. For `--device cpu`, system memory is used instead. If you specify `--model-data-type float32`, be aware that the memory requirements are doubled. [Please see the "Selecting a model data type" document for more details on that option in relation to CPU processing](selecting_a_model_data_type.md).
 
 *Note:* there are quite a few factors in determining how much memory PyTorch will attempt to use when Broken Hill runs. [The "I keep running out of memory" section in the Troubleshooting guide discusses this in more detail](troubleshooting.md). The figures below are for typical uses with default Broken Hill values.
 
 ## General guidelines
 
-Performing the GCG attack requires representing the model's weights in a floating-point format. The smallest floating-point formats are 16 bits, or two bytes. Broken Hill performs all work using 16-bit floating point values by default, but supports 32-bit by specifying `--model-data-type float32`. For a 16-bit format, this means that the model will generally occupy a number of bytes in memory slightly over two times the number of parameters. For 32-bits, double all of the example values (e.g. the model itself will occupy about four times as many bytes in memory as its parameter count).
+Performing the GCG attack requires representing the model's weights in a floating-point format. The smallest floating-point formats supported by PyTorch are 16 bits, or two bytes. Broken Hill performs all work using 16-bit floating point values by default, but supports 32-bit by specifying `--model-data-type float32`. For a 16-bit format, this means that the model will generally occupy a number of bytes in memory slightly over two times the number of parameters. For 32-bits, double all of the example values (e.g. the model itself will occupy about four times as many bytes in memory as its parameter count).
 
 Some examples of device memory required just to load a model in 16-bit format:
 
@@ -47,7 +47,7 @@ On top of that baseline, each iteration of the attack requires steps such as for
 ### Models with 2 - 5 billion parameters
 
 * 24 GiB is generally sufficient to perform the GCG attack if the model is loaded in 16-bit format
-** Reducing the number of adversarial candidates using `--new-adversarial-value-candidate-count` to 16 or even 8 may be required for lengthy target strings or large numbers of adversarial tokens, especially with models at the high end of this parameter count range.
+** Reducing the number of adversarial candidates using `--new-adversarial-value-candidate-count` to 16 or even 8 may be required for lengthy target strings or large numbers of adversarial tokens, especially with models at the high end of this parameter count range
 
 ### Models with 6 - 7 billion parameters
 
