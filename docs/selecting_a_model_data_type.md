@@ -18,9 +18,9 @@ Choosing a `--model-data-type` value for CPU processing is, unfortunately, more 
 
 Ryzen 9 CPUs (possibly other AMD CPUs as well) perform very well with both `float32` and `bfloat16`, but *extremely* poorly with `float16`. With a Ryzen 9 CPU, expect Broken Hill to run at least 10 times slower when using the `float16` format than using `float32`, and at least 20 times slower than using `bfloat16`. For some models, such as `gpt-j-6b`, Broken Hill may run 500 times slower if `float16` is selected.
 
-### Apple silicon CPUs (M1, etc.)
+### Apple Silicon CPUs (M1, etc.)
 
-Based on the limited number of datapoints we've collected for Apple silicon CPUs, our current recommendation for that hardware is that you should use `float32` if you have sufficient memory, but `float16` and `bfloat16` will usually provide adequate performance.
+Based on the limited number of datapoints we've collected for Apple Silicon CPUs, our current recommendation for that hardware is that you should use `float32` if you have sufficient memory, but `float16` and `bfloat16` will usually provide adequate performance.
 
 ### Intel CPUs
 
