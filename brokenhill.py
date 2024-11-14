@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.35"
-script_date = "2024-11-13"
+script_version = "0.36"
+script_date = "2024-11-14"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -136,6 +136,7 @@ from llm_attacks_bishopfox.llms.large_language_models import LargeLanguageModelP
 from llm_attacks_bishopfox.logging import BrokenHillLogManager
 from llm_attacks_bishopfox.logging import LoggingException
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import AdversarialContentManager
+from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import PromptGenerationException
 from llm_attacks_bishopfox.minimal_gcg.adversarial_content_utils import register_custom_conversation_templates
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientCreationException
 from llm_attacks_bishopfox.minimal_gcg.opt_utils import GradientSamplingException
