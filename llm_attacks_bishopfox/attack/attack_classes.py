@@ -99,6 +99,10 @@ def get_default_generic_role_indicator_template():
     # note: using "### {role}:" instead will cause issues 
     return "### {role}"
 
+# TKTK: add a mode that builds up the adversarial content token-by-token, e.g. finds the token most likely to produce the first token of desired output, then the token most likely to produce the second token of desired output, etc. Some of the testing done with Gemma indicates this might work.
+# TKTK: add a test-existing-results mode that takes an existing results file and tests all of the content against a different LLM/configuration
+# TKTK: add a variation on test-existing-results that tests the content against an ollama LLM instead of using PyTorch
+# TKTK: add an option like the randomized LLM feature that also tests each generated result in a GCG attack against an ollama LLM
 class BrokenHillMode(StrEnum):
     GCG_ATTACK = 'gcg_attack'
     GCG_ATTACK_SELF_TEST  = 'gcg_attack_self_test'
@@ -2518,6 +2522,7 @@ class AttackResultInfoCollection(JSONSerializableObject):
         self.total_processing_time_seconds = None
         self.original_creation_date_time_utc = get_time_string()
         self.jailbreak_detection_count = 0
+        self.canonical_llm_jailbroken = False
         self.loss = None
         self.adversarial_content = AdversarialContent()
 

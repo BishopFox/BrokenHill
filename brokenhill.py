@@ -313,7 +313,9 @@ def main(attack_params, log_manager):
             using_ok_format = True
         if attack_state.persistable.attack_params.model_data_format_handling == ModelDataFormatHandling.FORCE_FLOAT32:
             using_ok_format = True
-        if not using_ok_format:
+        if using_ok_format:
+            logger.warning(f"You are using a CPU device for processing. Depending on your hardware, the default model data type may cause degraded performance. If you encounter poor performance, try specifying --model-data-type float32 when launching Broken Hill, as long as your device has sufficient system RAM. Consult the documentation for further details.")
+        else:
             logger.warning(f"You are using a CPU device for processing, but Broken Hill is configured to use an unsupported PyTorch dtype when loading the model. In particular, if 'float16' is specified, it will also greatly increase runtimes. If you encounter unusual behaviour, such as iteration times of 10 hours, or incorrect output from the model, try specifying --model-data-type default. Consult the documentation for further details.")
     non_cuda_devices = attack_state.persistable.attack_params.get_non_cuda_devices()
     if len(non_cuda_devices) > 0:
@@ -883,6 +885,8 @@ def main(attack_params, log_manager):
                                                 do_sample = do_sample)            
                         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after checking for jailbreak success")
                         if is_success:
+                            if attack_data_current_iteration.is_canonical_result:
+                                attack_data_current_iteration.canonical_llm_jailbroken = True
                             attack_data_current_iteration.jailbreak_detected = True
                             attack_results_current_iteration.jailbreak_detection_count += 1
 
@@ -923,15 +927,19 @@ def main(attack_params, log_manager):
                     
                     attack_results_current_iteration.update_unique_output_values()
                     iteration_status_message = f"Status:\n"
-                    iteration_status_message += f"Current input string:\n---\n{attack_results_current_iteration.decoded_user_input_string}\n---\n"
-                    iteration_status_message += f"Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}, with {attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
+                    iteration_status_message = f"{iteration_status_message}Current input string:\n---\n{attack_results_current_iteration.decoded_user_input_string}\n---\n"
+                    iteration_status_message = f"{iteration_status_message}Successful jailbreak attempts detected: {attack_results_current_iteration.jailbreak_detection_count}."
+                    if attack_results_current_iteration.canonical_llm_jailbroken:
+                        iteration_status_message = f"{iteration_status_message} Canonical LLM instance was jailbroken."
+                    else:
+                        iteration_status_message= f"{iteration_status_message} Canonical LLM instance was not jailbroken."
+                    iteration_status_message = f"{iteration_status_message}\n{attack_results_current_iteration.unique_result_count} unique output(s) generated during testing:\n"
                     for uov_string in attack_results_current_iteration.unique_results.keys():
                         uov_count = attack_results_current_iteration.unique_results[uov_string]
-                        iteration_status_message += f"--- {uov_count} occurrence(s): ---\n" 
-                        iteration_status_message += uov_string
-                        iteration_status_message += "\n"
-                    iteration_status_message += f"---\n" 
-                    iteration_status_message += f"Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}"               
+                        iteration_status_message = f"{iteration_status_message}--- {uov_count} occurrence(s): ---\n" 
+                        iteration_status_message = f"{iteration_status_message}{uov_string}\n"
+                    iteration_status_message = f"{iteration_status_message}---\n" 
+                    iteration_status_message = f"{iteration_status_message}Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}"               
                     logger.info(iteration_status_message)
                     
                     # TKTK: maybe make this a threshold
@@ -1660,6 +1668,8 @@ if __name__=='__main__':
     parser.add_argument("--verbose-stats", type = str2bool, nargs='?',
         const=True, default=attack_params.verbose_statistics,
         help="Display verbose resource utilization/performance statistics when Broken Hill finishes testing, instead of the shorter default list.")
+
+    # TKTK: add an option to score results by number of tokens that appear in LLM output that are also present in the target output, after removing trivial words like "the", "it", etc. Maybe it's not even an option, it's just another scoring element that's performed at every iteration, like loss.
 
     parser.add_argument("--required-loss-threshold", type=numeric_string_to_float,
         default=attack_params.required_loss_threshold,
