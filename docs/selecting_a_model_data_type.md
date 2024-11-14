@@ -26,7 +26,7 @@ Based on the limited number of datapoints we've collected for Apple Silicon CPUs
 
 Based on the limited number of datapoints we've collected for Intel CPUs, our current recommendation for that hardware is that you should *only* use `float32`, because `float16` and `bfloat16` both degrade performance so dramatically. Expect processing to be at least 20 times slower for `bfloat16` than it is for `float32` on an Intel CPU. Expect processing to be at least 20 - 30 times slower for `float16` than it is for `float32` on an Intel CPU.
 
-## CPU processing benchmarks 
+## Processing benchmarks 
 
 Bishop Fox has collected the following benchmark information ourselves, and it was used to develop the guidance above.
 
