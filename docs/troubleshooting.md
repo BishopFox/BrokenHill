@@ -14,6 +14,16 @@ If you are already testing using [models with sizes in-line with the values in t
 * If you're really pressed for memory, you can try specifying `--batch-size-get-logits 1`, but we don't recommend doing so.
 * Examine the length of the system prompt (if any) and template messages (if any). During the gradient-generation phase of the GCG attack, calculations are performed using data derived from the *entire* conversation, including the system prompt and template messages. Lengthy messages of either kind can consume significant amounts of CUDA device memory.
 
+## Broken Hill is running very slowly
+
+### For CPU processing, make sure you're using a model data type that is acceptable for your hardware
+
+[This is discussed in the "Selecting a model data type" document](selecting_a_model_data_type.md).
+
+### Use Linux for the best performance
+
+[As documented in the "Selecting a model data type" document](selecting_a_model_data_type.md), using Windows roughly doubles processing times versus the same device running Linux, for both CUDA and CPU processing.
+
 ## Dependency order conflict when installing using setup.py
 
 If you are trying to install Broken Hill version 0.33 or older, or are installing 0.34 or newer using `setup.py` instead of the recommended method, you may receive an error like the following:
