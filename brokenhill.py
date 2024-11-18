@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.36"
-script_date = "2024-11-14"
+script_version = "0.37"
+script_date = "2024-11-15"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -1498,11 +1498,9 @@ if __name__=='__main__':
         help="If this option is specified, the nanoGCG gradient-sampling algorithm is used even when --number-of-tokens-to-update-every-iteration is 1.")
 
     parser.add_argument("--new-adversarial-value-candidate-count", type=numeric_string_to_int,
-        default=attack_params.new_adversarial_value_candidate_count,
         help=f"The number of candidate adversarial values to generate at every iteration. If you are running out of memory and this value is greater than 1, try reducing it. Alternatively, if you *aren't* running out of memory, you can try increasing this value for better performance.")
         
     parser.add_argument("--max-new-adversarial-value-candidate-count", type=numeric_string_to_int,
-        default=attack_params.max_new_adversarial_value_candidate_count,
         help=f"The maximum amount that the number of candidate adversarial values is allowed to grow to when no new candidates are found.")
 
     parser.add_argument("--batch-size-get-logits", type=numeric_string_to_int,
@@ -2161,13 +2159,27 @@ if __name__=='__main__':
         if attack_params.number_of_tokens_to_update_every_iteration == 1:
             logger.warning("Using the nanoGCG gradient-sampling algorithm even though only one token will be updated during each iteration.")
 
-    attack_params.new_adversarial_value_candidate_count = args.new_adversarial_value_candidate_count
+    set_new_adversarial_value_candidate_count = False
+    set_max_new_adversarial_value_candidate_count = False
+
+    if args.new_adversarial_value_candidate_count:
+        attack_params.new_adversarial_value_candidate_count = args.new_adversarial_value_candidate_count
+        set_new_adversarial_value_candidate_count = True
     
-    attack_params.max_new_adversarial_value_candidate_count = args.max_new_adversarial_value_candidate_count
+    if args.max_new_adversarial_value_candidate_count:
+        attack_params.max_new_adversarial_value_candidate_count = args.max_new_adversarial_value_candidate_count
+        set_max_new_adversarial_value_candidate_count = True
     
     if attack_params.max_new_adversarial_value_candidate_count < attack_params.new_adversarial_value_candidate_count:
-        logger.warning(f"The value specified for --max-new-adversarial-token-candidate-count ({attack_params.max_new_adversarial_value_candidate_count}) was less than the value specified for --new-adversarial-token-candidate-count ({attack_params.new_adversarial_value_candidate_count}). Both values will be set to {attack_params.max_new_adversarial_value_candidate_count}.")
-        attack_params.new_adversarial_value_candidate_count = attack_params.max_new_adversarial_value_candidate_count
+        if set_max_new_adversarial_value_candidate_count:
+            value_source_string = "the default new adversarial value candidate count"
+            if set_new_adversarial_value_candidate_count:
+                value_source_string = "the value specified for --new-adversarial-value-candidate-count"    
+            logger.warning(f"The value specified for --max-new-adversarial-value-candidate-count ({attack_params.max_new_adversarial_value_candidate_count}) was less than {value_source_string} ({attack_params.new_adversarial_value_candidate_count}). Both values will be set to {attack_params.max_new_adversarial_value_candidate_count}.")
+            attack_params.new_adversarial_value_candidate_count = attack_params.max_new_adversarial_value_candidate_count
+        else:
+            logger.warning(f"The value specified for --new-adversarial-value-candidate-count ({attack_params.new_adversarial_value_candidate_count}) was greater than the default limit for new adversarial value candidate count ({attack_params.max_new_adversarial_value_candidate_count}). Both values will be set to {attack_params.new_adversarial_value_candidate_count}.")
+            attack_params.max_new_adversarial_value_candidate_count = attack_params.new_adversarial_value_candidate_count
 
     attack_params.batch_size_get_logits = args.batch_size_get_logits
     

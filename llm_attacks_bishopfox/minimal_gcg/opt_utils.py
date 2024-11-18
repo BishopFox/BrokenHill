@@ -232,6 +232,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
         logger.debug(f"embedding_matrix = {embedding_matrix}")
         logger.debug(f"embedding_matrix.shape = {embedding_matrix.shape}")
         logger.debug(f"embedding_matrix.dtype = {embedding_matrix.dtype}")
+        logger.debug(f"input_token_ids_model_device.shape = {input_token_ids_model_device.shape}, input_token_ids_model_device = {input_token_ids_model_device}")
 
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - begin")
 
@@ -262,10 +263,14 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         logger.debug(f"input_id_data.slice_data.control = {input_id_data.slice_data.control}")
         logger.debug(f"input_token_ids_gradient_device = {input_token_ids_gradient_device}")
+        try:
+            logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
+        except Exception as e:
+            logger.error(f"Exception thrown when displaying shape of input_token_ids_gradient_device[input_id_data.slice_data.control]: {e}\n{traceback.format_exc()}\n")
         if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
             input_token_ids_gradient_device_decoded = get_decoded_tokens(attack_state, input_token_ids_gradient_device)
             logger.debug(f"input_token_ids_gradient_device_decoded = {input_token_ids_gradient_device_decoded}")
-            logger.debug(f"input_token_ids_gradient_device[input_id_data.slice_data.control].shape = {input_token_ids_gradient_device[input_id_data.slice_data.control].shape}")
+            
     
     if input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0] < 1:
         raise GradientCreationException(f"Can't create a gradient when the adversarial content ('control') slice of the input ID data has no content.")
@@ -295,7 +300,7 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
             raise GradientCreationException(f"Error calling one_hot = torch.zeros(input_token_ids_gradient_device[input_id_data.slice_data.control].shape[0], embedding_matrix.shape[0], device = attack_state.gradient_device, dtype = embedding_matrix.dtype) with input_token_ids_gradient_device = '{input_token_ids_gradient_device}', input_token_ids_gradient_device[input_id_data.slice_data.control] = '{input_token_ids_gradient_device[input_id_data.slice_data.control]}', input_token_ids_gradient_device[input_id_data.slice_data.control].shape = '{input_token_ids_gradient_device[input_id_data.slice_data.control].shape}', embedding_matrix = '{embedding_matrix}', embedding_matrix.shape = '{embedding_matrix.shape}', dtype = '{dtype}': {e}\n{traceback.format_exc()}\n")        
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - one_hot created")
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-        logger.debug(f"one_hot = {one_hot}")
+        logger.debug(f"one_hot.shape = {one_hot.shape}, one_hot = {one_hot}")
         logger.debug(f"scales_value = {scales_value}")
         logger.debug(f"pczp_value = {pczp_value}")
     
@@ -541,10 +546,50 @@ def token_gradients(attack_state, input_token_ids_model_device, input_id_data):
             raise GradientCreationException(f"Error calling result_gradient / result_gradient.norm(dim=-1, keepdim=True) with result_gradient = '{result_gradient}', result_gradient.norm(dim=-1, keepdim=True) = '{result_gradient.norm(dim=-1, keepdim=True)}': {e}\n{traceback.format_exc()}\n")
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "token_gradients - result_gradient created")
         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-            logger.debug(f"result_gradient (after normalization) = {result_gradient}")
+            logger.debug(f"(after normalization) result_gradient.shape = {result_gradient.shape}, result_gradient = {result_gradient}")
         return result_gradient
 
     raise GradientCreationException("Error: one_hot.grad is None")
+
+def remove_out_of_bounds_new_token_position_values(attack_state, top_indices, new_token_pos):
+    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+        logger.debug(f"top_indices.shape = {top_indices.shape}, top_indices = {top_indices}")
+        logger.debug(f"new_token_pos.shape = {new_token_pos.shape}, new_token_pos = {new_token_pos}")
+    top_indices_len_1 = top_indices.shape[0] - 1
+    new_token_pos_in_bounds_values = []
+    new_token_pos_out_of_bounds_values = []
+    new_token_pos_values = new_token_pos.tolist()
+    for i in range(0, len(new_token_pos_values)):
+        list_to_check = []
+        if isinstance(new_token_pos_values[i], list):
+            list_to_check = new_token_pos_values[i]
+        else:
+            list_to_check.append(new_token_pos_values[i])
+        found_out_of_bound_value = False
+        for check_val in list_to_check:
+            if check_val > top_indices_len_1:
+                found_out_of_bound_value = True
+                break
+            if check_val < 0:
+                found_out_of_bound_value = True
+                break
+        if found_out_of_bound_value:
+            new_token_pos_out_of_bounds_values.append(new_token_pos_values[i])
+        else:
+            new_token_pos_in_bounds_values.append(new_token_pos_values[i])
+    if len(new_token_pos_out_of_bounds_values) > 0:
+        if len(new_token_pos_in_bounds_values) == 0:
+            raise GradientSamplingException(f"new_token_pos contained only values that included less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}.")
+        else:
+            logger.warning(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}. This usually indicates a problem with the tokens being processed.")        
+            looped_values = []
+            looped_value_number = 0
+            while len(looped_values) < attack_state.persistable.attack_params.new_adversarial_value_candidate_count:
+                looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
+                looped_value_number += 1
+            new_token_pos = torch.tensor(looped_values, device = coordinate_gradient.device)
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
+    return new_token_pos
 
 def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_allowed_tokens = None):
 
@@ -573,6 +618,9 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
         top_indices = (-coordinate_gradient).topk(attack_state.persistable.attack_params.topk, dim=1).indices
         if top_indices.shape[0] < 1:
             raise GradientSamplingException(f"No top indices were generated from the coordinate gradient. Coordinate gradient was: {coordinate_gradient}.")
+
+        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+            logger.debug(f"top_indices.shape = {top_indices.shape}, top_indices = {top_indices}")
         
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating top_indices")
         
@@ -582,6 +630,21 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
         original_adversarial_content_token_ids_gradient_device = current_adversarial_content_token_ids_gradient_device.repeat(attack_state.persistable.attack_params.new_adversarial_value_candidate_count, 1)
         attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating original_adversarial_content_token_ids_gradient_device")
         
+        num_adversarial_tokens = len(current_adversarial_content_token_ids_gradient_device)
+        
+        # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
+        if top_indices.shape[0] < num_adversarial_tokens:
+            logger.warning(f"The number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
+            looped_values = []
+            looped_value_number = 0
+            while len(looped_values) < num_adversarial_tokens:
+                looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
+                looped_value_number += 1
+            top_indices = torch.tensor(looped_values, device = coordinate_gradient.device)
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"(after looping) top_indices.shape = {top_indices.shape}, top_indices = {top_indices}")
+            attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after looping values")
+
         new_token_pos = None
         new_token_val = None
 
@@ -602,29 +665,58 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                 random_ids_1 = torch.rand((attack_state.persistable.attack_params.new_adversarial_value_candidate_count, len(attack_state.persistable.current_adversarial_content.token_ids)), generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device, device = coordinate_gradient.device)
             except RuntimeError as e:
                 raise GradientSamplingException(f"Couldn't generate first set of random IDs: {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"random_ids_1.shape = {random_ids_1.shape}, random_ids_1 = {random_ids_1}")
             try:
                 random_ids_2 = torch.randint(0, attack_state.persistable.attack_params.topk, (attack_state.persistable.attack_params.new_adversarial_value_candidate_count, attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration, 1), device = coordinate_gradient.device, generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device)
             except RuntimeError as e:
                 raise GradientSamplingException(f"Couldn't generate second set of random IDs: {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"random_ids_2.shape = {random_ids_2.shape}, random_ids_2 = {random_ids_2}")
+            new_token_pos_argsort = None
             try:
-                new_token_pos = torch.argsort(random_ids_1)[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration]
+                new_token_pos_argsort = torch.argsort(random_ids_1)
             except Exception as e:
-                raise GradientSamplingException(f"Error calling torch.argsort(random_ids_1)[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration] with random_ids_1 = '{random_ids_1}', attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration = {attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration}: {e}\n{traceback.format_exc()}\n")
+                raise GradientSamplingException(f"Error calling new_token_pos_argsort = torch.argsort(random_ids_1)] with random_ids_1 = '{random_ids_1}': {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"new_token_pos_argsort.shape = {new_token_pos_argsort.shape}, new_token_pos_argsort = {new_token_pos_argsort}, attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration = {attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration}")
+            try:
+                new_token_pos = new_token_pos_argsort[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration]
+            except Exception as e:
+                raise GradientSamplingException(f"Error calling new_token_pos = new_token_pos_argsort[..., :attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration] with new_token_pos_argsort = {new_token_pos_argsort}, attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration = {attack_state.persistable.attack_params.number_of_tokens_to_update_every_iteration}: {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"new_token_pos.shape = {new_token_pos.shape}, new_token_pos = {new_token_pos}")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
+            new_token_pos = remove_out_of_bounds_new_token_position_values(attack_state, top_indices, new_token_pos)
+            top_indices_new_token_pos = None
+            try:
+                top_indices_new_token_pos = top_indices[new_token_pos]
+            except Exception as e:
+                raise GradientSamplingException(f"Error calling top_indices_new_token_pos = top_indices[new_token_pos] with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}': {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"top_indices_new_token_pos.shape = {top_indices_new_token_pos.shape}, top_indices_new_token_pos = {top_indices_new_token_pos}")
+            new_token_val = None
             try:
                 new_token_val = torch.gather(
-                    top_indices[new_token_pos],
+                    top_indices_new_token_pos,
                     2,
                     random_ids_2
-                ).squeeze(2)
+                )
             except Exception as e:
-                raise GradientSamplingException(f"Error calling new_token_val = torch.gather(top_indices[new_token_pos], 2, random_ids_2).squeeze(2) with top_indices = '{top_indices}', new_token_pos = '{new_token_pos}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}\n{traceback.format_exc()}\n")
+                raise GradientSamplingException(f"Error calling new_token_val = torch.gather(top_indices_new_token_pos, 2, random_ids_2) with top_indices_new_token_pos = '{top_indices_new_token_pos}', random_ids_2 = '{random_ids_2}': {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"(before .squeeze(2)) new_token_val.shape = {new_token_val.shape}, new_token_val = {new_token_val}")
+            try:
+                new_token_val = new_token_val.squeeze(2)
+            except Exception as e:
+                raise GradientSamplingException(f"Error calling new_token_val = new_token_val.squeeze(2) with new_token_val = '{new_token_val}': {e}\n{traceback.format_exc()}\n")
+            if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                logger.debug(f"(after .squeeze(2)) new_token_val.shape = {new_token_val.shape}, new_token_val = {new_token_val}")
             # END: nanoGCG gradient-sampling algorithm
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_val")
         else:
             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                logger.debug(f"Using original sampling algorithm")
-            num_adversarial_tokens = len(current_adversarial_content_token_ids_gradient_device)
+                logger.debug(f"Using original sampling algorithm")            
 
             try:
                 new_token_pos = torch.arange(
@@ -637,16 +729,16 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                 raise GradientSamplingException(f"Error calling torch.arange(0, num_adversarial_tokens, num_adversarial_tokens / attack_state.persistable.attack_params.new_adversarial_value_candidate_count, device = coordinate_gradient.device) with num_adversarial_tokens = '{num_adversarial_tokens}', attack_state.persistable.attack_params.new_adversarial_value_candidate_count = '{attack_state.persistable.attack_params.new_adversarial_value_candidate_count}', top_indices[new_token_pos] = '{top_indices[new_token_pos]}', random_ids_2 = '{random_ids_2}': {e}\n{traceback.format_exc()}\n")
             attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
             num_rand_ints = attack_state.persistable.attack_params.new_adversarial_value_candidate_count
-            # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
-            if top_indices.shape[0] < num_adversarial_tokens:
-                logger.warning(f"The number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
-                looped_values = []
-                looped_value_number = 0
-                while len(looped_values) < num_adversarial_tokens:
-                    looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
-                    looped_value_number += 1
-                top_indices = torch.tensor(looped_values, device = coordinate_gradient.device)
-                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after looping values")
+            # # There's probably a better way to handle this, but I don't understand the low-level operation here well enough to implement that "better way" yet.
+            # if top_indices.shape[0] < num_adversarial_tokens:
+                # logger.warning(f"The number of top token indices ({top_indices.shape[0]}) is less than the current number of adversarial content tokens ({num_adversarial_tokens}). The number of top indices will be looped to create enough values. This usually indicates a problem with the tokens being processed.")
+                # looped_values = []
+                # looped_value_number = 0
+                # while len(looped_values) < num_adversarial_tokens:
+                    # looped_values.append(top_indices[looped_value_number % top_indices.shape[0]].tolist())
+                    # looped_value_number += 1
+                # top_indices = torch.tensor(looped_values, device = coordinate_gradient.device)
+                # attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after looping values")
             rand_ints = None
             try:
                 rand_ints = torch.randint(0, attack_state.persistable.attack_params.topk, (num_rand_ints, 1), device = coordinate_gradient.device, generator = attack_state.random_number_generators.random_generator_attack_params_gradient_device)
@@ -656,26 +748,27 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
             if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"new_token_pos = {new_token_pos}, rand_ints = {rand_ints}")
             new_token_val = None
-            top_indices_len_1 = top_indices.shape[0] - 1
-            new_token_pos_in_bounds_values = []
-            new_token_pos_out_of_bounds_values = []
-            new_token_pos_values = new_token_pos.tolist()
-            for i in range(0, len(new_token_pos_values)):
-                if new_token_pos_values[i] > top_indices_len_1:
-                    new_token_pos_out_of_bounds_values.append(new_token_pos_values[i])
-                else:
-                    new_token_pos_in_bounds_values.append(new_token_pos_values[i])
-            if len(new_token_pos_out_of_bounds_values) > 0:
-                #raise Exception(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of top_indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}.")
-                logger.warning(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}. This usually indicates a problem with the tokens being processed.")
-                #new_token_pos = torch.tensor(new_token_pos_in_bounds_values, device = coordinate_gradient.device)
-                looped_values = []
-                looped_value_number = 0
-                while len(looped_values) < attack_state.persistable.attack_params.new_adversarial_value_candidate_count:
-                    looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
-                    looped_value_number += 1
-                new_token_pos = torch.tensor(looped_values, device = coordinate_gradient.device)
-                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
+            # top_indices_len_1 = top_indices.shape[0] - 1
+            # new_token_pos_in_bounds_values = []
+            # new_token_pos_out_of_bounds_values = []
+            # new_token_pos_values = new_token_pos.tolist()
+            # for i in range(0, len(new_token_pos_values)):
+                # if new_token_pos_values[i] > top_indices_len_1:
+                    # new_token_pos_out_of_bounds_values.append(new_token_pos_values[i])
+                # else:
+                    # new_token_pos_in_bounds_values.append(new_token_pos_values[i])
+            # if len(new_token_pos_out_of_bounds_values) > 0:
+                # #raise Exception(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of top_indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}.")
+                # logger.warning(f"new_token_pos contained the following values, which are less than zero or greater than the upper bound of the list of top token indices ({top_indices_len_1}): {new_token_pos_out_of_bounds_values}. This usually indicates a problem with the tokens being processed.")
+                # #new_token_pos = torch.tensor(new_token_pos_in_bounds_values, device = coordinate_gradient.device)
+                # looped_values = []
+                # looped_value_number = 0
+                # while len(looped_values) < attack_state.persistable.attack_params.new_adversarial_value_candidate_count:
+                    # looped_values.append(new_token_pos_in_bounds_values[looped_value_number % len(new_token_pos_in_bounds_values)])
+                    # looped_value_number += 1
+                # new_token_pos = torch.tensor(looped_values, device = coordinate_gradient.device)
+                # attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_adversarial_content_candidates - after creating new_token_pos")
+            new_token_pos = remove_out_of_bounds_new_token_position_values(attack_state, top_indices, new_token_pos)
             try:
                 new_token_val = torch.gather(
                     top_indices[new_token_pos], 1, 

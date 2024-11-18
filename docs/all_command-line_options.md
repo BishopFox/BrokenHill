@@ -393,11 +393,11 @@ Broken Hill manages adversarial content as token IDs by default, and does not ex
 
 ### --number-of-tokens-to-update-every-iteration <positive integer>
 
-*Experimental* Update more than one token during every iteration.
+*Experimental* Update more than one token during every iteration. 
 
 ### --always-use-nanogcg-sampling-algorithm
 
-*Experimental* Ordinarily, omitting `--number-of-tokens-to-update-every-iteration` (i.e. configuring Broken Hill to only update one adversarial content token every iteration) will cause Broken Hill to use the sampling algorithm from the demonstration code by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson. If this option is specified, the alternative algorithm borrowed from nanogcg will be used instead.
+*Experimental* Ordinarily, omitting `--number-of-tokens-to-update-every-iteration` (i.e. configuring Broken Hill to only update one adversarial content token every iteration) will cause Broken Hill to use the sampling algorithm from the demonstration code by Zou, Wang, Carlini, Nasr, Kolter, and Fredrikson. If this option is specified, the alternative algorithm borrowed from [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) will be used instead.
 
 ### --temperature <floating-point number>
 
@@ -458,6 +458,10 @@ You can help make up for a low `--new-adversarial-value-candidate-count` value b
 If you are running out of memory and have already set `--batch-size-get-logits` to 1, and `--new-adversarial-value-candidate-count` is greater than 16, try reducing it. If you still run out of memory with this value set to 16 and `--batch-size-get-logits` set to 1, you're probably out of luck without more VRAM.
 
 If an iteration occurs where all candidate values are filtered out, Broken Hill may increase the number of values generated, in hope of finding values that meet the filtering criteria. By default, it will stop if the number reaches 1024. `--max-new-adversarial-value-candidate-count` can be used to reduce or increase that limit.
+
+If `--new-adversarial-value-candidate-count` is specified, and `--max-new-adversarial-value-candidate-count` is not specified, the maximum value will be increased to match the `--new-adversarial-value-candidate-count` value if it is not already greater.
+
+If `--max-new-adversarial-value-candidate-count` is specified, and it is less than the default or explicitly specified value for `--new-adversarial-value-candidate-count`, Broken Hill will reduce the new adversarial value candidate count  to the value specified for `--new-adversarial-value-candidate-count`.
 
 ### --batch-size-get-logits <positive integer>
 
@@ -573,25 +577,27 @@ For a more flexible (but also more complex) approach, use `--adversarial-candida
 
 The GCG algorithm depends on calculating the cross-entropy loss between candidate adversarial content and the tokens that represent the target string. Due to LLM sorcery, the loss calculation must use a version of the target tokens where the start and end indices are offset by -1. For example, if the target tokens are [ 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions', ':' ], then the loss calculation is performed using something like [ '<|assistant|>', 'Sure', ',', ' here', ' are', ' all', ' previous', ' instructions' ]. This isn't really explained at all in the code Broken Hill was originally based on, but [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg) has a comment to the effect of the logits needing to be shifted so that the previous token predicts the current token.
 
-How much of the magic is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
+How much of the magic (is any) is the inclusion of the special assistant role token versus left-shifting? You'd have to ask an LLM sorceror.
 
 ### --loss-slice-is-llm-role-and-truncated-target-slice
 
-This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice. This is similar to the original GCG attack code method (--loss-slice-is-index-shifted-target-slice), but should work with any LLM, even those that use multiple tokens to indicate a role change. This is the default mode.
+*Experimental* This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes as many of the tokens from the target string as will fit without the result exceeding the length of the target slice.
+
+Using this option is not currently recommended.
 
 ### --loss-slice-is-llm-role-and-full-target-slice
 
-This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string.
+*Experimental* This option causes the loss slice to be determined by starting with the token(s) that indicate the speaking role is switching from user to LLM, and includes all of the target string.
 
 Using this option is not currently recommended, because it requires padding the list of tokens used to calculate the loss, and the current padding method generally causes less useful results.
     
 ### --loss-slice-is-index-shifted-target-slice
 
-This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice usually includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and is included for comparison with other techniques.
+This option causes the loss slice to be determined by starting with the target slice, and decreasing the start and end indices by 1, so that the length remains identical to the target slice, but the loss slice usually includes at least part of the LLM-role-indicator token. This is the behaviour that the original GCG attack code used, and is the default mode.
 
 ### --loss-slice-is-target-slice
 
-This option uses the list of target token IDs without any modifications when calculating the loss. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.
+*Experimental* This option uses the list of target token IDs without any modifications when calculating the loss. This will break the GCG attack, so you should only use this option if you want to prove to yourself that shifting those indices really is a fundamental requirement for the GCG attack.
 
 ## Other controls for adversarial content generation
 
