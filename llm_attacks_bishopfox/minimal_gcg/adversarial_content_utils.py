@@ -88,6 +88,18 @@ def get_blenderbot_conversation_template():
     # conv_template.sep2 = "</s>"
     # return conv_template
 
+def get_falcon_mamba_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name="falcon-mamba"
+    conv_template.system_template = """<|begin_of_text|><|im_start|>system
+{system_message}"""
+    conv_template.system_message=""
+    conv_template.roles = tuple(["<|im_start|>user", "<|im_start|>assistant"])
+    conv_template.sep_style=fschat_conversation.SeparatorStyle.CHATML
+    conv_template.sep = "<|im_end|>"
+    conv_template.stop_str = None
+    return conv_template
+    
 def get_felladrin_llama_conversation_template():
     conv_template = get_default_conversation_template().copy()
     conv_template.name="felladrin-llama-chat"
@@ -155,6 +167,17 @@ def get_llama2_conversation_template():
     #conv_template.sep2 = ' </s><s>'
     #conv_template.sep = ' </s><s>'
     conv_template.stop_str = " </s>"
+    return conv_template
+
+def get_minicpm_conversation_template():
+    conv_template = get_default_conversation_template().copy()
+    conv_template.name = "minicpm"
+    conv_template.system_template = "{system_message}"
+    conv_template.system_message = ""
+    conv_template.roles = tuple(["<用户>", "<AI>"])
+    conv_template.sep_style = fschat_conversation.SeparatorStyle.NO_COLON_SINGLE
+    conv_template.sep = ''
+    conv_template.stop_str = ""
     return conv_template
 
 def get_mistral_conversation_template():
@@ -288,12 +311,14 @@ def get_custom_conversation_templates():
 
     result.append(get_blenderbot_conversation_template())
     #result.append(get_daredevil_conversation_template())
+    result.append(get_falcon_mamba_conversation_template())
     result.append(get_felladrin_llama_conversation_template())
     result.append(get_gemma_conversation_template())
     result.append(get_glm4_conversation_template())
     result.append(get_gptneox_conversation_template())
     result.append(get_guanaco_conversation_template())
     result.append(get_llama2_conversation_template())
+    result.append(get_minicpm_conversation_template())
     result.append(get_mistralnemo_conversation_template())
     result.append(get_mpt_conversation_template())
     result.append(get_mpt_redpajama_conversation_template())
@@ -500,6 +525,13 @@ class AdversarialContentManager:
                     slice_info_string_addition = None
                     try:
                         slice_info_string_addition = f"Slice '{slice_name}' = {slice_dictionary[slice_name]}"
+                        slice_length = None
+                        try:
+                            slice_length = slice_dictionary[slice_name].stop - slice_dictionary[slice_name].start
+                        except Exception as e:
+                            logger.error(f"Error getting slice '{slice_name}' length: {e}\n{traceback.format_exc()}")
+                        if slice_length is not None:
+                            slice_info_string_addition = f"{slice_info_string_addition} (length: {slice_length})"
                         if self.attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
                             slice_info_string_addition = f"{slice_info_string_addition},\ndecoded tokens = '{slice_info[slice_name]}'"
                         slice_info_string_addition = f"{slice_info_string_addition},\ntokens = {tokens[slice_dictionary[slice_name]]}\n"

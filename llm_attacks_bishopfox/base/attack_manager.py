@@ -128,6 +128,8 @@ def get_embedding_layer(attack_state):
             result = attack_state.model.model.decoder.embed_tokens
         if result is None and isinstance(attack_state.model, FalconForCausalLM):
             result = attack_state.model.get_input_embeddings()
+        if result is None and isinstance(attack_state.model, FalconMambaForCausalLM):
+            result = attack_state.model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, GemmaForCausalLM):
             result = attack_state.model.base_model.get_input_embeddings()
         if result is None and isinstance(attack_state.model, Gemma2ForCausalLM):

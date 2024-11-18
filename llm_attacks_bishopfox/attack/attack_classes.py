@@ -1288,7 +1288,7 @@ class VolatileAttackState():
         fp_extension = fp_split[1]
         # if the suffix is a simple one, and it's already there, don't re-add it
         handled_suffix = False        
-        continued_regex = re.compile("-(resumed|continued)-[0-9]{6}_iterations-[0-9]{4}$")
+        continued_regex = re.compile("-(resumed|continued-[0-9]{6}_iterations)-[0-9]{4}$")
         if continued_regex.search(fp_stem):
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"continued_regex matches fp_stem '{fp_stem}'.")
@@ -1333,6 +1333,7 @@ class VolatileAttackState():
         new_json_output_file = self.persistable.attack_params.json_output_file
         new_performance_stats_output_file = self.persistable.attack_params.performance_stats_output_file
         new_torch_cuda_memory_history_file = self.persistable.attack_params.torch_cuda_memory_history_file
+        new_log_file_path = self.persistable.attack_params.log_file_path
 
         written_files_list = []
         written_files_list.append(state_file_path)
@@ -1345,6 +1346,9 @@ class VolatileAttackState():
         if self.persistable.attack_params.torch_cuda_memory_history_file is not None:
             written_files_list.append(self.persistable.attack_params.torch_cuda_memory_history_file)
             output_file_parameters.append("--torch-cuda-memory-history-file")
+        if self.persistable.attack_params.log_file_path is not None:
+            written_files_list.append(self.persistable.attack_params.log_file_path)
+            output_file_parameters.append("--log")
         
         next_file_number = 1
         
@@ -1384,6 +1388,11 @@ class VolatileAttackState():
                 new_torch_cuda_memory_history_file = self.add_or_replace_file_number(self.add_file_name_suffix(new_torch_cuda_memory_history_file, file_name_suffix), next_file_number)
                 if os.path.isfile(new_torch_cuda_memory_history_file):
                     existing_file = True
+                    
+            if not existing_file and new_log_file_path is not None:
+                new_log_file_path = self.add_or_replace_file_number(self.add_file_name_suffix(new_log_file_path, file_name_suffix), next_file_number)
+                if os.path.isfile(new_log_file_path):
+                    existing_file = True
         
             if not existing_file:
                 finished_determining_filenames = True
@@ -1409,6 +1418,10 @@ class VolatileAttackState():
             if new_torch_cuda_memory_history_file is not None:
                 result_array.append("--torch-cuda-memory-history-file")
                 result_array.append(new_torch_cuda_memory_history_file)
+                
+            if new_log_file_path is not None:
+                result_array.append("--log")
+                result_array.append(new_log_file_path)
         else:
             if len(output_file_parameters) > 0:
                 result_array.append(";")
@@ -1515,18 +1528,21 @@ class VolatileAttackState():
                 tokenizer_model_max_length = self.tokenizer.model_max_length
                 if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"tokenizer_model_max_length = {tokenizer_model_max_length}")
-                if tokenizer_model_max_length < desired_value:
-                    limited_by_tokenizer_model_max_length = True
-                    limiting_factor_count += 1
+                # some obscure models use -1 for unlimited
+                if tokenizer_model_max_length >= 0:
+                    if tokenizer_model_max_length < desired_value:
+                        limited_by_tokenizer_model_max_length = True
+                        limiting_factor_count += 1
                     
         if hasattr(self.tokenizer, "max_position_embeddings"):        
             if not isinstance(self.tokenizer.max_position_embeddings, type(None)):
                 tokenizer_max_position_embeddings = self.tokenizer.max_position_embeddings
                 if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"tokenizer_max_position_embeddings = {tokenizer_max_position_embeddings}")
-                if tokenizer_max_position_embeddings < desired_value:
-                    limited_by_tokenizer_max_position_embeddings = True
-                    limiting_factor_count += 1
+                if tokenizer_max_position_embeddings >= 0:
+                    if tokenizer_max_position_embeddings < desired_value:
+                        limited_by_tokenizer_max_position_embeddings = True
+                        limiting_factor_count += 1
 
         if hasattr(self.tokenizer, "config"):
             if self.tokenizer.config is not None:
@@ -1545,9 +1561,10 @@ class VolatileAttackState():
                         tokenizer_config_max_position_embeddings = self.tokenizer.config.max_position_embeddings
                         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                             logger.debug(f"tokenizer_config_max_position_embeddings = {tokenizer_config_max_position_embeddings}")
-                        if tokenizer_config_max_position_embeddings < desired_value:            
-                            limited_by_tokenizer_config_max_position_embeddings = True
-                            limiting_factor_count += 1
+                        if tokenizer_config_max_position_embeddings >= 0:
+                            if tokenizer_config_max_position_embeddings < desired_value:            
+                                limited_by_tokenizer_config_max_position_embeddings = True
+                                limiting_factor_count += 1
             
         if hasattr(self.model, "config"):
             if self.model.config is not None:
@@ -1558,9 +1575,10 @@ class VolatileAttackState():
                         model_config_max_position_embeddings = self.model.config.max_position_embeddings
                         if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                             logger.debug(f"model_config_max_position_embeddings = {model_config_max_position_embeddings}")
-                        if model_config_max_position_embeddings < desired_value:            
-                            limited_by_model_config_max_position_embeddings = True
-                            limiting_factor_count += 1
+                        if model_config_max_position_embeddings >= 0:
+                            if model_config_max_position_embeddings < desired_value:            
+                                limited_by_model_config_max_position_embeddings = True
+                                limiting_factor_count += 1
         
         if hasattr(self.model, "decoder"):
             if self.model.decoder is not None:
@@ -1573,9 +1591,10 @@ class VolatileAttackState():
                                 model_decoder_config_max_position_embeddings = self.model.decoder.config.max_position_embeddings
                                 if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                                     logger.debug(f"model_decoder_config_max_position_embeddings = {model_decoder_config_max_position_embeddings}")
-                                if model_decoder_config_max_position_embeddings < desired_value:            
-                                    limited_by_model_decoder_config_max_position_embeddings = True
-                                    limiting_factor_count += 1
+                                if model_decoder_config_max_position_embeddings >= 0:
+                                    if model_decoder_config_max_position_embeddings < desired_value:            
+                                        limited_by_model_decoder_config_max_position_embeddings = True
+                                        limiting_factor_count += 1
         
         if limiting_factor_count > 0:
             description_string = f"The current value for the {parameter_name} parameter is greater than one or more of the limits for the selected model and its tokenizer. "
@@ -1667,6 +1686,54 @@ class VolatileAttackState():
                 logger.debug(f"This Qwen model does not have a '{parameter_name}' option in its configuration, indicating it may be a lawful and virtuous resident of the frontier.")
         return danger_charlie_prince_qwen_model_detected
     
+# [2024-11-18@11:05:12][X] Broken Hill is unable to continue execution due to an error that occurred during the attack initialization phase: Error loading model: Exception thrown while loading model from '/mnt/md0/Machine_Learning/LLMs/openai-community/openai-gpt', with tokenizer path '{self.persistable.attack_params.tokenizer_path}': OpenAIGPTLMHeadModel.__init__() got an unexpected keyword argument 'use_cache'
+# Traceback (most recent call last):
+# File "/mnt/md0/Machine_Learning/test_build-04/BrokenHill/llm_attacks_bishopfox/attack/attack_classes.py", line 1953, in load_model
+# self.load_model_and_tokenizer() 
+# File "/mnt/md0/Machine_Learning/test_build-04/BrokenHill/llm_attacks_bishopfox/attack/attack_classes.py", line 1804, in load_model_and_tokenizer
+# self.model = AutoModelForCausalLM.from_pretrained(
+             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/models/auto/auto_factory.py", line 564, in from_pretrained
+# return model_class.from_pretrained(
+       # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# File "/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/modeling_utils.py", line 4097, in from_pretrained
+# model = cls(config, *model_args, **model_kwargs)
+        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# TypeError: OpenAIGPTLMHeadModel.__init__() got an unexpected keyword argument 'use_cache
+    def handle_potential_no_cache_support_model(self):
+        handled_model_load = False
+        use_cache_workaround = False
+        no_cache_model_types = [ "openai-gpt", "xlnet" ]
+        for model_arch in self.model_architectures:
+            if "OpenAIGPTLMHeadModel" in model_arch:
+                use_cache_workaround = True
+                break
+            if "XLNetLMHeadModel" in model_arch:
+                use_cache_workaround = True
+                break
+        if not use_cache_workaround:
+            property_value = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "model_type")
+            if property_value is not None:
+                if property_value in no_cache_model_types:
+                    use_cache_workaround = True
+        if use_cache_workaround:
+            logger.warning(f"This model appears to be based on a family that may not support the 'use_cache' option. Broken Hill will attempt to load the model without specifying that option, because loading it using the standard approach has failed.")
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                        self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_data_type,
+                        trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                        ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                        low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage
+                    ).to(self.model_device).eval()
+                handled_model_load = True
+            except Exception as e:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Exception thrown when loading potential OpenAI GPT model using workaround: {e}\n{traceback.format_exc()}\n")
+                logger.error(f"This model could not be loaded even without including the 'use_cache' option. Broken Hill will proceed with other methods of attempting to load the model, but they are likely to fail.")
+                handled_model_load = False
+        return handled_model_load
+
     def handle_potential_charlie_prince_qwen_model(self):
         handled_model_load = False
         # Hey, everyone, I've got a great idea! I'll use a machine-learning library with a full-featured list of data types, like int8, float16, bfloat16, and float32. It has a model-loading function that accepts one of those data types if the user wants to force conversion to that type. But I'll randomly decide to make the library default to converting to my personal favourite type when it loads my model! And I'll also invent a completely separate way of representing the data types for the option to override my favourite type, instead of using the full-featured list that's already there! Pew pew! Look at me! I'm Charlie Prince!
@@ -1771,34 +1838,47 @@ class VolatileAttackState():
 
         self.model = None
         handled_model_load = False
+        standard_load_exception_message = None
 
         # TKTK: try adding a fallback to other AutoModel types, like AutoModelForSeq2SeqLM for T5.
         if not handled_model_load:
-            handled_model_load = self.handle_potential_charlie_prince_qwen_model()
+            handled_model_load = self.handle_potential_charlie_prince_qwen_model()        
         if not handled_model_load:
             # Operator specified the TORCH_DEFAULT mode
-            if self.model_data_type is None:
+            try:
+                if self.model_data_type is None:
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                            self.persistable.attack_params.model_path,
+                            trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
+                            ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
+                            low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
+                            use_cache = self.persistable.attack_params.use_cache
+                        ).to(self.model_device).eval()
+                    handled_model_load = True
+            except Exception as e:
+                standard_load_exception_message = f"Exception thrown when loading the model: {e}\n{traceback.format_exc()}\n"
+        if not handled_model_load:
+            # Operator either specified the Broken Hill default dtype or an explicit dtype
+            try:
                 self.model = AutoModelForCausalLM.from_pretrained(
                         self.persistable.attack_params.model_path,
+                        torch_dtype = self.model_data_type,
                         trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
                         ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
                         low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
                         use_cache = self.persistable.attack_params.use_cache
                     ).to(self.model_device).eval()
                 handled_model_load = True
-        if not handled_model_load:            
-            # Operator either specified the Broken Hill default dtype or an explicit dtype
-            self.model = AutoModelForCausalLM.from_pretrained(
-                    self.persistable.attack_params.model_path,
-                    torch_dtype = self.model_data_type,
-                    trust_remote_code = self.persistable.attack_params.load_options_trust_remote_code,
-                    ignore_mismatched_sizes = self.persistable.attack_params.load_options_ignore_mismatched_sizes,
-                    low_cpu_mem_usage = self.persistable.attack_params.low_cpu_mem_usage,
-                    use_cache = self.persistable.attack_params.use_cache
-                ).to(self.model_device).eval()                
+            except Exception as e:
+                standard_load_exception_message = f"Exception thrown when loading the model: {e}\n{traceback.format_exc()}\n"
+        # fallback logic for models that require special handling that can't be detected in advance of attempting the load
+        if not handled_model_load:
+            handled_model_load = self.handle_potential_no_cache_support_model()
         
-        if handled_model_load:
-            self.check_model_dtype()
+        if not handled_model_load:
+            raise AttackInitializationException(standard_load_exception_message)
+        
+        self.check_model_dtype()
         
         if self.persistable.attack_params.torch_dataparallel_model:
             try:
@@ -1844,7 +1924,14 @@ class VolatileAttackState():
                 raise AttackInitializationException(error_message)
         
         try:
-            self.broken_hill_padding_token_id = encode_string_for_real_without_any_cowboy_funny_business(self, self.persistable.attack_params.broken_hill_padding_token_string)
+            broken_hill_padding_token_id = encode_string_for_real_without_any_cowboy_funny_business(self, self.persistable.attack_params.broken_hill_padding_token_string)
+            if len(broken_hill_padding_token_id) == 0:
+                self.broken_hill_padding_token_id = None
+                raise BrokenHillValueException(f"The padding token string '{self.persistable.attack_params.broken_hill_padding_token_string}' encoded to an empty list of token IDs.")
+            if len(broken_hill_padding_token_id) > 1:
+                self.broken_hill_padding_token_id = None
+                raise BrokenHillValueException(f"The padding token string '{self.persistable.attack_params.broken_hill_padding_token_string}' encoded to more than one token.")
+            self.broken_hill_padding_token_id = broken_hill_padding_token_id[0]
         except Exception as e:
             logger.error(f"Error setting Broken Hill padding token ID from string '{self.persistable.attack_params.broken_hill_padding_token_string}': {e}\n{traceback.format_exc()}\nBroken Hill will use ID 0 instead. This will likely cause issues.")
             self.broken_hill_padding_token_id = 0

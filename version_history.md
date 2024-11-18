@@ -1,5 +1,34 @@
 # Broken Hill version history
 
+# 0.37 - 2024-11-18
+
+* Added support for the following additional models and model families:
+  * FalconMamba
+    * [falcon-mamba-7b-instruct](https://huggingface.co/tiiuae/falcon-mamba-7b-instruct)
+  * GPT-1
+    * [openai-gpt](https://huggingface.co/openai-community/openai-gpt)
+  * MiniCPM
+    * [MiniCPM-2B-sft-fp32](https://huggingface.co/openbmb/MiniCPM-2B-sft-fp32)
+	  * Added a custom `minicpm` conversation template to support this model.
+	* [Vikhr-tiny-0.1](https://huggingface.co/Vikhrmodels/Vikhr-tiny-0.1)
+  * XLNet
+    * [xlnet-large-cased](https://huggingface.co/xlnet/xlnet-large-cased)
+  * In existing families:
+    * GPT-2
+      * [tiny-gpt2](https://huggingface.co/sshleifer/tiny-gpt2)
+	* Llama
+      * [Vikhr-7B-instruct_merged](https://huggingface.co/Vikhrmodels/Vikhr-7B-instruct_merged)
+* The automatically-generated command that Broken Hill displays to continue execution using the state file now also includes the `--log` option, with a new file name. Log files are written in append mode, so the previous behaviour would not have deleted information, but generating a separate log file is arguably more intuitive.
+  * Also corrected automatic filename generation for cases where a failed run is resumed more than once.
+* Updated handling of `--new-adversarial-value-candidate-count`: if that option is specified, and `--max-new-adversarial-value-candidate-count` is not specified, the maximum value will be increased to match the `--new-adversarial-value-candidate-count` value if it is not already greater. If `--max-new-adversarial-value-candidate-count` is specified, and it is less than the default or explicitly specified value for `--new-adversarial-value-candidate-count`, Broken Hill retains its previous behaviour of reducing `--new-adversarial-value-candidate-count` to the value specified for `--new-adversarial-value-candidate-count`.
+  * Also corrected some message text that incorrectly referred to these options by older names.
+* Corrected error handling related to the `--number-of-tokens-to-update-every-iteration` and `--always-use-nanogcg-sampling-algorithm` options.
+  * Also implemented a workaround for cases where those options are enabled, but the data obtained from the gradient during adversarial content candidate selection has the wrong shape.
+* Corrected a bug that would cause Broken Hill to crash if a model's developer used `-1` instead of `null` to mean "unlimited" for model or tokenizer configuration values such as `model_max_length` and `max_position_embeddings`.
+* Fixed a bug in code related to padding slice data in alternative loss slice modes.
+* Corrected documentation on the loss slice options to match the behaviour of the published code.
+* Other lesser bug fixes.
+
 # 0.36 - 2024-11-14
 
 * Minor bug fix to handle less common errors more gracefully.

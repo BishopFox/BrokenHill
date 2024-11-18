@@ -8,6 +8,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [APT](#apt)
   * [ChatGLM and GLM](#chatglm-and-glm)
   * [Falcon](#falcon)
+  * [FalconMamba](#falconmamba)
   * [Gemma](#gemma)
   * [Gemma 2](#gemma-2)
   * [GPT-NeoX](#gpt-neox)
@@ -15,6 +16,7 @@ This document describes high-level results of testing the GCG attack using vario
   * [Llama](#llama)
   * [Llama-2](#llama-2)
   * [Llama-3](#llama-3)
+  * [MiniCPM](#minicpm)
   * [Mistral](#mistral)
   * [Mixtral](#mixtral)
   * [MPT](#mpt)
@@ -33,6 +35,8 @@ This document describes high-level results of testing the GCG attack using vario
 * [Other model families that can be used with Broken Hill](#other-model-families-that-can-be-used-with-broken-hill)
   * [BART](#bart)
   * [BigBird / BigBirdPegasus](#bigbird--bigbirdpegasus)
+  * [BlenderBot](#blenderbot)
+  * [GPT-1](#gpt-1)
   * [GPT-2](#gpt-2)
   * [GPT-J](#gpt-j)
   * [GPT-Neo](#gpt-neo)
@@ -41,8 +45,9 @@ This document describes high-level results of testing the GCG attack using vario
   * [Pegasus](#pegasus)
   * [Phi-1](#phi-1)
   * [RoBERTa](#roberta)
+  * [XLNet](#xlnet)
 * [Other model families that do not currently work with Broken Hill](#other-model-families-that-do-not-currently-work-with-broken-hill)
-  * [BlenderBot](#blenderbot)
+  * [T5](#t5)
 
 ## Model families with publicly-available versions capable of handling chat interaction
 
@@ -140,6 +145,23 @@ Comment it out, so it looks like the following:
 
 * [falcon-7b-instruct](https://huggingface.co/tiiuae/falcon-7b-instruct)
 
+### FalconMamba
+
+* Conversation template name: `falcon-mamba`
+* [TII's FalconMamba 7B page at Hugging Face](https://huggingface.co/tiiuae/falcon-mamba-7b-instruct)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+  * Tool can generate adversarial content that defeats those restrictions: TBD
+
+#### Special considerations
+
+Broken Hill includes a custom `falcon-mamba` conversation template for this model.
+
+#### Specific models tested using Broken Hill:
+
+* [falcon-mamba-7b-instruct](https://huggingface.co/tiiuae/falcon-mamba-7b-instruct)
+
 ### Gemma
 
 #### First-party models
@@ -161,6 +183,7 @@ Gemma is strongly conditioned to avoid discussing certain topics. We'll be addin
 
 * [gemma-2b-it](https://huggingface.co/google/gemma-2b-it)
 * [gemma-1.1-2b-it](https://huggingface.co/google/gemma-1.1-2b-it)
+* [gemma-1.1-7b-it](https://huggingface.co/google/gemma-1.1-7b-it)
 
 #### Other third-party variations
 
@@ -191,6 +214,7 @@ Gemma 2 is strongly conditioned to avoid discussing certain topics. We'll be add
 
 * [gemma-2-2b](https://huggingface.co/google/gemma-2b)
 * [gemma-2-2b-it](https://huggingface.co/google/gemma-2b-it)
+* [gemma-2-9b-it](https://huggingface.co/google/gemma-2-9b-it)
 
 ### GPT-NeoX
 
@@ -296,6 +320,14 @@ Broken Hill can successfully load the original Llama model, but we haven't been 
 
 * [Llama-68M-Chat-v1](https://huggingface.co/meta-llama/Felladrin/Llama-68M-Chat-v1)
 
+#### Vikhr-7B-instruct_merged
+
+* Conversation template name: `vikhr`
+
+##### Specific models tested using Broken Hill:
+
+* [Vikhr-7B-instruct_merged](https://huggingface.co/Vikhrmodels/Vikhr-7B-instruct_merged)
+
 ### Llama-2
 
 #### First-party models
@@ -388,6 +420,33 @@ For maximum accuracy during your testing, you may want to replicate this, and ca
 * [Llama-3-Swallow-8B-Instruct-v0.1](tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1)
 * [llama-3-youko-8b-instruct](https://huggingface.co/rinna/llama-3-youko-8b-instruct)
 
+### MiniCPM
+
+#### First-party models
+
+* Conversation template name: `minicpm`
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Yes**
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+
+##### Special considerations
+
+Broken Hill includes a custom `minicpm` conversation template for first-party MiniCPM models.
+
+##### Specific models tested using Broken Hill:
+
+* [MiniCPM-2B-sft-fp32](https://huggingface.co/openbmb/MiniCPM-2B-sft-fp32)
+
+#### Vikhr-tiny
+
+* Conversation template name: `vikhr`
+* [Vikhr-tiny-0.1 model page at Hugging Face](https://huggingface.co/Vikhrmodels/Vikhr-tiny-0.1)
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
+
+##### Specific models tested using Broken Hill:
+
+* [Vikhr-tiny-0.1](https://huggingface.co/Vikhrmodels/Vikhr-tiny-0.1)
+
 ### Mistral
 
 #### First-party models
@@ -411,7 +470,6 @@ For maximum accuracy during your testing, you may want to replicate this, and ca
 * [NeuralDaredevil-7B model page at Hugging Face](https://huggingface.co/mlabonne/NeuralDaredevil-7B)
 * Trained to avoid discussing a variety of potentially-dangerous and controversial topics: TBD
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
-  * Tool can generate adversarial content that defeats those restrictions: TBD
 
 ##### Special considerations
 
@@ -552,7 +610,15 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [GPT-NeoX](#gpt-neox) mo
 
 ##### Specific models tested using Broken Hill:
 
+* [pythia-14m](https://huggingface.co/EleutherAI/pythia-14m)
+* [pythia-70m](https://huggingface.co/EleutherAI/pythia-70m)
+* [pythia-70m-deduped](https://huggingface.co/EleutherAI/pythia-70m-deduped)
+* [pythia-160m](https://huggingface.co/EleutherAI/pythia-160m)
+* [pythia-410m](https://huggingface.co/EleutherAI/pythia-410m)
+* [pythia-1b](https://huggingface.co/EleutherAI/pythia-1b)
+* [pythia-1b-deduped](https://huggingface.co/EleutherAI/pythia-1b-deduped)
 * [pythia-1.4b](https://huggingface.co/EleutherAI/pythia-1.4b)
+* [pythia-2.8b](https://huggingface.co/EleutherAI/pythia-2.8b)
 
 #### OpenAssistant (and derived) variations fine-tuned for chat purposes
 
@@ -582,8 +648,9 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [GPT-NeoX](#gpt-neox) mo
 
 ##### Specific models tested using Broken Hill:
 
-* [Qwen-7B-Chat](https://huggingface.co/Qwen/Qwen-7B-Chat)
 * [Qwen-1_8B-Chat](https://huggingface.co/Qwen/Qwen-1_8B-Chat)
+* [Qwen-7B-Chat](https://huggingface.co/Qwen/Qwen-7B-Chat)
+* [Qwen-14B-Chat](https://huggingface.co/Qwen/Qwen-14B-Chat)
 * [Qwen1.5-0.5B-Chat](https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat)
 * [Qwen1.5-1.8B-Chat](https://huggingface.co/Qwen/Qwen1.5-1.8B-Chat)
 
@@ -623,6 +690,7 @@ As with their [GPT-J](#gpt-j), [GPT-Neo](#gpt-neo), and [GPT-NeoX](#gpt-neox) mo
 #### Specific models tested using Broken Hill:
 
 * [RedPajama-INCITE-7B-Chat](https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Chat)
+* [RedPajama-INCITE-7B-Instruct](https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Instruct)
 * [RedPajama-INCITE-Chat-3B-v1](https://huggingface.co/togethercomputer/RedPajama-INCITE-Chat-3B-v1)
 
 ### SmolLM
@@ -639,6 +707,7 @@ Broken Hill includes a custom `smollm` chat template because `fschat` does not c
 #### Specific models tested using Broken Hill:
 
 * [SmolLM-135M-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-135M-Instruct)
+* [SmolLM-360M-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct)
 * [SmolLM-1.7B-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM-1.7B-Instruct)
 
 ### SOLAR
@@ -661,30 +730,33 @@ Broken Hill includes a custom `smollm` chat template because `fschat` does not c
 
 * Conversation template name: `stablelm`
 * [Stability AI StableLM family GitHub repository](https://github.com/Stability-AI/StableLM)
-* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
-* Will generally follow system prompt instructions that restrict information given to the user: **No**
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Depends**
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
 
-As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics.
+The smaller versions of this model family don't seem to have any built-in restrictions regarding controversial topics. However, the larger versions (e.g. `stablelm-tuned-alpha-7b`) do exhibit restrictions.
 
 #### Specific models tested using Broken Hill:
 
 * [stablelm-tuned-alpha-3b](https://huggingface.co/stabilityai/stablelm-tuned-alpha-3b)
 * [stablelm-zephyr-3b](https://huggingface.co/stabilityai/stablelm-zephyr-3b)
+* [stablelm-tuned-alpha-7b](https://huggingface.co/stabilityai/stablelm-tuned-alpha-7b)
 
 ### StableLM 2
 
 * Conversation template name: `stablelm2`
 * [Stability AI StableLM family GitHub repository](https://github.com/Stability-AI/StableLM)
-* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **No**
-* Will generally follow system prompt instructions that restrict information given to the user: **No**
+* Trained to avoid discussing a variety of potentially-dangerous and controversial topics: **Depends**
+* Will generally follow system prompt instructions that restrict information given to the user: TBD
 
-Broken Hill includes a custom `stablelm2` chat template because `fschat` does not currently include one.
-As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), this model family doesn't have any built-in restrictions regarding controversial topics. 
+As discussed in [the documentation for stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat) and [the documentation for stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b), the smaller versions of this model family don't have any built-in restrictions regarding controversial topics.
+
+However, the larger versions (e.g. `stablelm-2-12b-chat`) do exhibit restrictions.
 
 #### Specific models tested using Broken Hill:
 
 * [stablelm-2-1_6b-chat](https://huggingface.co/stabilityai/stablelm-2-1_6b-chat)
 * [stablelm-2-zephyr-1_6b](https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b)
+* [stablelm-2-12b-chat](https://huggingface.co/stabilityai/stablelm-2-12b-chat)
 
 ### TinyLlama
 
@@ -719,6 +791,7 @@ Despite `fschat`'s overly-specific `vicuna_v1.1` template name, versions up to 1
 * [vicuna-7b-v1.1](https://huggingface.co/lmsys/vicuna-7b-v1.1)
 * [vicuna-7b-v1.3](https://huggingface.co/lmsys/vicuna-7b-v1.3)
 * [vicuna-7b-v1.5](https://huggingface.co/lmsys/vicuna-7b-v1.5)
+* [vicuna-13b-v1.1](https://huggingface.co/lmsys/vicuna-13b-v1.1)
 
 #### StableVicuna
 
@@ -737,6 +810,7 @@ StableVicuna was originally released by CarperAI as a set of weight differences 
 ##### Specific models tested using Broken Hill:
 
 * [stable-vicuna-13B-HF](https://huggingface.co/TheBloke/stable-vicuna-13B-HF)
+
 
 ## Other model families that can be used with Broken Hill
 
@@ -768,7 +842,33 @@ BART currently requires currently requires `--max-new-tokens-final 512` (or lowe
 
 #### Specific models tested using Broken Hill:
 
+* [bigbird-pegasus-large-arxiv](https://huggingface.co/google/bigbird-pegasus-large-arxiv)
 * [bigbird-pegasus-large-pubmed](https://huggingface.co/google/bigbird-pegasus-large-pubmed)
+
+### BlenderBot
+
+* [BlenderBot Small / 90M Hugging Face page](https://huggingface.co/facebook/blenderbot_small-90M)
+
+Currently, only the `blenderbot_small-90M` version of BlenderBot works in Broken Hill. We are unsure why other versions of the model cause it to crash, but plan to investigate the issue.
+
+#### Special considerations
+
+BlenderBot currently requires `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower).
+
+#### Specific models tested using Broken Hill:
+
+* [blenderbot_small-90M](https://huggingface.co/facebook/blenderbot_small-90M)
+* [blenderbot-400M-distill](https://huggingface.co/facebook/blenderbot-400M-distill)
+* [blenderbot-1B-distill](https://huggingface.co/facebook/blenderbot-1B-distill)
+* [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
+
+### GPT-1
+
+* [Open AI's GPT-1 page at Hugging Face](https://huggingface.co/openai-community/openai-gpt)
+
+#### Specific models tested using Broken Hill:
+
+* [openai-gpt](https://huggingface.co/openai-community/openai-gpt)
 
 ### GPT-2
 
@@ -780,8 +880,12 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 #### Specific models tested using Broken Hill:
 
-* [gpt2-medium](https://huggingface.co/OpenAI/gpt2)
+* (OpenAI) [gpt2](https://huggingface.co/OpenAI/gpt2) (not the same model as the next entry)
+* (openai-community) [gpt2](https://huggingface.co/openai-community/gpt2) (not the same model as the previous entry)
 * [gpt2-medium](https://huggingface.co/openai-community/gpt2-medium)
+* [gpt2-large](https://huggingface.co/openai-community/gpt2-large)
+* [gpt2-xl](https://huggingface.co/openai-community/gpt2-xl)
+* [tiny-gpt2](https://huggingface.co/sshleifer/tiny-gpt2)
 
 ### GPT-J
 
@@ -797,6 +901,7 @@ GPT-2 currently requires `--max-new-tokens-final 512` (or lower) to be manually 
 
 #### Specific models tested using Broken Hill:
 
+* [gpt-neo-125m](https://huggingface.co/EleutherAI/gpt-neo-125m)
 * [gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)
 
 ### Mamba
@@ -824,7 +929,9 @@ OPT currently requires `--max-new-tokens-final 512` (or lower) to be explicitly 
 
 #### Specific models tested using Broken Hill:
 
-* [opt-2.7b](https://huggingface.co/microsoft/phi-1_5)
+* [opt-125m](https://huggingface.co/Facebook/opt-125m)
+* [opt-1.3b](https://huggingface.co/Facebook/opt-1.3b)
+* [opt-2.7b](https://huggingface.co/Facebook/opt-2.7b)
 
 ### Pegasus
 
@@ -836,9 +943,14 @@ Broken Hill can work with Pegasus again as of version 0.32, but don't expect use
 
 Pegasus requires `--max-new-tokens-final 512` (or lower).
 
+Pegasus-X models are not currently supported.
+
 #### Specific models tested using Broken Hill:
 
-* [pegasus-wikihow](https://huggingface.co/google/pegasus-wikihow)
+* [pegasus-arxiv](https://huggingface.co/google/pegasus-arxiv)
+* [pegasus-cnn_dailymail](https://huggingface.co/google/pegasus-cnn_dailymail)
+* [pegasus-large](https://huggingface.co/google/pegasus-large)
+* [pegasus-reddit_tifu](https://huggingface.co/google/pegasus-reddit_tifu)
 
 ### Phi-1
 
@@ -856,21 +968,16 @@ Pegasus requires `--max-new-tokens-final 512` (or lower).
 
 * [roberta-base](https://huggingface.co/FacebookAI/roberta-base)
 
-## Other model families that do not currently work with Broken Hill
+### XLNet
 
-### BlenderBot
-
-* [BlenderBot 3B Hugging Face page](https://huggingface.co/facebook/blenderbot-3B)
-
-This used to work in an early pre-release version, now it doesn't. We'll try to make it work again in a future release.
-
-#### Special considerations
-
-When Broken Hill can handle this model again, BlenderBot may require `--max-new-tokens 32` (or lower) and `--max-new-tokens-final 32` (or lower) depending on whether or not we add some other additional code.
+* [xlnet-large-cased page at Hugging Face](https://huggingface.co/xlnet/xlnet-large-cased)
 
 #### Specific models tested using Broken Hill:
 
-* [blenderbot-3B](https://huggingface.co/facebook/blenderbot-3B)
+* [xlnet-large-cased](https://huggingface.co/xlnet/xlnet-large-cased)
+
+## Other model families that do not currently work with Broken Hill
+
 
 ### T5
 

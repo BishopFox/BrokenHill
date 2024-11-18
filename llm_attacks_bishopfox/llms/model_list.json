@@ -114,6 +114,21 @@
 			"comment": "This model seems to hang during the second iteration - doesn't finish even at ten hours. Add data_type."
 		},
 		{
+			"model_name": "gpt-neo-125m",
+			"model_release": "GPT-Neo",
+			"model_family": "GPT-Neo",
+			"model_repository": "https://huggingface.co/EleutherAI/gpt-neo-125m",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/gpt-neo-125m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 525979192,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type."
+		},
+		{
 			"model_name": "gpt-neo-1.3B",
 			"model_release": "GPT-Neo",
 			"model_family": "GPT-Neo",
@@ -125,6 +140,21 @@
 			"template": "zero_shot",
 			"size": 5312673800,
 			"parameter_count": 1315575808,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "gpt-neo-2.7B",
+			"model_release": "GPT-Neo",
+			"model_family": "GPT-Neo",
+			"model_repository": "https://huggingface.co/EleutherAI/gpt-neo-2.7B",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/gpt-neo-2.7B",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 10672390984,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ],
 			"comment": "Add data_type."
@@ -146,6 +176,111 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "pythia-14m",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-14m",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-14m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 53311772,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-70m",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-70m",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-70m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 166029852,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-70m-deduped",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-70m-deduped",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-70m-deduped",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 166029852,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-160m",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-160m",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-160m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 374998696,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-410m",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-410m",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-410m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 911373632,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-1b",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-1b",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-1b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2090701528,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-1b-deduped",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-1b-deduped",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-1b-deduped",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2090701528,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
 			"model_name": "pythia-1.4b",
 			"model_release": "Pythia",
 			"model_family": "Pythia",
@@ -158,6 +293,21 @@
 			"size": 2930002184,
 			"data_type": "float16",
 			"parameter_count": 1414647808,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "pythia-2.8b",
+			"model_release": "Pythia",
+			"model_family": "Pythia",
+			"model_repository": "https://huggingface.co/EleutherAI/pythia-2.8b",
+			"direct_developer_or_publisher": "Eleuther AI",
+			"model_path": "EleutherAI/pythia-2.8b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 5684693096,
+			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -179,6 +329,51 @@
 			"comment": ""
 		},
 		{
+			"model_name": "blenderbot_small-90M",
+			"model_release": "BlenderBot",
+			"model_family": "BlenderBot",
+			"model_repository": "https://huggingface.co/Facebook/blenderbot_small-90M",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/blenderbot_small-90M",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 350387079,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens", "32", "--max-new-tokens-final", "32" ],
+			"comment": ""
+		},
+		{
+			"model_name": "blenderbot-400M-distill",
+			"model_release": "BlenderBot",
+			"model_family": "BlenderBot",
+			"model_repository": "https://huggingface.co/Facebook/blenderbot-400M-distill",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/blenderbot-400M-distill",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 729755983,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens", "32", "--max-new-tokens-final", "32" ],
+			"comment": ""
+		},
+		{
+			"model_name": "blenderbot-1B-distill",
+			"model_release": "BlenderBot",
+			"model_family": "BlenderBot",
+			"model_repository": "https://huggingface.co/Facebook/blenderbot-1B-distill",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/blenderbot-1B-distill",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2874938703,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens", "32", "--max-new-tokens-final", "32" ],
+			"comment": ""
+		},
+		{
 			"model_name": "blenderbot-3B",
 			"model_release": "BlenderBot",
 			"model_family": "BlenderBot",
@@ -196,6 +391,36 @@
 			"comment": ""
 		},
 		{
+			"model_name": "opt-125m",
+			"model_release": "OPT",
+			"model_family": "OPT",
+			"model_repository": "https://huggingface.co/Facebook/opt-125m",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/opt-125m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 250540281,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ]
+		},
+		{
+			"model_name": "opt-1.3b",
+			"model_release": "OPT",
+			"model_family": "OPT",
+			"model_repository": "https://huggingface.co/Facebook/opt-1.3b",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/opt-1.3b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2631639353,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ]
+		},
+		{
 			"model_name": "opt-2.7b",
 			"model_release": "OPT",
 			"model_family": "OPT",
@@ -208,6 +433,36 @@
 			"size": 5303359381,
 			"data_type": "float16",
 			"parameter_count": 2651596800,
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ]
+		},
+		{
+			"model_name": "opt-6.7b",
+			"model_release": "OPT",
+			"model_family": "OPT",
+			"model_repository": "https://huggingface.co/Facebook/opt-6.7b",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/opt-6.7b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 13317111142,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ]
+		},
+		{
+			"model_name": "opt-13b",
+			"model_release": "OPT",
+			"model_family": "OPT",
+			"model_repository": "https://huggingface.co/Facebook/opt-13b",
+			"direct_developer_or_publisher": "Meta",
+			"model_path": "Facebook/opt-13b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 25707151019,
+			"data_type": "float16",
 			"safe_tensors": false,
 			"custom_options": [ "--max-new-tokens-final", "128" ]
 		},
@@ -258,6 +513,18 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "bigbird-pegasus-large-arxiv",
+			"model_family": "",
+			"model_path": "Google/bigbird-pegasus-large-arxiv",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2308148159,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--max-new-tokens", "32", "--max-new-tokens-final", "32" ],
+			"comment": "Add data_type."
+		},
+		{
 			"model_name": "bigbird-pegasus-large-pubmed",
 			"model_family": "",
 			"model_path": "Google/bigbird-pegasus-large-pubmed",
@@ -296,6 +563,18 @@
 			"custom_options": []
 		},
 		{
+			"model_name": "gemma-7b-it",
+			"model_family": "",
+			"model_path": "Google/gemma-7b-it",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "gemma",
+			"size": 17075391360,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
 			"model_name": "gemma-1.1-2b-it",
 			"model_family": "",
 			"model_path": "Google/gemma-1.1-2b-it",
@@ -304,7 +583,18 @@
 			"template": "gemma",
 			"size": 5012363872,
 			"data_type": "bfloat16",
-			"parameter_count": 2506172416,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "gemma-1.1-7b-it",
+			"model_family": "",
+			"model_path": "Google/gemma-1.1-7b-it",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "gemma",
+			"size": 17075391360,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": []
 		},
@@ -322,6 +612,79 @@
 			"custom_options": []
 		},
 		{
+			"model_name": "gemma-2-9b-it",
+			"model_family": "",
+			"model_path": "Google/gemma-2-9b-it",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "gemma",
+			"size": 5228717488,
+			"data_type": "bfloat16",
+			"parameter_count": 18483466448,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "gemma-2-27b-it",
+			"model_family": "",
+			"model_path": "Google/gemma-2-27b-it",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "gemma",
+			"size": 54454316552,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "pegasus-arxiv",
+			"model_family": "",
+			"model_path": "Google/pegasus-arxiv",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2275327883,
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "pegasus-cnn_dailymail",
+			"model_family": "",
+			"model_path": "Google/pegasus-cnn_dailymail",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2275327883,
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "pegasus-large",
+			"model_family": "",
+			"model_path": "Google/pegasus-large",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2275327883,
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "pegasus-reddit_tifu",
+			"model_family": "",
+			"model_path": "Google/pegasus-reddit_tifu",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2275329241,
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type."
+		},
+		{
 			"model_name": "pegasus-wikihow",
 			"model_family": "",
 			"model_path": "Google/pegasus-wikihow",
@@ -335,6 +698,32 @@
 			"comment": "Add data_type."
 		},
 		{
+			"model_name": "pegasus-x-base-arxiv",
+			"model_family": "",
+			"model_path": "Google/pegasus-x-base-arxiv",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 1089293365,
+			"data_type": "float32",
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type. This is Pegasus-X, not Pegasus, and is not currently supported."
+		},
+		{
+			"model_name": "pegasus-x-large",
+			"model_family": "",
+			"model_path": "Google/pegasus-x-large",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2274834869,
+			"data_type": "float32",
+			"safe_tensors": false,
+			"custom_options": [ "--max-new-tokens-final", "128" ],
+			"comment": "Add data_type. This is Pegasus-X, not Pegasus, and is not currently supported."
+		},
+		{
 			"model_name": "bert-base-cased",
 			"model_family": "",
 			"model_path": "google-bert/bert-base-cased",
@@ -343,6 +732,30 @@
 			"template": "zero_shot",
 			"size": 435755784,
 			"parameter_count": 108340804,
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "bert-base-multilingual-cased",
+			"model_family": "",
+			"model_path": "google-bert/bert-base-multilingual-cased",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 714290682,
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add data_type."
+		},
+		{
+			"model_name": "bert-base-uncased",
+			"model_family": "",
+			"model_path": "google-bert/bert-base-uncased",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 440449768,
 			"safe_tensors": true,
 			"custom_options": [],
 			"comment": "Add data_type."
@@ -361,6 +774,18 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "SmolLM-360M-Instruct",
+			"model_family": "",
+			"model_path": "HuggingFaceTB/SmolLM-360M-Instruct",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "smollm",
+			"size": 723674912,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
 			"model_name": "SmolLM-1.7B-Instruct",
 			"model_family": "",
 			"model_path": "HuggingFaceTB/SmolLM-1.7B-Instruct",
@@ -374,6 +799,19 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "neural-chat-7b-v3-1",
+			"model_family": "",
+			"model_path": "Intel/neural-chat-7b-v3-1",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "mistral",
+			"size": 14483497752,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": ""
+		},
+		{
 			"model_name": "neural-chat-7b-v3-3",
 			"model_family": "",
 			"model_path": "Intel/neural-chat-7b-v3-3",
@@ -385,7 +823,7 @@
 			"parameter_count": 7241732096,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ],
-			"comment": "Takes about 2.75 hours to smoke-test this model on the test system in CPU mode."
+			"comment": ""
 		},
 		{
 			"model_name": "GPT-NeoX-20B-Erebus",
@@ -471,6 +909,71 @@
 			"comment": "Add parameter_count"
 		},
 		{
+			"model_name": "vicuna-7b-v1.5-16k",
+			"model_family": "",
+			"model_path": "lmsys/vicuna-7b-v1.5-16k",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1.1",
+			"size": 13476950097,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "vicuna-13b-v1.1",
+			"model_family": "",
+			"model_path": "lmsys/vicuna-13b-v1.1",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1.1",
+			"size": 26359557143,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "vicuna-13b-v1.3",
+			"model_family": "",
+			"model_path": "lmsys/vicuna-13b-v1.3",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1.1",
+			"size": 26031877079,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "vicuna-13b-v1.5",
+			"model_family": "",
+			"model_path": "lmsys/vicuna-13b-v1.5",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1.1",
+			"size": 26031877079,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "vicuna-13b-v1.5-16k",
+			"model_family": "",
+			"model_path": "lmsys/vicuna-13b-v1.5-16k",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1.1",
+			"size": 26031877079,
+			"data_type": "float16",
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
 			"model_name": "llama-7b",
 			"model_family": "",
 			"model_path": "huggyllama/llama-7b",
@@ -484,6 +987,45 @@
 			"comment": "Add parameter_count"
 		},
 		{
+			"model_name": "llama-13b",
+			"model_family": "",
+			"model_path": "huggyllama/llama-13b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "llama2",
+			"size": 26031785400,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "llama-30b",
+			"model_family": "",
+			"model_path": "huggyllama/llama-30b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "llama2",
+			"size": 65057971592,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "llama-65b",
+			"model_family": "",
+			"model_path": "huggyllama/llama-65b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "llama2",
+			"size": 130571433862,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
 			"model_name": "Llama-2-7b-chat-hf",
 			"model_family": "",
 			"model_path": "Meta/Llama-2-7b-chat-hf",
@@ -491,6 +1033,19 @@
 			"peft_path": null,
 			"template": "llama2",
 			"size": 13476872576,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "Llama-2-13b-chat-hf",
+			"model_family": "",
+			"model_path": "meta-llama/Llama-2-13b-chat-hf",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "llama2",
+			"size": 26031784912,
 			"data_type": "float16",
 			"safe_tensors": true,
 			"custom_options": [],
@@ -549,6 +1104,19 @@
 			"comment": "Add parameter_count"
 		},
 		{
+			"model_name": "Prompt-Guard-86M",
+			"model_family": "",
+			"model_path": "meta-llama/Prompt-Guard-86M",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 1115271284,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ ],
+			"comment": "Add parameter_count. This model (unlike Llama-Guard 2 and 3) is from the Deberta family, and not currently supported."
+		},
+		{
 			"model_name": "Orca-2-7b",
 			"model_family": "",
 			"model_path": "Microsoft/Orca-2-7b",
@@ -556,6 +1124,19 @@
 			"peft_path": null,
 			"template": "orca-2",
 			"size": 26953860317,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
+			"model_name": "Orca-2-13b",
+			"model_family": "",
+			"model_path": "Microsoft/Orca-2-13b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "orca-2",
+			"size": 52063704552,
 			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [],
@@ -601,6 +1182,19 @@
 			"custom_options": []
 		},
 		{
+			"model_name": "Phi-3-mini-4k-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3-mini-4k-instruct",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "phi3",
+			"size": 7642181880,
+			"data_type": "bfloat16",
+			"parameter_count": 3821079552,
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
 			"model_name": "Phi-3-mini-128k-instruct",
 			"model_family": "",
 			"model_path": "Microsoft/Phi-3-mini-128k-instruct",
@@ -627,6 +1221,19 @@
 			"comment": "Not sure why this variation still needs --trust-remote-code. Add parameter_count."
 		},
 		{
+			"model_name": "Phi-3-medium-4k-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3-medium-4k-instruct",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "phi3",
+			"size": 27920504728,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "Add parameter_count"
+		},
+		{
 			"model_name": "Phi-3-medium-128k-instruct",
 			"model_family": "",
 			"model_path": "Microsoft/Phi-3-medium-128k-instruct",
@@ -649,6 +1256,19 @@
 			"size": 7642181880,
 			"data_type": "bfloat16",
 			"parameter_count": 3821079552,
+			"safe_tensors": true,
+			"custom_options": [ ]
+		},
+		{
+			"model_name": "Phi-3.5-MoE-instruct",
+			"model_family": "",
+			"model_path": "Microsoft/Phi-3.5-MoE-instruct",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "phi3",
+			"size": 7642181880,
+			"data_type": "bfloat16",
+			"parameter_count": 83746556168,
 			"safe_tensors": true,
 			"custom_options": [ ]
 		},
@@ -758,10 +1378,24 @@
 			"parameter_count": 6649286656,
 			"safe_tensors": false,
 			"custom_options": [],
-			"comment": "About 2.5 hours before finishing the first jailbreak test during startup, but only another five minutes before finishing the second jailbreak test. Then about 2.5 hours to perform the jailbreak test during the first iteration. Can startup time be optimized by leaving out the token denylist?"
+			"comment": ""
 		},
 		{
-			"model_name": "gpt2",
+			"model_name": "mpt-7b-8k-chat",
+			"model_family": "",
+			"model_path": "mosaicml/mpt-7b-8k-chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "mpt",
+			"size": 13298639462,
+			"data_type": "bfloat16",
+			"parameter_count": 6649286656,
+			"safe_tensors": false,
+			"custom_options": [],
+			"comment": ""
+		},
+		{
+			"model_name": "gpt2-OpenAI",
 			"model_family": "",
 			"model_path": "OpenAI/gpt2",
 			"tokenizer_path": null,
@@ -774,6 +1408,18 @@
 			"comment": "Add data_type"
 		},
 		{
+			"model_name": "gpt2-openai-community",
+			"model_family": "",
+			"model_path": "openai-community/gpt2",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 548105171,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type"
+		},
+		{
 			"model_name": "gpt2-medium",
 			"model_family": "",
 			"model_path": "openai-community/gpt2-medium",
@@ -782,6 +1428,54 @@
 			"template": "zero_shot",
 			"size": 1519984962,
 			"parameter_count": 354823168,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type"
+		},
+		{
+			"model_name": "gpt2-large",
+			"model_family": "",
+			"model_path": "openai-community/gpt2-large",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 3247159078,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type"
+		},
+		{
+			"model_name": "gpt2-xl",
+			"model_family": "",
+			"model_path": "openai-community/gpt2-xl",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 6431829964,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type"
+		},
+		{
+			"model_name": "openai-gpt",
+			"model_family": "",
+			"model_path": "openai-community/openai-gpt",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 478736214,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "Add data_type"
+		},
+		{
+			"model_name": "tiny-gpt2",
+			"model_family": "",
+			"model_path": "sshleifer/tiny-gpt2",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 2514146,
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ],
 			"comment": "Add data_type"
@@ -810,6 +1504,17 @@
 			"comment": "This is a reward model, not a general-purpose text generator/chat model - it will fail in Broken Hill."
 		},
 		{
+			"model_name": "oasst-sft-1-pythia-12b",
+			"model_family": "",
+			"model_path": "OpenAssistant/oasst-sft-1-pythia-12b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "oasst_pythia",
+			"size": 23835137555,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
 			"model_name": "oasst-sft-4-pythia-12b-epoch-3.5",
 			"model_family": "",
 			"model_path": "OpenAssistant/oasst-sft-4-pythia-12b-epoch-3.5",
@@ -819,6 +1524,19 @@
 			"size": 23835137461,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "MiniCPM-2B-sft-fp32",
+			"model_family": "",
+			"model_path": "openbmb/MiniCPM-2B-sft-fp32",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "minicpm",
+			"size": 10899643477,
+			"data_type": "float32",
+			"safe_tensors": false,
+			"custom_options": [ "--trust-remote-code", "--ignore-jailbreak-self-tests" ],
+			"comment": ""
 		},
 		{
 			"model_name": "openchat-3.6-8b-20240522",
@@ -833,17 +1551,6 @@
 			"comment": "openchat_3.5 seems like it would be the correct template, but is not"
 		},
 		{
-			"model_name": "Qwen-7B-Chat",
-			"model_family": "",
-			"model_path": "Qwen/Qwen-7B-Chat",
-			"tokenizer_path": null,
-			"peft_path": null,
-			"template": "qwen",
-			"size": 15442677288,
-			"safe_tensors": true,
-			"custom_options": [ "--trust-remote-code" ]
-		},
-		{
 			"model_name": "Qwen-1.8B-Chat",
 			"model_family": "Qwen",
 			"model_path": "Qwen/Qwen-1_8B-Chat",
@@ -855,6 +1562,28 @@
 			"safe_tensors": true,
 			"custom_options": [ "--trust-remote-code" ],
 			"comment": "Add data_type"
+		},
+		{
+			"model_name": "Qwen-7B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen-7B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 15442677288,
+			"safe_tensors": true,
+			"custom_options": [ "--trust-remote-code" ]
+		},
+		{
+			"model_name": "Qwen-14B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen-14B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 28334617016,
+			"safe_tensors": true,
+			"custom_options": [ "--trust-remote-code" ]
 		},
 		{
 			"model_name": "Qwen1.5-0.5B-Chat",
@@ -883,6 +1612,54 @@
 			"custom_options": []
 		},
 		{
+			"model_name": "Qwen1.5-4B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen1.5-4B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 7900793992,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Qwen1.5-7B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen1.5-7B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 15442693552,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Qwen1.5-14B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen1.5-14B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 28334637304,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
+			"model_name": "Qwen1.5-32B-Chat",
+			"model_family": "",
+			"model_path": "Qwen/Qwen1.5-32B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen",
+			"size": 28334637304,
+			"data_type": "bfloat16",
+			"safe_tensors": true,
+			"custom_options": []
+		},
+		{
 			"model_name": "Qwen2-0.5B-Instruct",
 			"model_family": "",
 			"model_path": "Qwen/Qwen2-0.5B-Instruct",
@@ -905,6 +1682,18 @@
 			"size": 3087467144,
 			"data_type": "bfloat16",
 			"parameter_count": 1543714304,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "Qwen2-7B-Instruct",
+			"model_family": "",
+			"model_path": "Qwen/Qwen2-7B-Instruct",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "qwen2",
+			"size": 15231271872,
+			"data_type": "bfloat16",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -942,6 +1731,30 @@
 			"custom_options": []
 		},
 		{
+			"model_name": "instructblip-vicuna-7b",
+			"model_family": "",
+			"model_path": "Salesforce/instructblip-vicuna-7b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vicuna_v1",
+			"size": 31652996944,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "InstructBlip models are not currently supported."
+		},
+		{
+			"model_name": "snowflake-arctic-embed-xs",
+			"model_family": "",
+			"model_path": "Snowflake/snowflake-arctic-embed-xs",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 90272656,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
 			"model_name": "snowflake-arctic-embed-s",
 			"model_family": "",
 			"model_path": "Snowflake/snowflake-arctic-embed-s",
@@ -951,6 +1764,54 @@
 			"size": 132870584,
 			"data_type": "float32",
 			"parameter_count": 33391290,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "snowflake-arctic-embed-m",
+			"model_family": "",
+			"model_path": "Snowflake/snowflake-arctic-embed-m",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 435588776,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "snowflake-arctic-embed-m-v1.5",
+			"model_family": "",
+			"model_path": "Snowflake/snowflake-arctic-embed-m-v1.5",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 435588776,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "snowflake-arctic-embed-m-long",
+			"model_family": "",
+			"model_path": "Snowflake/snowflake-arctic-embed-m-long",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 546938168,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "snowflake-arctic-embed-l",
+			"model_family": "",
+			"model_path": "Snowflake/snowflake-arctic-embed-l",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 1336413848,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
@@ -968,6 +1829,18 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "stablelm-tuned-alpha-7b",
+			"model_family": "",
+			"model_path": "StabilityAI/stablelm-tuned-alpha-7b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "stablelm",
+			"size": 31743544587,
+			"data_type": "float32",
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
 			"model_name": "stablelm-2-1_6b-chat",
 			"model_family": "",
 			"model_path": "StabilityAI/stablelm-2-1_6b-chat",
@@ -981,6 +1854,55 @@
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
 		},
 		{
+			"model_name": "stablelm-2-12b-chat",
+			"model_family": "",
+			"model_path": "StabilityAI/stablelm-2-12b-chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "stablelm2",
+			"size": 24286613840,
+			"data_type": "bfloat16",
+			"parameter_count": 12143185920,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "mamba-130m-hf",
+			"model_family": "",
+			"model_path": "state-spaces/mamba-130m-hf",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 516567560,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
+		},
+		{
+			"model_name": "mamba-370m-hf",
+			"model_family": "",
+			"model_path": "state-spaces/mamba-370m-hf",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 1486118288,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
+		},
+		{
+			"model_name": "mamba-790m-hf",
+			"model_family": "",
+			"model_path": "state-spaces/mamba-790m-hf",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 3172869936,
+			"data_type": "float32",
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
+		},
+		{
 			"model_name": "mamba-1.4b-hf",
 			"model_family": "",
 			"model_path": "state-spaces/mamba-1.4b-hf",
@@ -990,6 +1912,18 @@
 			"size": 5488766864,
 			"data_type": "float32",
 			"parameter_count": 1372178432,
+			"safe_tensors": true,
+			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
+		},
+		{
+			"model_name": "mamba-2.8b-hf",
+			"model_family": "",
+			"model_path": "state-spaces/mamba-2.8b-hf",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 11073453248,
+			"data_type": "float32",
 			"safe_tensors": true,
 			"custom_options": [ "--ignore-jailbreak-self-tests", "--suppress-attention-mask" ]
 		},
@@ -1076,7 +2010,7 @@
 			"model_path": "tiiuae/falcon-mamba-7b-instruct",
 			"tokenizer_path": null,
 			"peft_path": null,
-			"template": "falcon",
+			"template": "falcon-mamba",
 			"size": 14545401832,
 			"safe_tensors": true,
 			"custom_options": []
@@ -1132,6 +2066,17 @@
 			"model_name": "RedPajama-INCITE-7B-Chat",
 			"model_family": "",
 			"model_path": "togethercomputer/RedPajama-INCITE-7B-Chat",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "redpajama-incite",
+			"size": 13848992454,
+			"safe_tensors": false,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "RedPajama-INCITE-7B-Instruct",
+			"model_family": "",
+			"model_path": "togethercomputer/RedPajama-INCITE-7B-Instruct",
 			"tokenizer_path": null,
 			"peft_path": null,
 			"template": "redpajama-incite",
@@ -1231,7 +2176,21 @@
 			"template": "vikhr",
 			"size": 15255168080,
 			"safe_tensors": true,
-			"custom_options": []
+			"custom_options": [],
+			"comment": "This is a Mistral-based model"
+		},
+		{
+			"model_name": "Vikhr-7B-instruct_merged",
+			"model_family": "",
+			"model_path": "Vikhrmodels/Vikhr-7B-instruct_merged",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vikhr",
+			"size": 14614640784,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "This is a Llama-based model"
 		},
 		{
 			"model_name": "Vikhr-Gemma-2B-instruct",
@@ -1259,6 +2218,31 @@
 			"comment": "This is a T5 model, which is not currently supported in Broken Hill."
 		},
 		{
+			"model_name": "VikhrT5-3b",
+			"model_family": "",
+			"model_path": "Vikhrmodels/VikhrT5-3b",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vikhr",
+			"size": 11826916416,
+			"safe_tensors": true,
+			"custom_options": [],
+			"comment": "This is a T5 model, which is not currently supported in Broken Hill."
+		},
+		{
+			"model_name": "Vikhr-tiny-0.1",
+			"model_family": "",
+			"model_path": "Vikhrmodels/Vikhr-tiny-0.1",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "vikhr",
+			"size": 5566630008,
+			"data_type": "float16",
+			"safe_tensors": true,
+			"custom_options": [ "--trust-remote-code" ],
+			"comment": "This is a MiniCPM model"
+		},
+		{
 			"model_name": "oasst_pythia-70m-deduped_webgpt",
 			"model_family": "",
 			"model_path": "WKLI22/oasst_pythia-70m-deduped_webgpt",
@@ -1270,6 +2254,19 @@
 			"parameter_count": 70410240,
 			"safe_tensors": false,
 			"custom_options": [ "--ignore-jailbreak-self-tests" ]
+		},
+		{
+			"model_name": "xlnet-large-cased",
+			"model_family": "",
+			"model_path": "xlnet/xlnet-large-cased",
+			"tokenizer_path": null,
+			"peft_path": null,
+			"template": "zero_shot",
+			"size": 1441285815,
+			"safe_tensors": false,
+			"parameter_count": 360300800,
+			"custom_options": [ "--ignore-jailbreak-self-tests" ],
+			"comment": "XLNet model"
 		}
 	]
 }
