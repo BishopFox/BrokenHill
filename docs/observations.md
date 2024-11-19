@@ -31,7 +31,7 @@ A future version of Broken Hill may automatically select a larger value when dev
 
 The default, best-supported mode for Broken Hill causes one token in the adversarial content to be updated at each iteration. As discussed above, a selection of permutations are selected using the gradient, and the GCG attack proceeds using the permutation with the lowest loss. This is the mode inherited from [the 'llm-attacks' proof-of-concept](https://github.com/llm-attacks/llm-attacks/) that Broken Hill began as a fork of.
 
-When using a CUDA device for processing, and/or using adversarial content with a relatively small number of tokens, you should generally use the default mode. However, it's often possible to increase the efficiency of the attack during its early stages by taking advantage of the `--number-of-tokens-to-update-every-iteration` option, which enables code borrowed from [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg). For example, `--number-of-tokens-to-update-every-iteration 4` would cause four tokens to be replaced in each candidate value instead of one. It can make a big difference when performing the attack on CPU hardware in particular, because even under ideal conditions, CPU-based attacks tend to take 5-10 times as long as CUDA-based attacks.
+When using a CUDA device for processing, and/or using adversarial content with a relatively small number of tokens, you should generally use the default mode. However, it's often possible to increase the efficiency of the attack during its early stages by taking advantage of the experimental `--number-of-tokens-to-update-every-iteration` option, which enables code borrowed from [nanogcg](https://github.com/GraySwanAI/nanoGCG/tree/main/nanogcg). For example, `--number-of-tokens-to-update-every-iteration 4` would cause four tokens to be replaced in each candidate value instead of one. It can make a big difference when performing the attack on CPU hardware in particular, because even under ideal conditions, CPU-based attacks tend to take 5-10 times as long as CUDA-based attacks.
 
 In the current version of Broken Hill, the tradeoff is that the number of tokens to update is fixed. Updating multiple tokens at a time can be a quick way to get the loss value down to 2 or maybe even 1.5, but our experience is that it's too blunt of an instrument to tune the values much further than that.
 
@@ -259,13 +259,13 @@ Some of the factors that can cause this:
 
 ### Model data format differences
 
-The attack tool must use floating-point data, not integers, and is currently currently hardcoded to use the `FP16` format for historical reasons. If the same model has been loaded into another system, but was quantized to an integer format, or is using a different floating-point format, the adversarial content may no longer have any effect, or may have a different effect.
+The attack tool must use floating-point data, not integers. If the same model has been loaded into another system, but was quantized to an integer format, or is using a different floating-point format, the adversarial content may no longer have any effect, or may have a different effect.
 
 A future version of Broken Hill will allow results to also be tested against a quantized version of the same model (after generating results using the floating-point version) to help catch fragile results.
 
 ### Randomization
 
-Most LLM tools enable random behaviour by default, and will therefore not react deterministically. This means that a string might work some of the time, most of the time, or very rarely.
+Many LLM tools enable random behaviour by default, and will therefore not react deterministically. This means that a string might work some of the time, most of the time, or very rarely.
 
 Most LLMs distinguish between result generation using a method that is "sample-based" or not. Some of these LLMs default to having that option enabled, others have it disabled. Enabling that option is generally required for random testing, but it can affect the results even without other randomization factors.
 
@@ -298,7 +298,7 @@ The `fschat` library attempts to abstract away the underlying dumpster inferno b
 
 The attack tool will happily generate numerous adversarial results that cause the model to misbehave *when information is passed to it in that format*, but that have no effect on the same model when information is passed to it in the way the model expects. These results may be useful in edge-case scenarios, such as "I want to use an LLM with built-in restrictions to generate content that violates those restrictions *on my own machine*", but they will not be useful for attacking remote LLMs on other systems, because the interface to those LLMs will pass your chat messages in the way the model expects, not the incorrect format you used to generate the content.
 
-You can compare Broken Hill's template to `ollama` by examining the Broken Hill output, which will look something like this:
+You can compare Broken Hill's template to `ollama` by examining Broken Hill's debug output, which will look something like this:
 
 ```
 Conversation template: 'one_shot'
