@@ -52,22 +52,6 @@ pip install --force-reinstall torch --index-url https://download.pytorch.org/whl
 
 Performing this step *before* installing Broken Hill will save you time, because only one version of a fairly large Python library will be loaded.
 
-### `fschat` library
-
-The `pyproject.toml`-based configuration introduced in Broken Hill 0.34 automatically installs the `fschat` Python library from source to pick up newer conversation templates and other definitions, because as of this writing, the main branch of `fschat` has the same version number as the latest version in PyPi, but the code has been updated significantly for almost a year after the last PyPi release. If you want to install from PyPi instead, comment out this line in `pyproject.toml`:
-
-```
-  "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat",
-```
-
-...and uncomment this line:
-
-```
-#  "fschat==0.2.36",
-```
-
-...then re-run `bin/pip install ./BrokenHill/`.
-
 ### `flash_attn` library
 
 Some models will encourage you to install the `flash_attn` library. Broken Hill does not do this by default because some features of that library only support CUDA devices, and will cause Broken Hill to crash with arcane, obscure errors if - for example - it is used on a CPU device for testing purposes.
