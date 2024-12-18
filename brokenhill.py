@@ -1,8 +1,8 @@
 #!/bin/env python3
 
 script_name = "brokenhill.py"
-script_version = "0.37"
-script_date = "2024-11-15"
+script_version = "0.38"
+script_date = "2024-12-18"
 
 def get_logo():
     result =  "                                                                                \n"
@@ -182,6 +182,9 @@ from torch.quantization.qconfig import float_qparams_weight_only_qconfig
 logger = logging.getLogger(__name__)
 
 SAFETENSORS_WEIGHTS_FILE_NAME = "adapter_model.safetensors"
+
+# workarounds for f-strings
+DOUBLE_QUOTE = '"'
 
 # threshold for warning the user if the specified PyTorch device already has more than this percent of its memory reserved
 # 0.1 = 10%
@@ -1024,15 +1027,16 @@ def main(attack_params, log_manager):
                         if update_jailbreak_count:
                             rollback_notification_message += f" Updating best jailbreak count from {attack_state.persistable.best_jailbreak_count} to {attack_results_current_iteration.jailbreak_detection_count}."
                             attack_state.persistable.best_jailbreak_count = attack_results_current_iteration.jailbreak_detection_count
-                        
-                    # (Optional) Clean up the cache.
-                    if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"Cleaning up the cache")
-                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before deleting coordinate gradient")
-                    if coordinate_gradient is not None:
-                        del coordinate_gradient
-                    gc.collect()
-                    attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting coordinate gradient and running gc.collect")
+                                            
+                    if not attack_state.persistable.attack_params.preserve_gradient:
+                        # (Optional) Clean up the cache.
+                        if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                            logger.debug(f"Deleting coordinate gradient")
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before deleting coordinate gradient")
+                        if coordinate_gradient is not None:
+                            del coordinate_gradient
+                        gc.collect()
+                        attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting coordinate gradient and running gc.collect")
                                     
                 # Neither of the except KeyboardInterrupt blocks currently do anything because some inner code in another module is catching it first
                 except KeyboardInterrupt:
@@ -1761,6 +1765,9 @@ if __name__=='__main__':
     parser.add_argument("--no-torch-cache", type = str2bool, nargs='?',
         const=True,
         help="When loading the model and tokenizer, pass 'use_cache = False'. May or may not affect performance and results.")
+    parser.add_argument("--preserve-gradient", type = str2bool, nargs='?',
+        const=True,
+        help="Retain the coordinate gradient between iterations of the attack instead of deleting it. This may result in increased device memory use.")
     parser.add_argument("--display-model-size", type = str2bool, nargs='?',
         const=True, default=attack_params.display_model_size,
         help="Displays size information for the selected model. Warning: will write the raw model data to a temporary file, which may double the load time.")
@@ -2014,6 +2021,10 @@ if __name__=='__main__':
     if args.initial_adversarial_string_base64:
         initial_data_method_count += 1
         attack_params.initial_adversarial_string = base64.b64decode(args.initial_adversarial_string_base64).decode("utf-8")
+    
+    initial_adversarial_string_stripped = attack_params.initial_adversarial_string.strip()
+    if attack_params.initial_adversarial_string != initial_adversarial_string_stripped:
+        logger.warning(f"The initial adversarial string '{attack_params.initial_adversarial_string}' includes leading and/or trailing whitespace characters. This may result in unexpected behaviour during the attack, such as warning messages about the number of top token indices. If you did not intentionally include the leading/trailing whitespace, you should restart the attack using --initial-adversarial-string {DOUBLE_QUOTE}{initial_adversarial_string_stripped}{DOUBLE_QUOTE} instead of --initial-adversarial-string {DOUBLE_QUOTE}{attack_params.initial_adversarial_string}{DOUBLE_QUOTE}.")
     
     if args.initial_adversarial_token:
         initial_data_method_count += 1
@@ -2351,6 +2362,9 @@ if __name__=='__main__':
     if args.no_torch_cache:
         attack_params.use_cache = False
     
+    if args.preserve_gradient:
+        attack_params.preserve_gradient = True
+
     attack_params.display_model_size = args.display_model_size
     
     attack_params.force_python_tokenizer = args.force_python_tokenizer

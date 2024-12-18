@@ -1,5 +1,11 @@
 # Broken Hill version history
 
+# 0.38 - 2024-12-18
+
+* Added a warning message if the value specified for `--initial-adversarial-string` includes leading and/or trailing whitespace, in response to [issue #9](https://github.com/BishopFox/BrokenHill/issues/9).
+* Added an experimental `--preserve-gradient` option that retains the coordinate gradient between attack iterations.
+* Updated documentation to clarify some steps and strengthen the wording of prerequisites/dependencies.
+
 # 0.37 - 2024-11-18
 
 * Added support for the following additional models and model families:

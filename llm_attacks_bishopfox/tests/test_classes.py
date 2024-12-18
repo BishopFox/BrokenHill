@@ -76,7 +76,7 @@ class BrokenHillTestParams(JSONSerializableObject):
         self.verbose_stats = True
         self.verbose_resource_info = True
         self.write_output_every_iteration = False
-        self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens', '--no-ansi' ]
+        self.custom_options = [ '--exclude-nonascii-tokens', '--exclude-nonprintable-tokens', '--exclude-special-tokens', '--exclude-additional-special-tokens', '--exclude-newline-tokens', '--no-ansi', '--preserve-gradient' ]
         # ten minute default for CUDA devices
         self.cuda_process_timeout = 600
         # default: one hour

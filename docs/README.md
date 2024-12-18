@@ -27,10 +27,17 @@
 	  * You should have your Linux system set up with a working, reasonbly current version of [Nvidia's drivers and the CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). One way to validate that the drivers and toolkit are working correctly is to try running [hashcat](https://hashcat.net/) in benchmarking mode. If you get results that are more or less like the results other hashcat users report for the same hardware, your drivers are probably working more or less correctly. If you see warnings or errors about the driver, "NVIDIA CUDA library", or "NVIDIA RTC library", you should troubleshoot those and get `hashcat` running without errors before proceeding.
   * For Windows:
     * You should have a reasonably recent version of the Nvidia drivers installed. We tested using the "Studio" version of the driver, without "Nvidia Experience".
-* If you want to have the smoothest possible setup and use experience, use Python 3.11.x when creating and using the `venv`. In particular, using another Python version may result in issues installing PyTorch.
+* **Only Python 3.11.x is supported at this time**. Using another Python version may result in issues with some of Broken Hill's third-party dependencies. If you are using another Python version, you should install the latest release of 3.11 in a side-by-side configuration and refer to the 3.11 binary explicitly when creating the Python virtual environment. Side-by-side Python version installation differs by platform, so if you're not already familiar with it, you'll need to do some web searching to determine what options you have and which approach you like best.
+  * On our test Debian system, we use `apt` to install multiple versions and then call the specific version we need in the shell.
+  * On our test Mac OS and Windows systems, we explicitly install the latest release of Python 3.11 (using `brew` on Mac OS and manual download/install on Windows) and don't have other Python versions installed. 
+* **Using a Python virtual environment (`venv`) is strongly recommended**, although that feature still doesn't seem to work on Windows. Broken Hill explicitly pins specific versions of third-party dependencies because so many of them are fragile and frequently introduce breaking changes. That means if you're using Python for anything *other* than Broken Hill, you're likely to run into dependency conflicts unless you use a virtual environment. If you can't use a Python virtual environment (e.g. because you're using Windows), you should create a separate user account specifically for Broken Hill, and install the dependencies in user mode instead of system-wide.
 * To install Broken Hill using the standard process on Windows, [you'll need a command-line Windows Git client, such as this package](https://git-scm.com/downloads/win).
 
 ## Setup
+
+Make sure you've read through the "Prerequisites" section, above.
+
+### Linux and Mac OS
 
 ```
 $ git clone https://github.com/BishopFox/BrokenHill
@@ -40,9 +47,9 @@ $ python -m venv ./
 $ bin/pip install ./BrokenHill/
 ```
 
-(for Windows, you will likely need to omit the `bin/` section of the `pip` and `python` commands throughout this documentation).
+### Windows
 
-### CUDA support for Windows
+#### CUDA support for Windows
 
 If you want to venture into the wild and try to get CUDA support working on Windows, [follow the PyTorch instructions for installing a CUDA-enabled version of PyTorch on your system](https://pytorch.org/get-started/locally/) before or after you install Broken Hill, e.g.:
 
@@ -52,9 +59,23 @@ pip install --force-reinstall torch --index-url https://download.pytorch.org/whl
 
 Performing this step *before* installing Broken Hill will save you time, because only one version of a fairly large Python library will be loaded.
 
-### `fschat` library
+#### Broken Hill setup for Windows
 
-The `pyproject.toml`-based configuration introduced in Broken Hill 0.34 automatically installs the `fschat` Python library from source to pick up newer conversation templates and other definitions, because as of this writing, the main branch of `fschat` has the same version number as the latest version in PyPi, but the code has been updated significantly for almost a year after the last PyPi release. If you want to install from PyPi instead, comment out this line in `pyproject.toml`:
+Windows still doesn't seem to support Python virtual environments, so you should create a user account specifically for Broken Hill and log in as that user account, then run:
+
+```
+$ git clone https://github.com/BishopFox/BrokenHill
+
+$ pip install --user ./BrokenHill/
+```
+
+You will also need to omit the `bin/` section of the `pip` and `python` commands throughout this documentation.
+
+### Optional - install `fschat` library from PyPi instead of source
+
+The `pyproject.toml`-based configuration used by versions of Broken Hill 0.34 and later automatically installs the `fschat` Python library from source to pick up newer conversation templates and other definitions, because as of this writing, the main branch of `fschat` has the same version number as the latest version in PyPi, but the code has been updated significantly for almost a year after the last PyPi release. **Most users should just install using `pyproject.toml` and skip to the `flash_attn` section, below**.
+
+*If you want to install the older version of `fschat` from PyPi instead for some reason* (for example, if the referenced GitHub repo is deleted), comment out this line in `pyproject.toml`:
 
 ```
   "fschat[model_worker,webui] @ git+https://github.com/lm-sys/FastChat",
@@ -68,7 +89,7 @@ The `pyproject.toml`-based configuration introduced in Broken Hill 0.34 automati
 
 ...then re-run `bin/pip install ./BrokenHill/`.
 
-### `flash_attn` library
+### Optional - install `flash_attn` library
 
 Some models will encourage you to install the `flash_attn` library. Broken Hill does not do this by default because some features of that library only support CUDA devices, and will cause Broken Hill to crash with arcane, obscure errors if - for example - it is used on a CPU device for testing purposes.
 

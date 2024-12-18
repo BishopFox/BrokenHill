@@ -738,3 +738,7 @@ When loading the model and tokenizer, pass `use_cache = True`. May or may not af
 ### --no-torch-cache
 
 When loading the model and tokenizer, pass `use_cache = False`. May or may not affect performance and results.
+
+## --preserve-gradient
+
+*Experimental* Retain the coordinate gradient between iterations of the attack instead of deleting it. This may result in increased device memory use.
