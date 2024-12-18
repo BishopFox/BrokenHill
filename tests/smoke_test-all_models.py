@@ -388,9 +388,14 @@ if __name__=='__main__':
     #smoke_test_params.console_level = "info"
     #smoke_test_params.log_level = "info"
     
-    # Remove all of the extra options that require building a denylist here
-    # Because it's easier to re-add them to the CUDA model test configs in the main loop instead of trying to remove them from the CPU model test configs there.
-    smoke_test_params.custom_options = [ "--no-ansi" ]
+    # # Remove all of the extra options that require building a denylist here
+    # # Because it's easier to re-add them to the CUDA model test configs in the main loop instead of trying to remove them from the CPU model test configs there.
+    # new_custom_options = []
+    # for i in range(0, len(smoke_test_params.custom_options)):
+        # current_option = smoke_test_params.custom_options[i]
+        # if "--exclude" not in current_option:
+            # new_custom_options.append(current_option)
+    # smoke_test_params.custom_options = new_custom_options
     
     if args.include_model:
         for elem in args.include_model:
@@ -409,6 +414,7 @@ if __name__=='__main__':
                         smoke_test_params.specific_model_names_to_skip = [ et ]
                     else:
                         smoke_test_params.specific_model_names_to_skip = add_value_to_list_if_not_already_present(smoke_test_params.specific_model_names_to_skip, et)
+    
     
     # 24 GiB of device memory == 25390809088
     # Largest model successfully tested so far with 24 GiB: 3821079552 parameters (Microsoft Phi-3 / 3.5 Mini 128k)

@@ -776,6 +776,7 @@ class AttackParams(JSONSerializableObject):
         # assorted values that may or may not impact performance
         self.low_cpu_mem_usage = False
         self.use_cache = True
+        self.preserve_gradient = False
     
         # various other minor configuration options
         # Displays the size of the model after loading it

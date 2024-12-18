@@ -376,33 +376,6 @@ Until this issue is resolved, Broken Hill will report one or more warnings when 
 * Will generally follow system prompt instructions that restrict information given to the user: TBD
   * Tool can generate adversarial content that defeats those restrictions: TBD
 
-##### Special considerations
-
-As of this writing, the current *release* of `fschat` (0.2.36 - from February 11th, 2024) did not support Llama-3, and the template requires custom logic. [You can install `fschat` from source](https://github.com/lm-sys/FastChat?tab=readme-ov-file#method-2-from-source) to enable the `llama-3` template, e.g. from the base directory where you created the Python virtual environment for Broken Hill:
-
-```
-git clone https://github.com/lm-sys/FastChat.git
-cd FastChat
-../bin/pip install -e ".[model_worker,webui]"
-cd ..
-```
-
-As with the Llama-2 conversation template, the `fschat` template for Llama-3 does not exactly match the output of the tokenizer's `apply_chat_template` function (for example, `fschat` adds an extra `<|eot_id|>` at the end of the prompt), but the differences shouldn't be enough to materially effect Broken Hill's test results. Until `fschat` is updated, Broken Hill will display a brief warning when the `llama-3` template is used.
-
-Llama-3.1's built-in `apply_chat_template` method incorporates the following odd system prompt by default (at least, for the `Meta-Llama-3.1-8B-Instruct` version, specifically):
-
-```
-Cutting Knowledge Date: December 2023
-Today Date: 26 Jul 2024
-
-```
-
-For maximum accuracy during your testing, you may want to replicate this, and can do so by adding the following option to refer to a file that's bundled with Broken Hill starting in version 0.32:
-
-```
---system-prompt-from-file BrokenHill/data/llama3_system_prompt.txt
-```
-
 ##### Specific models tested using Broken Hill:
 
 * [Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
